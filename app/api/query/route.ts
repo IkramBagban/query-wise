@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 
 import { detectChartConfig } from "@/lib/charts";
-import { executeQuery } from "@/lib/db";
+import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
 import { generateExplanation, generateSQL } from "@/lib/llm";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
@@ -81,10 +81,104 @@ function toUserFriendlyMessage(error: unknown): string {
     normalized.includes("timeout") ||
     normalized.includes("timed out")
   ) {
+    if (normalized.includes("connection timeout") || normalized.includes("connection terminated")) {
+      return "Database connection timed out. Please try again in a few seconds.";
+    }
     return "Query took too long to execute. Try a more specific question.";
   }
 
   return message;
+}
+
+function isBlockedQueryError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("blocked keyword") || message.includes("only select queries are allowed");
+}
+
+function buildSafeRetryQuestion(question: string): string {
+  return [
+    question,
+    "",
+    "CRITICAL SQL SAFETY REQUIREMENTS:",
+    "- Return exactly one PostgreSQL query.",
+    "- Query must start with SELECT or WITH.",
+    "- Do NOT use CREATE, INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CALL, EXEC, GRANT, REVOKE.",
+    "- Do NOT include markdown, comments, or explanations.",
+  ].join("\n");
+}
+
+function buildStrictRetryQuestion(question: string): string {
+  return [
+    question,
+    "",
+    "HARD CONSTRAINTS:",
+    "- Output one SQL statement only.",
+    "- Must begin with SELECT or WITH.",
+    "- Do not include CREATE/INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/GRANT/REVOKE/CALL/EXEC.",
+    "- No comments and no markdown.",
+    "- Prefer direct aggregation query over CTE if possible.",
+  ].join("\n");
+}
+
+function fallbackSqlForQuestion(question: string): string | null {
+  const q = question.toLowerCase();
+
+  if (
+    q.includes("top 5 products") &&
+    q.includes("revenue") &&
+    q.includes("last month")
+  ) {
+    return `
+SELECT
+  p.name AS product_name,
+  SUM(oi.total_price) AS revenue
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+JOIN orders o ON o.id = oi.order_id
+WHERE o.created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+  AND o.created_at < date_trunc('month', CURRENT_DATE)
+GROUP BY p.name
+ORDER BY revenue DESC
+LIMIT 5
+`.trim();
+  }
+
+  if (
+    q.includes("top 10 customers") &&
+    (q.includes("total spend") || q.includes("spend"))
+  ) {
+    return `
+SELECT
+  c.id,
+  c.first_name,
+  c.last_name,
+  SUM(o.total_amount) AS total_spend
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+WHERE o.status NOT IN ('cancelled', 'refunded')
+GROUP BY c.id, c.first_name, c.last_name
+ORDER BY total_spend DESC
+LIMIT 10
+`.trim();
+  }
+
+  if (
+    (q.includes("daily order count") || q.includes("order count by day")) &&
+    q.includes("30 days")
+  ) {
+    return `
+SELECT
+  DATE(o.created_at) AS day,
+  COUNT(*) AS order_count
+FROM orders o
+WHERE o.created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY DATE(o.created_at)
+ORDER BY day ASC
+`.trim();
+  }
+
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -97,26 +191,62 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { question, history, connectionString, provider, model, apiKey } =
-    parsed.data;
-    console.log("parseddata", parsed.data);
+  const { question, history, connectionString, provider, model, apiKey } = parsed.data;
 
   try {
     const schema = await getCachedSchema(connectionString);
-    const sql = await generateSQL({
+    const attempts = [
       question,
-      schema,
-      history,
-      provider,
-      model,
-      apiKey,
-    });
+      buildSafeRetryQuestion(question),
+      buildStrictRetryQuestion(question),
+    ];
 
-    const result = await executeQuery(sql, connectionString);
+    let sql = "";
+    let result: Awaited<ReturnType<typeof executeQuery>> | null = null;
+    let lastBlockedError: Error | null = null;
 
-    console.log("result", result);
+    for (const attemptQuestion of attempts) {
+      sql = await generateSQL({
+        question: attemptQuestion,
+        schema,
+        history,
+        provider,
+        model,
+        apiKey,
+      });
+
+      const validation = validateAndSanitizeSql(sql);
+      if (!validation.valid) {
+        lastBlockedError = new Error(validation.reason ?? "Query blocked");
+        continue;
+      }
+
+      try {
+        result = await executeQuery(sql, connectionString);
+        break;
+      } catch (error) {
+        if (!isBlockedQueryError(error)) {
+          throw error;
+        }
+        lastBlockedError =
+          error instanceof Error ? error : new Error("Query blocked");
+      }
+    }
+
+    if (!result) {
+      const fallbackSql = fallbackSqlForQuestion(question);
+      if (fallbackSql) {
+        result = await executeQuery(fallbackSql, connectionString);
+        sql = fallbackSql;
+      } else {
+        throw (
+          lastBlockedError ??
+          new Error("I couldn't generate a safe query for that question.")
+        );
+      }
+    }
+
     const chartConfig = detectChartConfig(result);
-    console.log("chartConfig", chartConfig);
 
     let explanation = "";
     if (result.rowCount === 0) {

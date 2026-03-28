@@ -65,18 +65,25 @@ export function validateAndSanitizeSql(sql: string): {
     "EXEC",
     "CALL",
     "MERGE",
-    "--",
-    "/*",
     "XP_",
   ];
 
   for (const token of blockedTokens) {
-    if (uppercaseSql.includes(token)) {
+    const tokenRegex = new RegExp(`\\b${token}\\b`, "i");
+    if (tokenRegex.test(uppercaseSql)) {
       return {
         valid: false,
         reason: `Query contains blocked keyword: ${token}`,
       };
     }
+  }
+
+  // Block SQL comments explicitly.
+  if (uppercaseSql.includes("--") || uppercaseSql.includes("/*")) {
+    return {
+      valid: false,
+      reason: "Query contains blocked SQL comment syntax.",
+    };
   }
 
   return { valid: true };

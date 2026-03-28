@@ -10,6 +10,12 @@ type Provider = "google" | "anthropic";
 export const SUPPORTED_MODELS = [
   {
     provider: "google",
+    model: "gemini-2.0-flash",
+    label: "Gemini 2.0 Flash",
+    tier: "fast",
+  },
+  {
+    provider: "google",
     model: "gemini-1.5-pro",
     label: "Gemini 1.5 Pro",
     tier: "powerful",
@@ -52,6 +58,12 @@ interface GenerateExplanationParams {
   apiKey: string;
 }
 
+interface ValidateModelAccessParams {
+  provider: Provider;
+  model: string;
+  apiKey: string;
+}
+
 type ModelMessage = { role: "user" | "assistant"; content: string };
 
 function getModel(provider: Provider, model: string, apiKey: string) {
@@ -62,7 +74,22 @@ function getModel(provider: Provider, model: string, apiKey: string) {
 }
 
 function cleanSQL(raw: string): string {
-  return raw.replace(/```sql\n?/gi, "").replace(/```\n?/g, "").trim();
+  const withoutFences = raw
+    .replace(/```sql\n?/gi, "")
+    .replace(/```\n?/g, "")
+    .trim();
+
+  const sqlStartIndex = withoutFences.search(/\b(SELECT|WITH)\b/i);
+  const fromFirstSqlToken =
+    sqlStartIndex >= 0 ? withoutFences.slice(sqlStartIndex) : withoutFences;
+
+  const firstSemicolonIndex = fromFirstSqlToken.indexOf(";");
+  const singleStatement =
+    firstSemicolonIndex >= 0
+      ? fromFirstSqlToken.slice(0, firstSemicolonIndex)
+      : fromFirstSqlToken;
+
+  return singleStatement.trim();
 }
 
 function getStatusCode(error: unknown): number | null {
@@ -185,3 +212,17 @@ export async function generateExplanation(
   return text.trim();
 }
 
+export async function validateModelAccess(
+  params: ValidateModelAccessParams,
+): Promise<void> {
+  await withRetry(async () =>
+    generateText({
+      model: getModel(params.provider, params.model, params.apiKey),
+      system:
+        "You are a health check assistant. Reply with exactly: OK",
+      prompt: "Respond with OK.",
+      maxOutputTokens: 10,
+      temperature: 0,
+    }),
+  );
+}

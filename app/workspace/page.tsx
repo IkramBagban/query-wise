@@ -189,22 +189,26 @@ export default function WorkspacePage() {
       return;
     }
     try {
-      const response = await fetch("/api/query", {
+      const response = await fetch("/api/llm-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question: "Show order count by day for the last 3 days",
-          history: [],
-          connectionString: connection?.connectionString,
           provider,
           model,
           apiKey,
         }),
       });
-      if (!response.ok) throw new Error("Provider call failed");
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Provider call failed");
+      }
       pushToast({ title: "API key works", description: "Provider call succeeded.", variant: "success" });
-    } catch {
-      pushToast({ title: "API key test failed", description: "Unable to complete test query.", variant: "error" });
+    } catch (error) {
+      pushToast({
+        title: "API key test failed",
+        description: error instanceof Error ? error.message : "Unable to reach provider.",
+        variant: "error",
+      });
     }
   };
 
@@ -244,7 +248,7 @@ export default function WorkspacePage() {
           <SchemaPanel schema={schema} isLoading={loadingSchema} />
         </div>
         
-        <div className="flex-1 bg-bg relative overflow-hidden">
+        <div className="relative min-w-0 flex-1 overflow-hidden bg-bg">
            <ChatPanel
             connectionString={connection?.connectionString}
             provider={provider}
@@ -254,7 +258,7 @@ export default function WorkspacePage() {
           />
         </div>
 
-        <div className="relative z-10 w-[380px] shrink-0 bg-surface-2">
+        <div className="relative z-10 w-[380px] shrink-0 overflow-hidden bg-surface-2">
           <ResultPanel message={activeResult} onChartTypeChange={onChartTypeChange} onSaveWidget={onSaveWidget} />
         </div>
       </section>
