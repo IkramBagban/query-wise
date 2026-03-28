@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, Database, LayoutDashboard, Settings, Zap } from "lucide-react";
+import { Database, LayoutDashboard, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -65,6 +65,11 @@ export default function WorkspacePage() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [canConnectCustom, setCanConnectCustom] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [testingApiKey, setTestingApiKey] = useState(false);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!initialized) return;
@@ -185,9 +190,15 @@ export default function WorkspacePage() {
 
   const testApiKey = async () => {
     if (!apiKey) {
-      pushToast({ title: "API key missing", variant: "error" });
+      setApiKeyTestResult({
+        type: "error",
+        message: "API key is missing.",
+      });
       return;
     }
+    setTestingApiKey(true);
+    setApiKeyTestResult(null);
+
     try {
       const response = await fetch("/api/llm-test", {
         method: "POST",
@@ -202,23 +213,24 @@ export default function WorkspacePage() {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? "Provider call failed");
       }
-      pushToast({ title: "API key works", description: "Provider call succeeded.", variant: "success" });
-    } catch (error) {
-      pushToast({
-        title: "API key test failed",
-        description: error instanceof Error ? error.message : "Unable to reach provider.",
-        variant: "error",
+      setApiKeyTestResult({
+        type: "success",
+        message: "API key works. Provider call succeeded.",
       });
+    } catch (error) {
+      setApiKeyTestResult({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to reach provider.",
+      });
+    } finally {
+      setTestingApiKey(false);
     }
   };
-
   return (
     <main className="flex h-screen min-h-screen flex-col bg-bg text-text-1">
       <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4 shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/20 text-accent ring-1 ring-accent/30">
-            <Zap className="h-5 w-5 fill-accent/10" />
-          </div>
           <span className="font-syne text-xl font-bold tracking-tight">Query<span className="text-accent">Wise</span></span>
         </div>
 
@@ -229,15 +241,15 @@ export default function WorkspacePage() {
 
         <div className="flex items-center gap-2">
           <Select value={model} onChange={setModel} options={modelOptions} className="min-w-48" />
-          <Button variant="icon" onClick={() => setConnectionOpen(true)} className="hover:bg-accent/10 hover:text-accent">
-            <Database className="h-4 w-4" />
+          <Button variant="icon" onClick={() => setConnectionOpen(true)} className="h-10 w-10 hover:bg-accent/10 hover:text-accent">
+            <Database className="h-5 w-5" />
           </Button>
-          <Button variant="icon" onClick={() => setSettingsOpen(true)} className="hover:bg-accent/10 hover:text-accent">
-            <Settings className="h-4 w-4" />
+          <Button variant="icon" onClick={() => setSettingsOpen(true)} className="h-10 w-10 hover:bg-accent/10 hover:text-accent">
+            <Settings className="h-5 w-5" />
           </Button>
           <Link href="/dashboard">
-            <Button variant="icon" className="hover:bg-accent/10 hover:text-accent">
-              <LayoutDashboard className="h-4 w-4" />
+            <Button variant="icon" className="h-10 w-10 hover:bg-accent/10 hover:text-accent">
+              <LayoutDashboard className="h-5 w-5" />
             </Button>
           </Link>
         </div>
@@ -329,7 +341,25 @@ export default function WorkspacePage() {
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
             />
-            <Button variant="ghost" onClick={() => void testApiKey()}>Test API Key</Button>
+            <Button
+              variant="ghost"
+              loading={testingApiKey}
+              disabled={testingApiKey}
+              onClick={() => void testApiKey()}
+            >
+              Test API Key
+            </Button>
+            {apiKeyTestResult ? (
+              <div
+                className={`rounded-md border p-2 text-xs ${
+                  apiKeyTestResult.type === "success"
+                    ? "border-success/40 bg-success/10 text-success"
+                    : "border-danger/40 bg-danger/10 text-danger"
+                }`}
+              >
+                {apiKeyTestResult.message}
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-3 rounded-lg border border-border p-3">
