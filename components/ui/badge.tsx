@@ -4,7 +4,7 @@ const variantClasses = {
   success: "bg-success/15 text-success",
   warning: "bg-warning/20 text-warning",
   danger: "bg-danger/20 text-danger",
-  info: "bg-accent-dim text-accent",
+  info: "bg-[#2ed52e] text-white",
   neutral: "bg-surface-3 text-text-2",
 } as const;
 
