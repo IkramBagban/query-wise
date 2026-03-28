@@ -1,7 +1,7 @@
 # SPEC_BACKEND_1 — Agent B1
 
 > Read CONTEXT.md fully before starting. You are Agent B1.
-> Agent S creates types and seeds the DB — you import types from `src/types/index.ts`.
+> Agent S creates types and seeds the DB — you import types from `types/index.ts`.
 > Agent B2 handles LLM, query execution, dashboard, share routes.
 > Agent F handles all UI. Do NOT touch frontend files.
 
@@ -13,11 +13,11 @@ You own the database layer and connection infrastructure:
 
 | File | Purpose |
 |---|---|
-| `src/lib/db.ts` | Connection pooling, SQL safety, query execution |
-| `src/lib/schema.ts` | Database schema introspection logic |
-| `src/app/api/auth/route.ts` | Demo login (POST) |
-| `src/app/api/connect/route.ts` | Test DB connection (POST) |
-| `src/app/api/schema/route.ts` | Return introspected schema (POST) |
+| `lib/db.ts` | Connection pooling, SQL safety, query execution |
+| `lib/schema.ts` | Database schema introspection logic |
+| `app/api/auth/route.ts` | Demo login (POST) |
+| `app/api/connect/route.ts` | Test DB connection (POST) |
+| `app/api/schema/route.ts` | Return introspected schema (POST) |
 
 Agent B2 will import and use `executeQuery` and `validateAndSanitizeSql` from your `db.ts`.
 Agent B2 will import `introspectSchema` from your `schema.ts`.
@@ -25,7 +25,7 @@ Make sure these are exported correctly.
 
 ---
 
-## File 1 — `src/lib/db.ts`
+## File 1 — `lib/db.ts`
 
 ### Connection Pool Management
 
@@ -115,7 +115,7 @@ Try to connect and run `SELECT 1`. Return success/error. Used by `/api/connect`.
 
 ---
 
-## File 2 — `src/lib/schema.ts`
+## File 2 — `lib/schema.ts`
 
 ### `introspectSchema(connectionString?): Promise<SchemaInfo>`
 
@@ -204,7 +204,7 @@ Include sample data inline in the summary — this is critical for SQL generatio
 
 ---
 
-## File 3 — `src/app/api/auth/route.ts`
+## File 3 — `app/api/auth/route.ts`
 
 **POST `/api/auth`**
 
@@ -237,7 +237,7 @@ export async function POST(req: NextRequest) {
 
 ---
 
-## File 4 — `src/app/api/connect/route.ts`
+## File 4 — `app/api/connect/route.ts`
 
 **POST `/api/connect`**
 
@@ -260,7 +260,7 @@ Use Zod to validate the request body. Return proper error messages.
 
 ---
 
-## File 5 — `src/app/api/schema/route.ts`
+## File 5 — `app/api/schema/route.ts`
 
 **POST `/api/schema`**
 
@@ -282,7 +282,7 @@ This route may take 2–4 seconds. That is fine — the frontend will show a loa
 
 ## Auth Middleware Helper
 
-Create `src/lib/auth.ts`:
+Create `lib/auth.ts`:
 
 ```typescript
 import { cookies } from "next/headers"
@@ -343,9 +343,9 @@ export async function POST(req: NextRequest) {
 
 ## Completion Checklist
 
-- [ ] `src/lib/db.ts` exports: `executeQuery`, `validateAndSanitizeSql`, `testConnection`
-- [ ] `src/lib/schema.ts` exports: `introspectSchema`
-- [ ] `src/lib/auth.ts` exports: `isAuthenticated`, `requireAuth`
+- [ ] `lib/db.ts` exports: `executeQuery`, `validateAndSanitizeSql`, `testConnection`
+- [ ] `lib/schema.ts` exports: `introspectSchema`
+- [ ] `lib/auth.ts` exports: `isAuthenticated`, `requireAuth`
 - [ ] `/api/auth` POST — sets cookie, validates credentials
 - [ ] `/api/connect` POST — tests connection, returns name
 - [ ] `/api/schema` POST — returns full SchemaInfo with summary
@@ -356,3 +356,4 @@ export async function POST(req: NextRequest) {
 - [ ] `executeQuery` sets 15s statement timeout
 - [ ] No TypeScript errors
 - [ ] No `any` types
+

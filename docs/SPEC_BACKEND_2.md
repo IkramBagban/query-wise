@@ -1,8 +1,8 @@
 # SPEC_BACKEND_2 — Agent B2
 
 > Read CONTEXT.md fully before starting. You are Agent B2.
-> Agent S creates types — import everything from `src/types/index.ts`.
-> Agent B1 creates `src/lib/db.ts` and `src/lib/schema.ts` — import from those.
+> Agent S creates types — import everything from `types/index.ts`.
+> Agent B1 creates `lib/db.ts` and `lib/schema.ts` — import from those.
 > Agent F handles all UI. Do NOT touch frontend files.
 
 ---
@@ -13,20 +13,21 @@ You own the intelligence layer — LLM calls, chart logic, and data persistence:
 
 | File | Purpose |
 |---|---|
-| `src/lib/llm.ts` | LLM prompt construction, Gemini/Claude calls, retry logic |
-| `src/lib/charts.ts` | Chart type auto-detection from query results |
-| `src/app/api/query/route.ts` | Main NL→SQL→execute pipeline (POST) |
-| `src/app/api/dashboard/route.ts` | Save and load dashboards (POST, GET) |
-| `src/app/api/share/route.ts` | Generate shareable links (POST) |
-| `src/app/api/share/[shareId]/route.ts` | Load shared dashboard publicly (GET) |
+| `lib/llm.ts` | LLM prompt construction, Gemini/Claude calls, retry logic |
+| `lib/charts.ts` | Chart type auto-detection from query results |
+| `app/api/query/route.ts` | Main NL→SQL→execute pipeline (POST) |
+| `app/api/dashboard/route.ts` | Save/update dashboards (POST) |
+| `app/api/dashboard/[id]/route.ts` | Load a dashboard by id (GET) |
+| `app/api/share/route.ts` | Generate shareable links (POST) |
+| `app/api/share/[shareId]/route.ts` | Load shared dashboard publicly (GET) |
 
-You depend on `executeQuery` from Agent B1's `src/lib/db.ts`.
-You depend on `requireAuth` from `src/lib/auth.ts` (also B1).
+You depend on `executeQuery` from Agent B1's `lib/db.ts`.
+You depend on `requireAuth` from `lib/auth.ts` (also B1).
 Dashboard persistence: use in-memory Map + file system (`/tmp`) for simplicity — no extra DB needed.
 
 ---
 
-## File 1 — `src/lib/llm.ts`
+## File 1 — `lib/llm.ts`
 
 ### Provider Setup
 
@@ -164,7 +165,7 @@ interface GenerateExplanationParams {
 
 ---
 
-## File 2 — `src/lib/charts.ts`
+## File 2 — `lib/charts.ts`
 
 ### `detectChartConfig(result: QueryResult): ChartConfig`
 
@@ -199,7 +200,7 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
     return makeConfig("line", columns, {
       xKey: dateCol,
       yKey: numericCol ?? secondCol,
-      availableTypes: ["line", "bar", "area", "table"],
+      availableTypes: ["line", "bar", "area", "scatter", "table"],
     })
   }
 
@@ -212,14 +213,14 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
         return makeConfig("pie", columns, {
           nameKey: firstCol,
           valueKey: secondCol,
-          availableTypes: ["pie", "bar", "table"],
+          availableTypes: ["pie", "bar", "scatter", "table"],
         })
       }
       // Many rows → Bar chart
       return makeConfig("bar", columns, {
         xKey: firstCol,
         yKey: secondCol,
-        availableTypes: ["bar", "line", "area", "table"],
+        availableTypes: ["bar", "line", "area", "scatter", "table"],
       })
     }
   }
@@ -256,7 +257,7 @@ function inferColumnType(rows: Record<string, unknown>[], col: string): string {
 function makeConfig(type: ChartType, columns: string[], overrides: Partial<ChartConfig>): ChartConfig {
   return {
     type,
-    availableTypes: ["bar", "line", "pie", "area", "table"],
+    availableTypes: ["bar", "line", "pie", "scatter", "area", "table"],
     title: undefined,
     ...overrides,
   }
@@ -265,7 +266,7 @@ function makeConfig(type: ChartType, columns: string[], overrides: Partial<Chart
 
 ---
 
-## File 3 — `src/app/api/query/route.ts`
+## File 3 — `app/api/query/route.ts`
 
 **POST `/api/query`**
 
@@ -361,7 +362,7 @@ async function getCachedSchema(connectionString?: string): Promise<SchemaInfo> {
 
 ---
 
-## File 4 — `src/app/api/dashboard/route.ts`
+## File 4 — `app/api/dashboard/route.ts`
 
 Dashboards are stored server-side in memory (Map) with file backup in `/tmp/querywise-dashboards.json`.
 
@@ -388,7 +389,7 @@ function saveToDisk() { /* write dashboards map to JSON */ }
 
 ---
 
-## File 5 — `src/app/api/share/route.ts`
+## File 5 — `app/api/share/route.ts`
 
 **POST `/api/share`** — create share link
 - Body: `{ dashboardId: string }`
@@ -403,7 +404,7 @@ function saveToDisk() { /* write dashboards map to JSON */ }
 - Return dashboard or 404
 - This is the only route without auth — it's intentionally public
 
-Create `src/app/api/share/[shareId]/route.ts` for the GET.
+Create `app/api/share/[shareId]/route.ts` for the GET.
 
 ---
 
@@ -412,12 +413,12 @@ Create `src/app/api/share/[shareId]/route.ts` for the GET.
 Export this constant — frontend will use it to populate the model picker:
 
 ```typescript
-// src/lib/llm.ts
+// lib/llm.ts
 export const SUPPORTED_MODELS = [
   { provider: "google",    model: "gemini-1.5-pro",   label: "Gemini 1.5 Pro",   tier: "powerful" },
   { provider: "google",    model: "gemini-1.5-flash",  label: "Gemini 1.5 Flash", tier: "fast"     },
   { provider: "anthropic", model: "claude-sonnet-4-5", label: "Claude Sonnet",    tier: "powerful" },
-  { provider: "anthropic", model: "claude-haiku-4-5",  label: "Claude Haiku",     tier: "fast"     },
+  { provider: "anthropic", model: "claude-haiku-4-5-20251001", label: "Claude Haiku", tier: "fast" },
 ] as const
 ```
 
@@ -439,8 +440,8 @@ In `/api/query`, handle these specific error cases with user-friendly messages:
 
 ## Completion Checklist
 
-- [ ] `src/lib/llm.ts` exports: `generateSQL`, `generateExplanation`, `SUPPORTED_MODELS`
-- [ ] `src/lib/charts.ts` exports: `detectChartConfig`
+- [ ] `lib/llm.ts` exports: `generateSQL`, `generateExplanation`, `SUPPORTED_MODELS`
+- [ ] `lib/charts.ts` exports: `detectChartConfig`
 - [ ] `/api/query` POST — full pipeline works end to end
 - [ ] `/api/dashboard` POST — saves dashboard
 - [ ] `/api/dashboard/[id]` GET — loads dashboard
@@ -453,3 +454,4 @@ In `/api/query`, handle these specific error cases with user-friendly messages:
 - [ ] `SUPPORTED_MODELS` exported from `llm.ts`
 - [ ] No TypeScript errors
 - [ ] No `any` types
+

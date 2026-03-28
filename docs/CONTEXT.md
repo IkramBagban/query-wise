@@ -18,7 +18,7 @@ A Conversational BI Platform — users connect a PostgreSQL database, ask questi
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Framework | Next.js 14 (App Router) | API routes = backend. One repo, one Vercel deploy. |
+| Framework | Next.js 16 (App Router) | API routes = backend. One repo, one Vercel deploy. |
 | Language | TypeScript (strict) | All files `.ts` or `.tsx` |
 | Styling | Tailwind CSS + custom design system | Shadcn for primitives only |
 | LLM | Vercel AI SDK (`ai` package) | Providers: `@ai-sdk/google` + `@ai-sdk/anthropic` |
@@ -36,11 +36,12 @@ A Conversational BI Platform — users connect a PostgreSQL database, ask questi
 querywise/
 ├── CONTEXT.md                  ← this file
 ├── SPEC_SEED.md
-├── SPEC_BACKEND.md
+├── SPEC_BACKEND_1.md
+├── SPEC_BACKEND_2.md
 ├── SPEC_FRONTEND.md
 ├── .env.local                  ← never committed
 ├── .env.example
-├── next.config.js
+├── next.config.ts
 ├── tailwind.config.ts
 ├── tsconfig.json
 ├── package.json
@@ -48,49 +49,61 @@ querywise/
 ├── scripts/
 │   └── seed.ts                 ← Agent S owns this
 │
-└── src/
-    ├── types/
-    │   └── index.ts            ← Agent S creates, all agents import
-    │
-    ├── lib/
-    │   ├── db.ts               ← Agent B1 owns
-    │   ├── schema.ts           ← Agent B1 owns
-    │   ├── llm.ts              ← Agent B2 owns
-    │   ├── charts.ts           ← Agent B2 owns
-    │   └── utils.ts            ← Agent S creates
-    │
-    ├── app/
-    │   ├── layout.tsx          ← Agent F owns
-    │   ├── page.tsx            ← Agent F owns (landing/login)
-    │   ├── globals.css         ← Agent F owns
-    │   │
-    │   ├── dashboard/
-    │   │   └── page.tsx        ← Agent F owns
-    │   │
-    │   ├── share/
-    │   │   └── [shareId]/
-    │   │       └── page.tsx    ← Agent F owns
-    │   │
-    │   └── api/
-    │       ├── auth/
-    │       │   └── route.ts    ← Agent B1 owns
-    │       ├── connect/
-    │       │   └── route.ts    ← Agent B1 owns
-    │       ├── schema/
-    │       │   └── route.ts    ← Agent B1 owns
-    │       ├── query/
-    │       │   └── route.ts    ← Agent B2 owns
-    │       ├── dashboard/
-    │       │   └── route.ts    ← Agent B2 owns
-    │       └── share/
-    │           └── route.ts    ← Agent B2 owns
-    │
-    └── components/
-        ├── ui/                 ← Agent F owns (shadcn primitives + custom)
-        ├── chat/               ← Agent F owns
-        ├── charts/             ← Agent F owns
-        ├── schema/             ← Agent F owns
-        └── dashboard/          ← Agent F owns
+├── types/
+│   └── index.ts                ← Agent S creates, all agents import
+│
+├── lib/
+│   ├── db.ts                   ← Agent B1 owns
+│   ├── schema.ts               ← Agent B1 owns
+│   ├── llm.ts                  ← Agent B2 owns
+│   ├── charts.ts               ← Agent B2 owns
+│   └── utils.ts                ← Agent S creates
+│
+├── hooks/
+│   ├── useSettings.ts          ← Agent F owns
+│   ├── useConnection.ts        ← Agent F owns
+│   ├── useLocalStorage.ts      ← Agent F owns
+│   └── useToast.ts             ← Agent F owns
+│
+├── app/
+│   ├── layout.tsx              ← Agent F owns
+│   ├── page.tsx                ← Agent F owns (landing/login)
+│   ├── globals.css             ← Agent F owns
+│   │
+│   ├── workspace/
+│   │   └── page.tsx            ← Agent F owns
+│   │
+│   ├── dashboard/
+│   │   └── page.tsx            ← Agent F owns
+│   │
+│   ├── share/
+│   │   └── [shareId]/
+│   │       └── page.tsx        ← Agent F owns
+│   │
+│   └── api/
+│       ├── auth/
+│       │   └── route.ts        ← Agent B1 owns
+│       ├── connect/
+│       │   └── route.ts        ← Agent B1 owns
+│       ├── schema/
+│       │   └── route.ts        ← Agent B1 owns
+│       ├── query/
+│       │   └── route.ts        ← Agent B2 owns
+│       ├── dashboard/
+│       │   ├── route.ts        ← Agent B2 owns (POST)
+│       │   └── [id]/
+│       │       └── route.ts    ← Agent B2 owns (GET)
+│       └── share/
+│           ├── route.ts        ← Agent B2 owns (POST)
+│           └── [shareId]/
+│               └── route.ts    ← Agent B2 owns (GET, public)
+│
+└── components/
+    ├── ui/                     ← Agent F owns (shadcn primitives + custom)
+    ├── chat/                   ← Agent F owns
+    ├── charts/                 ← Agent F owns
+    ├── schema/                 ← Agent F owns
+    └── dashboard/              ← Agent F owns
 ```
 
 ---
@@ -114,7 +127,7 @@ User-provided values (stored client-side only, never sent to backend except as r
 
 ---
 
-## Shared TypeScript Types (`src/types/index.ts`)
+## Shared TypeScript Types (`types/index.ts`)
 
 Agent S creates this file. All other agents import from it. Never redefine types locally.
 
@@ -148,7 +161,7 @@ export interface SchemaTable {
 export interface SchemaInfo {
   tables: SchemaTable[]
   relationships: Relationship[]
-  summary: string // LLM-generated human readable summary
+  summary: string // Human-readable schema summary generated during introspection
 }
 
 export interface Relationship {
@@ -276,17 +289,17 @@ All routes are under `/api`. All accept and return JSON.
 | POST | `/api/schema` | B1 | Introspect and return schema |
 | POST | `/api/query` | B2 | NL → SQL → execute → return result |
 | POST | `/api/dashboard` | B2 | Save dashboard to server (file or memory) |
-| GET | `/api/dashboard/:id` | B2 | Load saved dashboard |
+| GET | `/api/dashboard/[id]` | B2 | Load saved dashboard |
 | POST | `/api/share` | B2 | Generate shareable link for dashboard |
-| GET | `/api/share/:shareId` | B2 | Load shared dashboard (public, no auth) |
+| GET | `/api/share/[shareId]` | B2 | Load shared dashboard (public, no auth) |
 
-**Auth:** All routes except `/api/share/:shareId` check for a session cookie set by `/api/auth`.
+**Auth:** All routes except `/api/share/[shareId]` check for a session cookie set by `/api/auth`.
 
 ---
 
 ## SQL Safety Rules (Agent B1 implements, Agent B2 uses)
 
-Every SQL string must pass through `validateAndSanitizeSql()` from `src/lib/db.ts` before execution.
+Every SQL string must pass through `validateAndSanitizeSql()` from `lib/db.ts` before execution.
 
 Rules (in order):
 1. Must start with `SELECT` or `WITH` (case-insensitive after trim)
@@ -379,10 +392,10 @@ const model = provider === "google"
 
 | Agent | Code Label | Owns | Does NOT touch |
 |---|---|---|---|
-| Seed + Types | **S** | `scripts/seed.ts`, `src/types/index.ts`, `src/lib/utils.ts` | Everything else |
-| Backend 1 | **B1** | `src/lib/db.ts`, `src/lib/schema.ts`, `/api/auth`, `/api/connect`, `/api/schema` | LLM code, frontend |
-| Backend 2 | **B2** | `src/lib/llm.ts`, `src/lib/charts.ts`, `/api/query`, `/api/dashboard`, `/api/share` | DB connection code, frontend |
-| Frontend | **F** | All of `src/app/`, all of `src/components/` | API route logic, lib files |
+| Seed + Types | **S** | `scripts/seed.ts`, `types/index.ts`, `lib/utils.ts` | Everything else |
+| Backend 1 | **B1** | `lib/db.ts`, `lib/schema.ts`, `/api/auth`, `/api/connect`, `/api/schema` | LLM code, frontend |
+| Backend 2 | **B2** | `lib/llm.ts`, `lib/charts.ts`, `/api/query`, `/api/dashboard`, `/api/share` | DB connection code, frontend |
+| Frontend | **F** | All of `app/`, all of `components/` | API route logic, lib files |
 
 ---
 
@@ -391,3 +404,4 @@ const model = provider === "google"
 Tables: `customers`, `categories`, `products`, `orders`, `order_items`, `reviews`
 
 10,000+ orders spanning the last 12 months. Agent S owns creating this. Agent B1 connects to it. Agent B2 queries it. Agent F displays it.
+

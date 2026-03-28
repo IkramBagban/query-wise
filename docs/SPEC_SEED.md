@@ -9,16 +9,16 @@
 ## Your Responsibility
 
 You own exactly three things:
-1. `src/types/index.ts` — shared TypeScript types (all agents import from here)
-2. `src/lib/utils.ts` — shared utility functions
+1. `types/index.ts` — shared TypeScript types (all agents import from here)
+2. `lib/utils.ts` — shared utility functions
 3. `scripts/seed.ts` — populates the Neon demo database with realistic ecommerce data
 
 You also create:
 - `package.json` with all dependencies
 - `tsconfig.json`
-- `next.config.js`
+- `next.config.ts`
 - `tailwind.config.ts`
-- `postcss.config.js`
+- `postcss.config.mjs`
 - `.env.example`
 
 ---
@@ -36,54 +36,59 @@ You also create:
     "build": "next build",
     "start": "next start",
     "seed": "npx tsx scripts/seed.ts",
-    "lint": "next lint"
+    "lint": "eslint"
   },
   "dependencies": {
-    "next": "14.2.18",
-    "react": "^18",
-    "react-dom": "^18",
-    "typescript": "^5",
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "@base-ui/react": "^1.3.0",
+    "shadcn": "^4.1.1",
+    "tw-animate-css": "^1.4.0",
     "pg": "^8.13.1",
-    "ai": "^3.4.7",
-    "@ai-sdk/google": "^0.0.52",
-    "@ai-sdk/anthropic": "^0.0.56",
+    "ai": "^5",
+    "@ai-sdk/google": "^2",
+    "@ai-sdk/anthropic": "^2",
     "recharts": "^2.13.3",
     "@faker-js/faker": "^9.2.0",
     "zod": "^3.23.8",
-    "lucide-react": "^0.454.0",
+    "lucide-react": "^1.7.0",
     "nanoid": "^5.0.8",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.4",
+    "tailwind-merge": "^3.5.0",
     "class-variance-authority": "^0.7.1"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "@types/pg": "^8.11.10",
-    "tailwindcss": "^3.4.1",
-    "postcss": "^8",
-    "autoprefixer": "^10.0.1",
+    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "^4",
     "tsx": "^4.19.2",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.18"
+    "typescript": "^5",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1"
   }
 }
 ```
 
 ### `tsconfig.json`
-Strict mode, paths alias `@/*` → `./src/*`, moduleResolution bundler, jsx preserve.
+Strict mode, paths alias `@/*` → `./*`, moduleResolution bundler, jsx preserve.
 
-### `next.config.js`
-```js
-const nextConfig = {
-  experimental: { serverComponentsExternalPackages: ["pg"] }
+### `next.config.ts`
+```ts
+import type { NextConfig } from "next"
+
+const nextConfig: NextConfig = {
+  serverExternalPackages: ["pg"]
 }
-module.exports = nextConfig
+export default nextConfig
 ```
 
 ### `tailwind.config.ts`
-- Content: `./src/**/*.{ts,tsx}`
+- Tailwind v4 is used. Keep global styles in `app/globals.css`.
+- If you add `tailwind.config.ts`, content should include root-level folders: `app`, `components`, `lib`, `hooks`, `types`.
 - Extend theme with the design system colors from CONTEXT.md (map them to Tailwind color names)
 - Add `fontFamily` for `syne`, `inter`, `jetbrains`
 - Add custom animations: `fade-in`, `slide-up`, `pulse-soft`
@@ -99,7 +104,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ---
 
-## Step 2 — `src/types/index.ts`
+## Step 2 — `types/index.ts`
 
 Copy the exact type definitions from CONTEXT.md (the full TypeScript block).
 Do not add or remove any types. All agents import from this file.
@@ -107,7 +112,7 @@ Add JSDoc comments explaining each major interface.
 
 ---
 
-## Step 3 — `src/lib/utils.ts`
+## Step 3 — `lib/utils.ts`
 
 Create these utility functions that multiple agents will use:
 
@@ -315,10 +320,11 @@ Use batched inserts (INSERT with multiple value rows, 100 at a time) for perform
 ## Completion Checklist
 
 - [ ] All config files created
-- [ ] `src/types/index.ts` matches CONTEXT.md exactly
-- [ ] `src/lib/utils.ts` exports all listed functions with correct types
+- [ ] `types/index.ts` matches CONTEXT.md exactly
+- [ ] `lib/utils.ts` exports all listed functions with correct types
 - [ ] `scripts/seed.ts` runs without errors
 - [ ] After seed: categories=8, customers=500, products=120, orders≥10000, order_items≥25000, reviews≥2500
 - [ ] Seed is idempotent (can run twice without errors — drops and recreates)
 - [ ] All dates are realistic (not all the same, spread across 12 months)
 - [ ] No TypeScript errors (`npx tsc --noEmit`)
+

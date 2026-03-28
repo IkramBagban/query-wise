@@ -1,10 +1,10 @@
 # SPEC_FRONTEND — Agent F
 
 > Read CONTEXT.md fully before starting. You are Agent F.
-> Agent S creates types — import from `src/types/index.ts`.
+> Agent S creates types — import from `types/index.ts`.
 > Agent B1 owns `/api/auth`, `/api/connect`, `/api/schema`.
 > Agent B2 owns `/api/query`, `/api/dashboard`, `/api/share`.
-> Do NOT touch any files in `src/lib/` or `src/app/api/`.
+> Do NOT touch any files in `lib/` or `app/api/`.
 
 ---
 
@@ -13,18 +13,18 @@
 You own everything the user sees:
 
 ```
-src/app/layout.tsx
-src/app/globals.css
-src/app/page.tsx                        ← Login page
-src/app/workspace/page.tsx              ← Main app (chat + schema + charts)
-src/app/dashboard/page.tsx              ← Dashboard builder
-src/app/share/[shareId]/page.tsx        ← Public shared dashboard view
+app/layout.tsx
+app/globals.css
+app/page.tsx                        ← Login page
+app/workspace/page.tsx              ← Main app (chat + schema + charts)
+app/dashboard/page.tsx              ← Dashboard builder
+app/share/[shareId]/page.tsx        ← Public shared dashboard view
 
-src/components/ui/                      ← Base design system components
-src/components/chat/                    ← Chat interface components
-src/components/charts/                  ← Chart rendering components
-src/components/schema/                  ← Schema viewer components
-src/components/dashboard/               ← Dashboard builder components
+components/ui/                      ← Base design system components
+components/chat/                    ← Chat interface components
+components/charts/                  ← Chart rendering components
+components/schema/                  ← Schema viewer components
+components/dashboard/               ← Dashboard builder components
 ```
 
 ---
@@ -135,7 +135,7 @@ keyframes: {
 
 ---
 
-## Base Components (`src/components/ui/`)
+## Base Components (`components/ui/`)
 
 ### `button.tsx`
 Variants: `primary` (accent bg), `ghost` (transparent + border on hover), `danger`, `icon` (square, icon only).
@@ -163,13 +163,16 @@ Tiny pill with dot indicator.
 ```
 
 ### `tooltip.tsx`
-Use Radix UI `@radix-ui/react-tooltip` (install it). Dark bg, arrow, 200ms delay.
+Use the project shadcn component (`components/ui/tooltip.tsx`). Dark bg, arrow, 200ms delay.
 
 ### `dialog.tsx`
-Use Radix UI `@radix-ui/react-dialog`. Backdrop blur overlay. Slide-up animation.
+Use the project shadcn component (`components/ui/dialog.tsx`). Backdrop blur overlay. Slide-up animation.
 
 ### `select.tsx`
-Use Radix UI `@radix-ui/react-select`. Dark styled, matches design system.
+Use the project shadcn component (`components/ui/select.tsx`). Dark styled, matches design system.
+
+### `sheet.tsx`
+Use the project shadcn component (`components/ui/sheet.tsx`) for the right-side Settings panel.
 
 ### `kbd.tsx`
 Keyboard shortcut display: `<Kbd>⌘K</Kbd>` renders styled key badge.
@@ -188,7 +191,7 @@ Syntax highlight these SQL keywords with accent color: `SELECT FROM WHERE JOIN O
 
 ---
 
-## Page 1 — Login (`src/app/page.tsx`)
+## Page 1 — Login (`app/page.tsx`)
 
 **Purpose:** Simple gated entry. Demo credentials are shown on page.
 
@@ -213,7 +216,7 @@ Syntax highlight these SQL keywords with accent color: `SELECT FROM WHERE JOIN O
 
 ---
 
-## Page 2 — Workspace (`src/app/workspace/page.tsx`)
+## Page 2 — Workspace (`app/workspace/page.tsx`)
 
 This is the main application. It is a three-panel layout.
 
@@ -253,7 +256,7 @@ Custom tab:
 - Test Connection button → shows spinner → success/error state
 - Connect button (only enabled after successful test)
 
-### Schema Sidebar (`src/components/schema/`)
+### Schema Sidebar (`components/schema/`)
 - List of tables, each expandable
 - Each table shows: row count badge, column list with type and key indicators
 - PK columns: key icon (yellow)
@@ -263,13 +266,13 @@ Custom tab:
 
 Components needed:
 ```
-src/components/schema/SchemaPanel.tsx      ← main container
-src/components/schema/TableItem.tsx        ← single table with expand
-src/components/schema/ColumnItem.tsx       ← single column row
-src/components/schema/SchemaSummary.tsx    ← LLM summary display
+components/schema/SchemaPanel.tsx      ← main container
+components/schema/TableItem.tsx        ← single table with expand
+components/schema/ColumnItem.tsx       ← single column row
+components/schema/SchemaSummary.tsx    ← LLM summary display
 ```
 
-### Chat Interface (`src/components/chat/`)
+### Chat Interface (`components/chat/`)
 - Message list (scrollable, newest at bottom)
 - Each message:
   - User: right-aligned, accent bubble
@@ -293,11 +296,11 @@ src/components/schema/SchemaSummary.tsx    ← LLM summary display
 
 Components needed:
 ```
-src/components/chat/ChatPanel.tsx           ← main container, manages state
-src/components/chat/MessageList.tsx         ← scrollable message list
-src/components/chat/MessageBubble.tsx       ← single message (user or assistant)
-src/components/chat/QueryInput.tsx          ← textarea + send button + examples
-src/components/chat/ThinkingIndicator.tsx   ← animated dots while LLM is working
+components/chat/ChatPanel.tsx           ← main container, manages state
+components/chat/MessageList.tsx         ← scrollable message list
+components/chat/MessageBubble.tsx       ← single message (user or assistant)
+components/chat/QueryInput.tsx          ← textarea + send button + examples
+components/chat/ThinkingIndicator.tsx   ← animated dots while LLM is working
 ```
 
 **State managed in `ChatPanel.tsx`:**
@@ -321,13 +324,13 @@ async function handleSend(question: string) {
 }
 ```
 
-### Result Panel (`src/components/charts/`)
+### Result Panel (`components/charts/`)
 Shown on the right when a query has results.
 
 ```
 ┌─────────────────────────────────────────┐
 │ [Chart type switcher tabs]              │
-│ BarChart | LineChart | PieChart | Table │
+│ Bar | Line | Pie | Scatter | Area | Table │
 ├─────────────────────────────────────────┤
 │                                         │
 │         [Chart renders here]            │
@@ -339,13 +342,14 @@ Shown on the right when a query has results.
 
 Components needed:
 ```
-src/components/charts/ResultPanel.tsx     ← container with tabs
-src/components/charts/ChartRenderer.tsx   ← routes to correct chart
-src/components/charts/BarChartView.tsx
-src/components/charts/LineChartView.tsx
-src/components/charts/PieChartView.tsx
-src/components/charts/AreaChartView.tsx
-src/components/charts/TableView.tsx
+components/charts/ResultPanel.tsx     ← container with tabs
+components/charts/ChartRenderer.tsx   ← routes to correct chart
+components/charts/BarChartView.tsx
+components/charts/LineChartView.tsx
+components/charts/PieChartView.tsx
+components/charts/ScatterChartView.tsx
+components/charts/AreaChartView.tsx
+components/charts/TableView.tsx
 ```
 
 **Chart styling (all charts):**
@@ -366,7 +370,7 @@ src/components/charts/TableView.tsx
 
 ---
 
-## Page 3 — Dashboard (`src/app/dashboard/page.tsx`)
+## Page 3 — Dashboard (`app/dashboard/page.tsx`)
 
 The dashboard builder where users can save and arrange query results.
 
@@ -398,10 +402,10 @@ Widget menu (⋮): Edit title, Change chart type, Remove widget, Refresh query
 
 Components needed:
 ```
-src/components/dashboard/DashboardPage.tsx
-src/components/dashboard/WidgetCard.tsx
-src/components/dashboard/ShareModal.tsx
-src/components/dashboard/EmptyDashboard.tsx
+components/dashboard/DashboardPage.tsx
+components/dashboard/WidgetCard.tsx
+components/dashboard/ShareModal.tsx
+components/dashboard/EmptyDashboard.tsx
 ```
 
 **State:**
@@ -410,7 +414,7 @@ src/components/dashboard/EmptyDashboard.tsx
 
 ---
 
-## Page 4 — Share View (`src/app/share/[shareId]/page.tsx`)
+## Page 4 — Share View (`app/share/[shareId]/page.tsx`)
 
 Public page. No auth required.
 
@@ -453,7 +457,7 @@ Not a separate page — a slide-over sheet from the right side.
 No Redux, no Zustand. Use React state + localStorage + sessionStorage.
 
 ```typescript
-// Custom hook: src/hooks/useSettings.ts
+// Custom hook: hooks/useSettings.ts
 export function useSettings() {
   const [provider, setProvider] = useLocalStorage("llm_provider", "google")
   const [model, setModel] = useLocalStorage("llm_model", "gemini-1.5-flash")
@@ -461,14 +465,15 @@ export function useSettings() {
   return { provider, setProvider, model, setModel, apiKey, setApiKey }
 }
 
-// Custom hook: src/hooks/useConnection.ts
+// Custom hook: hooks/useConnection.ts
 export function useConnection() {
   // connectionString in sessionStorage (auto-cleared on tab close for security)
   // dbName, dbType in localStorage
 }
 
-// Custom hook: src/hooks/useLocalStorage.ts
-// Generic hook that syncs state to localStorage
+// Custom hook: hooks/useLocalStorage.ts
+// Generic hook that syncs state to localStorage.
+// Must be SSR-safe: guard `window` access and initialize lazily in `useEffect`.
 ```
 
 ---
@@ -522,14 +527,16 @@ const EXAMPLE_QUERIES = [
 8. **Numbers in tables are formatted** (1234567 → 1,234,567)
 9. **Long SQL is collapsible** — show 3 lines, "Show more" button
 10. **Connection string is masked** in UI (show only host + dbname)
-11. **Thinking indicator** shows actual status: "Analyzing schema..." → "Generating SQL..." → "Executing..."
+11. **Thinking indicator** uses staged UX text while waiting for `/api/query`:
+   "Analyzing schema..." → "Generating SQL..." → "Executing..."
+   (timed transitions on the client; backend currently returns one final response)
 
 ---
 
 ## File Structure to Create
 
 ```
-src/
+querywise/
 ├── app/
 │   ├── layout.tsx
 │   ├── globals.css
@@ -550,6 +557,7 @@ src/
 │   │   ├── card.tsx
 │   │   ├── tooltip.tsx
 │   │   ├── dialog.tsx
+│   │   ├── sheet.tsx
 │   │   ├── select.tsx
 │   │   ├── kbd.tsx
 │   │   ├── spinner.tsx
@@ -569,6 +577,7 @@ src/
 │   │   ├── BarChartView.tsx
 │   │   ├── LineChartView.tsx
 │   │   ├── PieChartView.tsx
+│   │   ├── ScatterChartView.tsx
 │   │   ├── AreaChartView.tsx
 │   │   └── TableView.tsx
 │   │
@@ -600,8 +609,8 @@ src/
 - [ ] Connection modal: demo + custom tabs both work
 - [ ] Schema sidebar: tables expand, columns show, search works
 - [ ] Chat: send message → get response → chart appears
-- [ ] All 5 chart types render correctly with Recharts
-- [ ] Chart type switcher works (bar/line/pie/area/table)
+- [ ] All 6 chart types render correctly with Recharts
+- [ ] Chart type switcher works (bar/line/pie/scatter/area/table)
 - [ ] "Save to Dashboard" adds widget to dashboard
 - [ ] Dashboard page shows widgets in grid
 - [ ] Share button generates link
@@ -614,3 +623,4 @@ src/
 - [ ] No TypeScript errors
 - [ ] No `any` types
 - [ ] Fonts load correctly (Syne + Inter + JetBrains Mono)
+
