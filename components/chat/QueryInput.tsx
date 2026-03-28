@@ -67,6 +67,21 @@ export function QueryInput({
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        {chips.map((chip) => (
+            <button
+            key={chip}
+              className={cn(
+                "group relative max-w-full truncate rounded-full border border-[#174128]/14 bg-white px-3 py-1.5 text-[10px] font-medium text-text-2 backdrop-blur-md transition-all",
+                "hover:border-accent/30 hover:bg-[#edf9e8] hover:text-accent focus:ring-2 focus:ring-accent/20",
+              )}
+              onClick={() => setValue(chip)}
+              title={chip}
+            >
+              {chip}
+            </button>
+        ))}
+      </div>
       <div className="relative rounded-2xl border border-[#174128]/20 bg-white p-1.5 shadow-[0_14px_32px_rgba(14,41,24,0.1)] transition-all duration-300 focus-within:border-accent/40 focus-within:ring-4 focus-within:ring-accent/10">
         <textarea
           ref={textareaRef}
@@ -87,8 +102,7 @@ export function QueryInput({
           }}
         />
         <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
-          <Select value={model} onChange={onModelChange} options={modelOptions} className="min-w-48" />
-          <Tooltip content="Send question (Enter)">
+          <Select value={model} onChange={onModelChange} options={modelOptions} className="min-w-48" menuSide="top" />
             <Button
               variant="primary"
               size="sm"
@@ -98,24 +112,7 @@ export function QueryInput({
             >
               <ArrowUp className="mr-1.5 h-3.5 w-3.5" /> <span className="text-xs font-bold uppercase tracking-wider">Search</span>
             </Button>
-          </Tooltip>
         </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 px-1">
-        {chips.map((chip) => (
-          <Tooltip key={chip} content="Click to fill input">
-            <button
-              className={cn(
-                "group relative max-w-full truncate rounded-full border border-[#174128]/14 bg-white px-3 py-1.5 text-[10px] font-medium text-text-2 backdrop-blur-md transition-all",
-                "hover:border-accent/30 hover:bg-[#edf9e8] hover:text-accent focus:ring-2 focus:ring-accent/20",
-              )}
-              onClick={() => setValue(chip)}
-              title={chip}
-            >
-              {chip}
-            </button>
-          </Tooltip>
-        ))}
       </div>
     </div>
   );

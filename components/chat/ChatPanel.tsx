@@ -122,7 +122,7 @@ export function ChatPanel({
         onChartTypeChange={handleChartTypeChange}
         onSaveWidget={onSaveWidget}
       />
-      <div className="sticky bottom-0 z-20 border-t border-[#174128]/16 bg-gradient-to-t from-[#edf8e8] via-[#f4faf2]/95 to-transparent px-4 pb-4 pt-3 backdrop-blur-sm">
+      <div className="sticky bottom-0 z-20 bg-gradient-to-t from-[#edf8e8] via-[#f4faf2]/95 to-transparent px-4 pb-4 pt-3 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-[1080px]">
           <QueryInput
             disabled={isLoading}

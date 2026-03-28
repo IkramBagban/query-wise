@@ -228,28 +228,28 @@ export default function WorkspacePage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Tooltip content="Change database connection">
+          <Tooltip content="Database" side="bottom">
             <Button
               variant="icon"
               onClick={() => setConnectionOpen(true)}
-              className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white hover:bg-[#ecf9e5] hover:text-accent"
+              className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
             >
-              <Database className="h-5 w-5" />
+              <Database className="h-5 w-5" strokeWidth={2.3} />
             </Button>
           </Tooltip>
-          <Tooltip content="Open settings">
+          <Tooltip content="Settings" side="bottom">
             <Button
               variant="icon"
               onClick={() => setSettingsOpen(true)}
-              className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white hover:bg-[#ecf9e5] hover:text-accent"
+              className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
             >
-              <Settings className="h-5 w-5" />
+              <Settings className="h-5 w-5" strokeWidth={2.3} />
             </Button>
           </Tooltip>
-          <Tooltip content="Go to dashboard">
+          <Tooltip content="Dashboard" side="bottom">
             <Link href="/dashboard">
-              <Button variant="icon" className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white hover:bg-[#ecf9e5] hover:text-accent">
-                <LayoutDashboard className="h-5 w-5" />
+              <Button variant="icon" className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]">
+                <LayoutDashboard className="h-5 w-5" strokeWidth={2.3} />
               </Button>
             </Link>
           </Tooltip>

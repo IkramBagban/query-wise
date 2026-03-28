@@ -15,9 +15,10 @@ interface SelectProps {
   onChange: (value: string) => void;
   options: SelectOption[];
   className?: string;
+  menuSide?: "top" | "bottom";
 }
 
-export function Select({ value, onChange, options, className }: SelectProps) {
+export function Select({ value, onChange, options, className, menuSide = "bottom" }: SelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -57,7 +58,12 @@ export function Select({ value, onChange, options, className }: SelectProps) {
       </button>
 
       {open ? (
-        <div className="absolute left-0 top-10 z-50 w-full overflow-hidden rounded-md border border-border-2 bg-surface-2 p-1 shadow-2xl">
+        <div
+          className={cn(
+            "absolute left-0 z-50 w-full overflow-hidden rounded-md border border-border-2 bg-surface-2 p-1 shadow-2xl",
+            menuSide === "top" ? "bottom-10" : "top-10",
+          )}
+        >
           {options.map((option) => {
             const isActive = option.value === value;
             return (

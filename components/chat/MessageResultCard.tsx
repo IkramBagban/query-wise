@@ -74,42 +74,42 @@ export function MessageResultCard({
             <Tooltip content="Chart" side="bottom">
               <button
                 aria-label="Chart"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
                   activeTab === "chart"
                     ? "bg-[#2ed52e] text-white shadow-[0_8px_20px_rgba(46,213,46,0.25)]"
                     : "border border-[#174128]/16 bg-white text-black hover:text-black"
                 }`}
                 onClick={() => setActiveTab("chart")}
               >
-                <BarChart3 className={`h-3.5 w-3.5 ${activeTab === "chart" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
+                <BarChart3 className={`h-4.5 w-4.5 ${activeTab === "chart" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
               </button>
             </Tooltip>
           ) : null}
           <Tooltip content="Table" side="bottom">
             <button
               aria-label="Table"
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
                 activeTab === "table"
                   ? "bg-[#2ed52e] text-white shadow-[0_8px_20px_rgba(46,213,46,0.25)]"
                   : "border border-[#174128]/16 bg-white text-black hover:text-black"
               }`}
               onClick={() => setActiveTab("table")}
             >
-              <Table2 className={`h-3.5 w-3.5 ${activeTab === "table" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
+              <Table2 className={`h-4.5 w-4.5 ${activeTab === "table" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
             </button>
           </Tooltip>
           {message.sql ? (
             <Tooltip content="Generated SQL" side="bottom">
               <button
                 aria-label="Generated SQL"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
                   activeTab === "sql"
                     ? "bg-[#2ed52e] text-white shadow-[0_8px_20px_rgba(46,213,46,0.25)]"
                     : "border border-[#174128]/16 bg-white text-black hover:text-black"
                 }`}
                 onClick={() => setActiveTab("sql")}
               >
-                <Code2 className={`h-3.5 w-3.5 ${activeTab === "sql" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
+                <Code2 className={`h-4.5 w-4.5 ${activeTab === "sql" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
               </button>
             </Tooltip>
           ) : null}
