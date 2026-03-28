@@ -25,13 +25,13 @@ export function ShareModal({ open, onOpenChange, url }: ShareModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <div className="space-y-4">
         <h2 className="font-syne text-2xl text-text-1">Dashboard shared</h2>
-        <p className="text-sm text-text-2">Anyone with this URL can view this dashboard.</p>
-        <div className="rounded-md border border-border bg-surface-2 p-3 text-xs text-text-2">{url}</div>
+        <p className="text-sm text-[#355442]">Anyone with this URL can view this dashboard.</p>
+        <div className="rounded-md border border-[#174128]/15 bg-[#f5fcf2] p-3 text-xs text-text-2">{url}</div>
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" className="border border-[#174128]/18 bg-white hover:bg-[#ecf9e5]" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          <Button onClick={() => void copy()}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} Copy</Button>
+          <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void copy()}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} Copy</Button>
         </div>
       </div>
     </Dialog>

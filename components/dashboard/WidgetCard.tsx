@@ -30,8 +30,8 @@ export function WidgetCard({
   onRemove,
 }: WidgetCardProps) {
   return (
-    <Card className="overflow-hidden" hoverable>
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+    <Card className="overflow-hidden rounded-2xl border border-[#174128]/18 bg-white shadow-[0_10px_26px_rgba(14,41,24,0.08)]" hoverable>
+      <div className="flex items-center justify-between border-b border-[#174128]/12 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-3 py-2">
         {readOnly ? (
           <h3 className="text-sm font-medium text-text-1">{widget.title}</h3>
         ) : (
@@ -42,13 +42,13 @@ export function WidgetCard({
           />
         )}
         {!readOnly ? (
-          <button onClick={onRemove} className="ml-3 text-xs text-danger hover:underline">
+          <button onClick={onRemove} className="ml-3 rounded-full border border-danger/20 bg-danger/10 px-2 py-0.5 text-xs text-danger transition hover:bg-danger/20">
             Remove
           </button>
         ) : null}
       </div>
       {!readOnly ? (
-        <div className="border-b border-border px-3 py-2">
+        <div className="border-b border-[#174128]/10 bg-[#f9fdf7] px-3 py-2">
           <Select
             value={widget.chartConfig.type}
             onChange={(value) => onTypeChange?.(value as ChartType)}
@@ -60,7 +60,7 @@ export function WidgetCard({
       <div className="p-3">
         <ChartRenderer result={widget.result} chartConfig={widget.chartConfig} />
       </div>
-      <div className="border-t border-border px-3 py-2 text-xs text-text-3">
+      <div className="border-t border-[#174128]/10 bg-[#f9fdf7] px-3 py-2 text-xs text-[#355442]">
         {widget.result.rowCount} rows · Last updated {new Date().toLocaleTimeString("en-US")}
       </div>
     </Card>

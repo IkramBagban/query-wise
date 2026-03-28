@@ -32,17 +32,17 @@ export default async function SharedDashboardPage({
   }
 
   return (
-    <main className="min-h-screen bg-bg px-6 py-5">
-      <header className="mb-6 flex items-center justify-between border-b border-border pb-4">
-        <h1 className="font-syne text-3xl text-text-1">QueryWise</h1>
-        <span className="rounded bg-surface-2 px-2 py-1 text-xs text-text-2">View only</span>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_10%_0%,rgba(116,204,99,0.2),transparent_28%),radial-gradient(circle_at_95%_0%,rgba(43,116,57,0.08),transparent_22%),#f4faf2] px-6 py-5">
+      <header className="mb-6 flex items-center justify-between px-4 py-3">
+        <h1 className="font-syne text-3xl text-text-1">Query<span className="text-[#2ed52e]">Wise</span></h1>
+        <span className="rounded-full border border-[#174128]/16 bg-[#effbe9] px-2.5 py-1 text-xs font-semibold text-[#24553a]">View only</span>
       </header>
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {dashboard.widgets.map((widget) => (
           <WidgetCard key={widget.id} widget={widget} readOnly />
         ))}
       </section>
-      <footer className="mt-8 border-t border-border pt-4 text-center text-xs text-text-3">
+      <footer className="mt-8 border-t border-[#174128]/12 pt-4 text-center text-xs text-[#355442]">
         Create your own at querywise.app
       </footer>
     </main>
