@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { BarChart3, DatabaseZap, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,8 +18,8 @@ const HERO_QUERIES = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("demo");
-  const [password, setPassword] = useState("querywise2024");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
@@ -71,65 +72,62 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="signin-grid relative min-h-screen overflow-hidden bg-[#f7fbf6] text-[#09110a]">
-      <div className="signin-orb signin-orb-left" />
-      <div className="signin-orb signin-orb-right" />
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_0%_0%,rgba(46,213,46,0.22),transparent_30%),radial-gradient(circle_at_100%_0%,rgba(46,213,46,0.14),transparent_26%),#f4faf2] text-[#09110a]">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(23,65,40,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(23,65,40,0.2)_1px,transparent_1px)] [background-size:26px_26px]" />
 
-      <div className="relative z-10 mx-auto grid min-h-screen w-full max-w-[1280px] grid-cols-1 gap-8 px-5 py-8 sm:px-8 lg:grid-cols-12 lg:gap-10 lg:px-12 lg:py-10">
-        <section className="animate-fade-in lg:col-span-7 lg:pt-6">
-          <div className="mb-10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              
-              <p className="font-syne text-3xl font-bold tracking-tight">
-                Query<span className="text-[#2ed52e]">Wise</span>
-              </p>
-            </div>
-            <p className="hidden rounded-full border border-[#113620]/20 bg-white px-3 py-1 text-xs font-medium text-[#113620]/80 md:block">
+      <div className="relative z-10 mx-auto grid min-h-screen w-full max-w-[1240px] grid-cols-1 gap-6 px-5 py-6 lg:grid-cols-12 lg:items-center lg:gap-8 lg:px-10 lg:py-8">
+        <section className="animate-fade-in lg:col-span-7">
+          <div className="mb-6 flex items-center justify-between">
+            <p className="font-syne text-3xl font-bold tracking-tight">
+              Query<span className="text-[#2ed52e]">Wise</span>
+            </p>
+            <p className="hidden rounded-full border border-[#174128]/20 bg-white px-3 py-1 text-xs font-semibold text-[#234730] md:block">
               Conversational BI
             </p>
           </div>
 
-          <p className="mb-4 inline-flex w-fit items-center rounded-full border border-[#79c75f]/55 bg-[#ebfddf] px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#1f5b2d]">
-            Built for speed and clarity
+          <h1 className="max-w-xl font-syne text-2xl font-bold leading-[1.1] tracking-tight sm:text-3xl xl:text-4xl">
+            Analyze your PostgreSQL data with natural language, charts, and shareable dashboards.
+          </h1>
+
+          <p className="mt-4 max-w-lg text-base text-[#2f4938] sm:text-lg">
+            Connect a database, ask a question, and get SQL plus visual answers in seconds.
+            Built for fast exploration and presentation-ready insights.
           </p>
 
-          <h1 className="font-syne text-4xl font-bold leading-[1.06] tracking-tight sm:text-5xl xl:text-6xl">
-            Sign in to your
-            <br />
-              <span className="text-[#0a0f0a]">AI analyst workspace</span>
-            </h1>
-
-          <p className="mt-5 max-w-2xl text-base text-[#2e4134] sm:text-lg">
-            Connect your PostgreSQL data and ask natural language questions. QueryWise writes the SQL, returns results, and
-            visualizes trends in seconds.
-          </p>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <Card className="rounded-2xl border-[#173a27] !bg-[#102318] p-5 shadow-[0_22px_44px_rgba(9,31,19,0.28)]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#95e96f]">Step 01</p>
-              <p className="mt-2 font-syne text-2xl font-semibold text-white">Connect</p>
-              <p className="mt-1 text-sm leading-relaxed text-white/80">Sync demo data or your own Postgres schema in one flow.</p>
-            </Card>
-            <Card className="rounded-2xl border-[#123823]/20 !bg-[#fafff9] p-5 shadow-[0_20px_34px_rgba(17,54,32,0.1)]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#2f7a3f]">Live prompt</p>
-              <div className="mt-2 h-11 overflow-hidden">
-                <p className="animate-slide-up text-sm font-semibold text-[#08110a]">{rotating}</p>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <Card className="rounded-2xl border-[#174128]/18 !bg-white p-5 shadow-[0_18px_36px_rgba(14,41,24,0.12)]">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#e9ffe7] text-[#1d8d2f]">
+                <DatabaseZap className="h-5 w-5" />
               </div>
-              <p className="mt-1 text-sm text-[#314237]">Switch chart types, save widgets, and share dashboards quickly.</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#2f7a3f]">Connect & Inspect</p>
+              <p className="mt-2 text-sm leading-relaxed text-[#2f4938]">
+                Load demo data or your own database schema with one flow.
+              </p>
+            </Card>
+
+            <Card className="rounded-2xl border-[#174128]/18 !bg-white p-5 shadow-[0_18px_36px_rgba(14,41,24,0.12)]">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#e9ffe7] text-[#1d8d2f]">
+                <BarChart3 className="h-5 w-5" />
+              </div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#2f7a3f]">Visual Answers</p>
+              <div className="mt-2 h-10 overflow-hidden">
+                <p className="animate-slide-up text-sm font-semibold text-[#0c150f]">{rotating}</p>
+              </div>
             </Card>
           </div>
+
         </section>
 
-        <section className="animate-fade-in lg:col-span-5 lg:pl-6">
+        <section className="animate-fade-in lg:col-span-5 lg:pl-2">
           <Card
-            className={`rounded-[28px] border-[#123823]/18 !bg-white p-6 shadow-[0_32px_84px_rgba(18,56,35,0.18)] sm:p-8 ${
-              shake ? "animate-pulse border-danger/50" : ""
-            }`}
+            className={`min-h-[430px] rounded-[28px] border-[#174128]/20 !bg-white p-6 shadow-[0_30px_80px_rgba(14,41,24,0.16)] sm:p-8 ${shake ? "animate-pulse border-danger/50" : ""
+              }`}
           >
             <div className="mb-7">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#2f7a3f]">Welcome back</p>
               <h2 className="mt-2 font-syne text-3xl font-bold tracking-tight text-[#0a110b]">Sign in</h2>
-              <p className="mt-1 text-sm text-[#355140]">Use demo credentials to continue.</p>
+              <p className="mt-1 text-sm text-[#355140]">Use your account to continue.</p>
             </div>
 
             <form className="space-y-4" onSubmit={handleSubmit}>
@@ -138,7 +136,7 @@ export default function LoginPage() {
                   label="Username"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
-                  className="h-11 rounded-xl border-[#123823]/20 !bg-[#ffffff] text-[#0a110b] focus:border-[#328949] focus:ring-[#9be970]"
+                  className="h-11 rounded-xl border-[#123823]/20 !bg-[#ffffff] text-[#0a110b] focus:border-[#2ed52e] focus:ring-[#9be970]"
                 />
                 <Input
                   label="Password"
@@ -146,20 +144,20 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   error={error || undefined}
-                  className="h-11 rounded-xl border-[#123823]/20 !bg-[#ffffff] text-[#0a110b] focus:border-[#328949] focus:ring-[#9be970]"
+                  className="h-11 rounded-xl border-[#123823]/20 !bg-[#ffffff] text-[#0a110b] focus:border-[#2ed52e] focus:ring-[#9be970]"
                 />
               </div>
 
               <Button
                 type="submit"
-                className="signin-cta h-12 w-full rounded-xl border border-[#0e2a1b] text-base font-semibold text-white shadow-[0_16px_35px_rgba(59,146,70,0.34)] transition-all hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0"
+                className="h-12 w-full rounded-xl border border-[#0e2a1b] bg-[#2ed52e] text-base font-semibold !text-white shadow-[0_16px_35px_rgba(46,213,46,0.34)] transition-all hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0"
                 loading={loading}
               >
                 Continue to Workspace
               </Button>
             </form>
 
-            <div className="mt-7 rounded-2xl border border-[#123823]/18 bg-[#f4fff1] p-4">
+            {/* <div className="mt-7 rounded-2xl border border-[#123823]/18 bg-[#f4fff1] p-4">
               <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#2f7a3f]">Demo credentials</p>
               <p className="flex justify-between font-mono text-xs text-[#2d4135]">
                 <span>
@@ -169,11 +167,10 @@ export default function LoginPage() {
                   pass: <span className="font-semibold text-[#0a110b]">querywise2024</span>
                 </span>
               </p>
-            </div>
+            </div> */}
           </Card>
         </section>
       </div>
     </main>
-
   );
 }
