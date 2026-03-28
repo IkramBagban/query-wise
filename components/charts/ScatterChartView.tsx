@@ -25,10 +25,11 @@ export function ScatterChartView({ result, xKey, yKey }: ScatterChartViewProps) 
         <CartesianGrid stroke="var(--border)" />
         <XAxis dataKey={xKey} stroke="var(--text-3)" tick={{ fontSize: 12 }} />
         <YAxis dataKey={yKey} stroke="var(--text-3)" tick={{ fontSize: 12 }} />
-        <Tooltip contentStyle={{ background: "#1c1c27", border: "1px solid var(--border)", borderRadius: 8 }} />
-        <Scatter data={result.rows} fill="#6366f1" />
+        <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }} />
+        <Scatter data={result.rows} fill="#2ed52e" />
       </ScatterChart>
     </ResponsiveContainer>
   );
 }
+
 

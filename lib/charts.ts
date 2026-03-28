@@ -81,10 +81,9 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
     return makeConfig("bar", {
       xKey: firstCol,
       yKey: numericCols[0],
-      availableTypes: ["bar", "table"],
+      availableTypes: ["bar", "line", "area", "scatter", "table"],
     });
   }
 
-  return makeConfig("table", { availableTypes: ["table", "bar"] });
+  return makeConfig("table", { availableTypes: ["table", "bar", "line", "area", "scatter"] });
 }
-
