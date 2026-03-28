@@ -1,32 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
-import type { ChatMessage, QueryRequest, QueryResponse } from "@/types";
+import type { ChartType, ChatMessage, QueryRequest, QueryResponse } from "@/types";
 
 interface ChatPanelProps {
   connectionString?: string;
   provider: "google" | "anthropic";
   model: string;
   apiKey: string;
-  onResultChange: (message: ChatMessage | null) => void;
+  onSaveWidget: (message: ChatMessage) => Promise<void>;
 }
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function ChatPanel({ connectionString, provider, model, apiKey, onResultChange }: ChatPanelProps) {
+export function ChatPanel({ connectionString, provider, model, apiKey, onSaveWidget }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeResultId, setActiveResultId] = useState<string>();
-
-  const activeResult = useMemo(
-    () => messages.find((message) => message.id === activeResultId) ?? null,
-    [activeResultId, messages],
-  );
 
   const handleSend = async (question: string) => {
     const userMessage: ChatMessage = {
@@ -86,8 +80,6 @@ export function ChatPanel({ connectionString, provider, model, apiKey, onResultC
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      setActiveResultId(assistantMessage.id);
-      onResultChange(assistantMessage);
     } catch (error) {
       const assistantMessage: ChatMessage = {
         id: createMessageId(),
@@ -102,19 +94,28 @@ export function ChatPanel({ connectionString, provider, model, apiKey, onResultC
     }
   };
 
+  const handleChartTypeChange = (messageId: string, type: ChartType) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId && message.chartConfig
+          ? { ...message, chartConfig: { ...message.chartConfig, type } }
+          : message,
+      ),
+    );
+  };
+
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-transparent">
+    <section className="flex h-full min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,#f8fdf6_0%,#f2faee_55%,#eef7eb_100%)]">
       <MessageList
         messages={messages}
         isLoading={isLoading}
-        activeMessageId={activeResult?.id}
-        onSelectResult={(message) => {
-          setActiveResultId(message.id);
-          onResultChange(message);
-        }}
+        onChartTypeChange={handleChartTypeChange}
+        onSaveWidget={onSaveWidget}
       />
-      <div className="bg-gradient-to-t from-bg via-bg/80 to-transparent p-4">
-        <QueryInput disabled={isLoading} onSubmit={handleSend} />
+      <div className="sticky bottom-0 z-20 border-t border-[#174128]/16 bg-gradient-to-t from-[#edf8e8] via-[#f4faf2]/95 to-transparent px-4 pb-4 pt-3 backdrop-blur-sm">
+        <div className="mx-auto w-full max-w-[1080px]">
+          <QueryInput disabled={isLoading} onSubmit={handleSend} />
+        </div>
       </div>
     </section>
   );
