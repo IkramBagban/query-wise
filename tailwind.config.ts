@@ -11,43 +11,50 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        "color-bg": "#0a0a0f",
-        "color-surface": "#13131a",
-        "color-surface-2": "#1c1c27",
-        "color-border": "#2a2a3a",
-        "color-border-2": "#3a3a52",
-        "color-accent": "#6366f1",
-        "color-accent-2": "#8b5cf6",
-        "color-success": "#10b981",
-        "color-warning": "#f59e0b",
-        "color-danger": "#ef4444",
-        "color-text-1": "#f1f5f9",
-        "color-text-2": "#94a3b8",
-        "color-text-3": "#475569",
+        bg: "var(--bg)",
+        surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        "surface-3": "var(--surface-3)",
+        border: "var(--border)",
+        "border-2": "var(--border-2)",
+        accent: "var(--accent)",
+        "accent-dim": "var(--accent-dim)",
+        "accent-2": "var(--accent-2)",
+        success: "var(--success)",
+        warning: "var(--warning)",
+        danger: "var(--danger)",
+        "text-1": "var(--text-1)",
+        "text-2": "var(--text-2)",
+        "text-3": "var(--text-3)",
       },
       fontFamily: {
         syne: ["var(--font-syne)"],
-        inter: ["var(--font-inter)"],
-        jetbrains: ["var(--font-mono)"],
+        sans: ["var(--font-inter)"],
+        mono: ["var(--font-mono)"],
+      },
+      backgroundImage: {
+        "hero-glow":
+          "radial-gradient(circle at 18% 24%, rgba(99, 102, 241, 0.22), transparent 42%), radial-gradient(circle at 82% 18%, rgba(139, 92, 246, 0.16), transparent 36%)",
       },
       keyframes: {
-        "fade-in": {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" },
+        fadeIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
         },
-        "slide-up": {
-          "0%": { opacity: "0", transform: "translateY(8px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
+        slideUp: {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
         },
-        "pulse-soft": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.6" },
+        pulseAccent: {
+          "0%,100%": { boxShadow: "0 0 0 0 rgba(99,102,241,0)" },
+          "50%": { boxShadow: "0 0 0 4px rgba(99,102,241,0.2)" },
         },
       },
       animation: {
-        "fade-in": "fade-in 200ms ease-out",
-        "slide-up": "slide-up 250ms ease-out",
-        "pulse-soft": "pulse-soft 2s ease-in-out infinite",
+        "fade-in": "fadeIn 0.2s ease-out",
+        "slide-up": "slideUp 0.25s ease-out",
+        "spin-slow": "spin 2s linear infinite",
+        "pulse-accent": "pulseAccent 2s ease-in-out infinite",
       },
     },
   },
