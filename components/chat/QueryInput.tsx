@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUp, Lightbulb, Sparkles } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { useMemo } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +22,19 @@ const EXAMPLE_QUERIES = [
 
 interface QueryInputProps {
   disabled?: boolean;
+  model: string;
+  modelOptions: { label: string; value: string }[];
+  onModelChange: (value: string) => void;
   onSubmit: (question: string) => Promise<void>;
 }
 
-export function QueryInput({ disabled = false, onSubmit }: QueryInputProps) {
+export function QueryInput({
+  disabled = false,
+  model,
+  modelOptions,
+  onModelChange,
+  onSubmit,
+}: QueryInputProps) {
   const [value, setValue] = useState("");
   const [offset, setOffset] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -77,10 +87,7 @@ export function QueryInput({ disabled = false, onSubmit }: QueryInputProps) {
           }}
         />
         <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
-          <div className="flex items-center gap-1.5 px-2">
-            <Sparkles className="h-3.5 w-3.5 text-accent" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-black">AI Analyst Online</span>
-          </div>
+          <Select value={model} onChange={onModelChange} options={modelOptions} className="min-w-48" />
           <Tooltip content="Send question (Enter)">
             <Button
               variant="primary"
@@ -95,10 +102,6 @@ export function QueryInput({ disabled = false, onSubmit }: QueryInputProps) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 px-1">
-        <span className="inline-flex items-center gap-1 rounded-full border border-[#174128]/20 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#335242]">
-          <Lightbulb className="h-3 w-3" />
-          Examples
-        </span>
         {chips.map((chip) => (
           <Tooltip key={chip} content="Click to fill input">
             <button

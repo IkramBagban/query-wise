@@ -62,13 +62,13 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
         return makeConfig("pie", {
           nameKey: firstCol,
           valueKey: secondCol,
-          availableTypes: ["pie", "bar", "scatter", "table"],
+          availableTypes: ["pie", "bar", "line", "area", "scatter", "table"],
         });
       }
       return makeConfig("bar", {
         xKey: firstCol,
         yKey: secondCol,
-        availableTypes: ["bar", "line", "area", "scatter", "table"],
+        availableTypes: ["bar", "line", "area", "scatter", "pie", "table"],
       });
     }
   }
@@ -81,9 +81,9 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
     return makeConfig("bar", {
       xKey: firstCol,
       yKey: numericCols[0],
-      availableTypes: ["bar", "line", "area", "scatter", "table"],
+      availableTypes: ["bar", "line", "area", "scatter", "pie", "table"],
     });
   }
 
-  return makeConfig("table", { availableTypes: ["table", "bar", "line", "area", "scatter"] });
+  return makeConfig("table", { availableTypes: ["table", "bar", "line", "area", "scatter", "pie"] });
 }

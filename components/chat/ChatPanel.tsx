@@ -10,6 +10,8 @@ interface ChatPanelProps {
   connectionString?: string;
   provider: "google" | "anthropic";
   model: string;
+  modelOptions: { label: string; value: string }[];
+  onModelChange: (value: string) => void;
   apiKey: string;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
 }
@@ -18,7 +20,15 @@ function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function ChatPanel({ connectionString, provider, model, apiKey, onSaveWidget }: ChatPanelProps) {
+export function ChatPanel({
+  connectionString,
+  provider,
+  model,
+  modelOptions,
+  onModelChange,
+  apiKey,
+  onSaveWidget,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -114,7 +124,13 @@ export function ChatPanel({ connectionString, provider, model, apiKey, onSaveWid
       />
       <div className="sticky bottom-0 z-20 border-t border-[#174128]/16 bg-gradient-to-t from-[#edf8e8] via-[#f4faf2]/95 to-transparent px-4 pb-4 pt-3 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-[1080px]">
-          <QueryInput disabled={isLoading} onSubmit={handleSend} />
+          <QueryInput
+            disabled={isLoading}
+            model={model}
+            modelOptions={modelOptions}
+            onModelChange={onModelChange}
+            onSubmit={handleSend}
+          />
         </div>
       </div>
     </section>

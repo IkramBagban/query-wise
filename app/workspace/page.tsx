@@ -5,17 +5,17 @@ import { Database, LayoutDashboard, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import { ResultPanel } from "@/components/charts/ResultPanel";
 import { SchemaPanel } from "@/components/schema/SchemaPanel";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useConnection } from "@/hooks/useConnection";
 import { useSettings, SUPPORTED_MODELS, type LlmProvider } from "@/hooks/useSettings";
 import { useToast } from "@/hooks/useToast";
-import type { ChartType, ChatMessage, Dashboard, DashboardWidget, SchemaInfo, SchemaResponse } from "@/types";
+import type { ChatMessage, Dashboard, DashboardWidget, SchemaInfo, SchemaResponse } from "@/types";
 
 function createDashboardWidget(message: ChatMessage): DashboardWidget | null {
   if (!message.result || !message.sql || !message.chartConfig) return null;
@@ -58,7 +58,6 @@ export default function WorkspacePage() {
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeResult, setActiveResult] = useState<ChatMessage | null>(null);
 
   const [connectTab, setConnectTab] = useState<"demo" | "custom">("demo");
   const [connectionString, setConnectionString] = useState("");
@@ -160,9 +159,8 @@ export default function WorkspacePage() {
     [provider],
   );
 
-  const onSaveWidget = async () => {
-    if (!activeResult) return;
-    const widget = createDashboardWidget(activeResult);
+  const onSaveWidget = async (message: ChatMessage) => {
+    const widget = createDashboardWidget(message);
     if (!widget) return;
     const dashboard = readDashboard();
     const next: Dashboard = {
@@ -179,13 +177,6 @@ export default function WorkspacePage() {
     }).catch(() => undefined);
 
     pushToast({ title: "Widget saved", description: "Added to dashboard.", variant: "success" });
-  };
-
-  const onChartTypeChange = (type: ChartType) => {
-    setActiveResult((prev) => {
-      if (!prev?.chartConfig) return prev;
-      return { ...prev, chartConfig: { ...prev.chartConfig, type } };
-    });
   };
 
   const testApiKey = async () => {
@@ -228,50 +219,58 @@ export default function WorkspacePage() {
     }
   };
   return (
-    <main className="flex h-screen min-h-screen flex-col bg-bg text-text-1">
-      <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4 shadow-lg">
+    <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_6%_0%,rgba(116,204,99,0.16),transparent_24%),radial-gradient(circle_at_100%_0%,rgba(43,116,57,0.08),transparent_20%),#f4faf2] text-text-1">
+      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-[#174128]/14 bg-white/85 px-5 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <span className="font-syne text-xl font-bold tracking-tight">Query<span className="text-accent">Wise</span></span>
-        </div>
-
-        <div className="flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-medium text-text-2">
-          <span className={`h-2 w-2 rounded-full ${connection ? "bg-success" : "bg-danger"}`} />
-          {connection ? maskedConnection : "Database not connected"}
+          <span className="font-syne text-2xl font-bold tracking-tight">
+            Query<span className="text-[#2ed52e]">Wise</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <Select value={model} onChange={setModel} options={modelOptions} className="min-w-48" />
-          <Button variant="icon" onClick={() => setConnectionOpen(true)} className="h-10 w-10 hover:bg-accent/10 hover:text-accent">
-            <Database className="h-5 w-5" />
-          </Button>
-          <Button variant="icon" onClick={() => setSettingsOpen(true)} className="h-10 w-10 hover:bg-accent/10 hover:text-accent">
-            <Settings className="h-5 w-5" />
-          </Button>
-          <Link href="/dashboard">
-            <Button variant="icon" className="h-10 w-10 hover:bg-accent/10 hover:text-accent">
-              <LayoutDashboard className="h-5 w-5" />
+          <Tooltip content="Change database connection">
+            <Button
+              variant="icon"
+              onClick={() => setConnectionOpen(true)}
+              className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white hover:bg-[#ecf9e5] hover:text-accent"
+            >
+              <Database className="h-5 w-5" />
             </Button>
-          </Link>
+          </Tooltip>
+          <Tooltip content="Open settings">
+            <Button
+              variant="icon"
+              onClick={() => setSettingsOpen(true)}
+              className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white hover:bg-[#ecf9e5] hover:text-accent"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Go to dashboard">
+            <Link href="/dashboard">
+              <Button variant="icon" className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white hover:bg-[#ecf9e5] hover:text-accent">
+                <LayoutDashboard className="h-5 w-5" />
+              </Button>
+            </Link>
+          </Tooltip>
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 divide-x divide-border overflow-hidden">
-        <div className="relative z-10 w-[280px] shrink-0 bg-surface">
+      <section className="flex min-h-0 flex-1 divide-x divide-[#174128]/12 overflow-hidden">
+        <div className="relative z-10 w-[290px] shrink-0 bg-[#f1f9ed]">
           <SchemaPanel schema={schema} isLoading={loadingSchema} />
         </div>
         
-        <div className="relative min-w-0 flex-1 overflow-hidden bg-bg">
-           <ChatPanel
+        <div className="relative flex h-full min-w-0 flex-1 overflow-hidden bg-transparent">
+          <ChatPanel
             connectionString={connection?.connectionString}
             provider={provider}
             model={model}
+            modelOptions={modelOptions}
+            onModelChange={setModel}
             apiKey={apiKey}
-            onResultChange={setActiveResult}
+            onSaveWidget={onSaveWidget}
           />
-        </div>
-
-        <div className="relative z-10 w-[380px] shrink-0 overflow-hidden bg-surface-2">
-          <ResultPanel message={activeResult} onChartTypeChange={onChartTypeChange} onSaveWidget={onSaveWidget} />
         </div>
       </section>
 
@@ -279,14 +278,38 @@ export default function WorkspacePage() {
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <button className={`rounded px-2 py-1 text-xs ${connectTab === "demo" ? "bg-accent text-text-1" : "bg-surface-2 text-text-2"}`} onClick={() => setConnectTab("demo")}>Demo Database</button>
-            <button className={`rounded px-2 py-1 text-xs ${connectTab === "custom" ? "bg-accent text-text-1" : "bg-surface-2 text-text-2"}`} onClick={() => setConnectTab("custom")}>Custom Database</button>
+            <button
+              className={`rounded px-2 py-1 text-xs ${
+                connectTab === "demo"
+                  ? "bg-[#2ed52e] text-white"
+                  : "bg-surface-2 text-text-2"
+              }`}
+              onClick={() => setConnectTab("demo")}
+            >
+              Demo Database
+            </button>
+            <button
+              className={`rounded px-2 py-1 text-xs ${
+                connectTab === "custom"
+                  ? "bg-[#2ed52e] text-white"
+                  : "bg-surface-2 text-text-2"
+              }`}
+              onClick={() => setConnectTab("custom")}
+            >
+              Custom Database
+            </button>
           </div>
 
           {connectTab === "demo" ? (
             <div className="space-y-4">
               <p className="text-sm text-text-2">Instantly query the pre-seeded ecommerce dataset.</p>
-              <Button loading={connecting} onClick={() => void connectToDatabase("demo")}>Connect to Demo</Button>
+              <Button
+                loading={connecting}
+                onClick={() => void connectToDatabase("demo")}
+                className="bg-[#2ed52e] text-white"
+              >
+                Connect to Demo
+              </Button>
             </div>
           ) : (
             <div className="space-y-3">

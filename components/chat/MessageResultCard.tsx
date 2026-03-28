@@ -11,6 +11,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { ChartType, ChatMessage } from "@/types";
 
 type ResultTab = "chart" | "table" | "sql";
+const VISUAL_CHART_TYPES: ChartType[] = ["bar", "line", "area", "scatter", "pie"];
 
 interface MessageResultCardProps {
   message: ChatMessage;
@@ -36,10 +37,15 @@ export function MessageResultCard({
   const [activeTab, setActiveTab] = useState<ResultTab>(() => getDefaultTab(message));
   const [saving, setSaving] = useState(false);
 
-  const chartTypes = useMemo(
-    () => message.chartConfig?.availableTypes.filter((type) => type !== "table") ?? [],
-    [message.chartConfig],
-  );
+  const chartTypes = useMemo(() => {
+    if (!message.result || message.result.rows.length === 0 || message.result.columns.length < 2) {
+      return [];
+    }
+
+    const fromConfig =
+      message.chartConfig?.availableTypes.filter((type) => type !== "table") ?? [];
+    return Array.from(new Set([...fromConfig, ...VISUAL_CHART_TYPES]));
+  }, [message.chartConfig, message.result]);
 
   const hasChart = chartTypes.length > 0;
   const activeChartType =
@@ -75,7 +81,7 @@ export function MessageResultCard({
                 }`}
                 onClick={() => setActiveTab("chart")}
               >
-                <BarChart3 className="h-3.5 w-3.5" />
+                <BarChart3 className={`h-3.5 w-3.5 ${activeTab === "chart" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
               </button>
             </Tooltip>
           ) : null}
@@ -89,7 +95,7 @@ export function MessageResultCard({
               }`}
               onClick={() => setActiveTab("table")}
             >
-              <Table2 className="h-3.5 w-3.5" />
+              <Table2 className={`h-3.5 w-3.5 ${activeTab === "table" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
             </button>
           </Tooltip>
           {message.sql ? (
@@ -103,7 +109,7 @@ export function MessageResultCard({
                 }`}
                 onClick={() => setActiveTab("sql")}
               >
-                <Code2 className="h-3.5 w-3.5" />
+                <Code2 className={`h-3.5 w-3.5 ${activeTab === "sql" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
               </button>
             </Tooltip>
           ) : null}
@@ -115,18 +121,16 @@ export function MessageResultCard({
             </span>
           ) : null}
           {message.result && message.chartConfig ? (
-            <Tooltip content="Save this result to dashboard">
-              <Button
-                variant="ghost"
-                size="sm"
-                loading={saving}
-                onClick={() => void handleSave()}
-                className="h-8 rounded-full border border-[#174128]/18 bg-white px-3 text-[11px] font-semibold uppercase tracking-[0.14em] hover:bg-[#ebf8e4]"
-              >
-                <Save className="h-3.5 w-3.5" />
-                Save
-              </Button>
-            </Tooltip>
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={saving}
+              onClick={() => void handleSave()}
+              className="h-8 rounded-full border border-[#174128]/18 bg-white px-3 text-[11px] font-semibold uppercase tracking-[0.14em] hover:bg-[#ebf8e4]"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save
+            </Button>
           ) : null}
         </div>
       </div>
@@ -139,7 +143,7 @@ export function MessageResultCard({
                 key={type}
                 className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] transition ${
                   activeChartType === type
-                    ? "bg-[#2ed52e] text-white"
+                    ? "bg-[#2ed52e] !text-white"
                     : "border border-[#174128]/16 bg-white text-[#2ed52e] hover:text-[#2ed52e]"
                 }`}
                 onClick={() => onChartTypeChange(message.id, type)}

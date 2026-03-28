@@ -39,8 +39,13 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
   return (
     <aside className="flex h-full min-h-0 w-full flex-col gap-4 bg-transparent p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-3">Schema</h2>
-        <Button variant="ghost" size="sm" onClick={() => setShowSummary((prev) => !prev)} className="h-7 shrink-0 text-[10px] uppercase tracking-wider hover:bg-white/5">
+        <h2 className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#486856]">Schema</h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSummary((prev) => !prev)}
+          className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
+        >
           {showSummary ? "Hide" : "Summary"}
         </Button>
       </div>
@@ -50,7 +55,7 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Filter tables/columns"
-          className="pl-9 h-9 bg-white/5 border-white/5 focus:bg-white/10"
+          className="h-10 rounded-xl border-[#164229]/14 bg-white pl-9 focus:border-[#2d7b42] focus:bg-white"
         />
       </div>
       {showSummary ? (
@@ -62,12 +67,12 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-md border border-white/5 bg-white/5" />
+              <div key={index} className="h-10 animate-pulse rounded-xl border border-[#164229]/10 bg-white" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/10 p-8 text-center bg-white/5">
-            <p className="max-w-[160px] text-xs text-text-3 font-medium">
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#164229]/25 bg-white p-8 text-center">
+            <p className="max-w-[160px] text-xs font-medium text-text-3">
               {schema ? "No matching tables or columns found." : "Connect a database to see schema details."}
             </p>
           </div>

@@ -15,12 +15,12 @@ export function TableItem({ table }: TableItemProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-md border border-border bg-surface-2">
+    <div className="overflow-hidden rounded-xl border border-[#174128]/15 bg-white shadow-[0_6px_18px_rgba(10,50,24,0.06)]">
       <button
-        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f4fbee]"
         onClick={() => setOpen((prev) => !prev)}
       >
-        <span className="flex items-center gap-2 text-sm text-text-1">
+        <span className="flex items-center gap-2 text-sm font-medium text-text-1">
           <Database className="h-3.5 w-3.5 text-accent" />
           {table.name}
         </span>
@@ -30,7 +30,7 @@ export function TableItem({ table }: TableItemProps) {
         </span>
       </button>
       {open ? (
-        <div className="space-y-1 border-t border-border p-2">
+        <div className="space-y-1 border-t border-[#174128]/14 bg-[#fcfffb] p-2">
           {table.columns.map((column) => (
             <ColumnItem key={column.name} column={column} />
           ))}
