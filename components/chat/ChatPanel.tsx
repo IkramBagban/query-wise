@@ -38,6 +38,19 @@ export function ChatPanel({ connectionString, provider, model, apiKey, onResultC
 
     const nextHistory = [...messages, userMessage];
     setMessages(nextHistory);
+
+    if (!apiKey.trim()) {
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        content: "Add your API key in Settings to run queries.",
+        error: "Missing LLM API key",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      return;
+    }
+
     setIsLoading(true);
 
     const payload: QueryRequest = {
@@ -100,10 +113,9 @@ export function ChatPanel({ connectionString, provider, model, apiKey, onResultC
           onResultChange(message);
         }}
       />
-      <div className="p-4 bg-gradient-to-t from-bg via-bg/80 to-transparent">
-        <QueryInput disabled={isLoading || !apiKey} onSubmit={handleSend} />
+      <div className="bg-gradient-to-t from-bg via-bg/80 to-transparent p-4">
+        <QueryInput disabled={isLoading} onSubmit={handleSend} />
       </div>
     </section>
-
   );
 }

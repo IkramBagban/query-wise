@@ -3,7 +3,7 @@
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 export const SUPPORTED_MODELS = {
-  google: ["gemini-1.5-flash", "gemini-1.5-pro"],
+  google: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
   anthropic: ["claude-sonnet-4-5", "claude-3-7-sonnet"],
 } as const;
 
@@ -24,3 +24,4 @@ export function useSettings() {
     initialized: provider.initialized && model.initialized && apiKey.initialized,
   };
 }
+

@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
 
   const { question, history, connectionString, provider, model, apiKey } =
     parsed.data;
+    console.log("parseddata", parsed.data);
 
   try {
     const schema = await getCachedSchema(connectionString);
@@ -112,7 +113,10 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await executeQuery(sql, connectionString);
+
+    console.log("result", result);
     const chartConfig = detectChartConfig(result);
+    console.log("chartConfig", chartConfig);
 
     let explanation = "";
     if (result.rowCount === 0) {

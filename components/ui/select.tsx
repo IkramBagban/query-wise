@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { cn } from "@/lib/utils";
 
 interface SelectOption {
   label: string;
@@ -16,23 +18,68 @@ interface SelectProps {
 }
 
 export function Select({ value, onChange, options, className }: SelectProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
   const selected = useMemo(() => options.find((option) => option.value === value), [options, value]);
 
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   return (
-    <label className={`relative inline-flex h-9 min-w-40 items-center rounded-md border border-border bg-surface px-3 text-xs text-text-1 ${className ?? ""}`}>
-      <select
-        className="absolute inset-0 cursor-pointer opacity-0"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+    <div ref={rootRef} className={cn("relative inline-flex min-w-40", className)}>
+      <button
+        type="button"
+        className={cn(
+          "h-9 w-full rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1",
+          "inline-flex items-center justify-between gap-2 transition-colors",
+          open ? "border-border-2" : "hover:border-border-2",
+        )}
+        onClick={() => setOpen((prev) => !prev)}
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <span className="truncate pr-5">{selected?.label ?? "Select"}</span>
-      <ChevronDown className="absolute right-2 h-3.5 w-3.5 text-text-3" />
-    </label>
+        <span className="truncate">{selected?.label ?? "Select"}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 text-text-3 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-10 z-50 w-full overflow-hidden rounded-md border border-border-2 bg-surface-2 p-1 shadow-2xl">
+          {options.map((option) => {
+            const isActive = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={cn(
+                  "flex w-full items-center justify-between rounded px-2 py-1.5 text-xs transition-colors",
+                  isActive ? "bg-accent/20 text-text-1" : "text-text-2 hover:bg-surface-3 hover:text-text-1",
+                )}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <span className="truncate">{option.label}</span>
+                {isActive ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
