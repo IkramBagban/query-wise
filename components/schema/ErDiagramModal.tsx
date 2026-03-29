@@ -34,6 +34,15 @@ type TableNodeData = {
   table: SchemaTable;
   outgoingForeignKeyColumns: string[];
   incomingReferenceColumns: string[];
+  relationEdgeIdsByColumn: Record<string, string[]>;
+  activeRelationEdgeId?: string | null;
+  hoveredRelationEdgeId?: string | null;
+  isEmphasized?: boolean;
+  isHovered?: boolean;
+  isDragging?: boolean;
+  onRelationColumnClick?: (edgeIds: string[]) => void;
+  onRelationColumnHover?: (edgeIds: string[]) => void;
+  onRelationColumnHoverEnd?: () => void;
 };
 
 const TABLE_HEADER_HEIGHT = 40;
@@ -150,9 +159,22 @@ function getRelationAwarePositions(
 function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
   const outgoingColumns = new Set(data.outgoingForeignKeyColumns);
   const incomingColumns = new Set(data.incomingReferenceColumns);
+  const isEmphasized = data.isEmphasized ?? false;
+  const isHovered = data.isHovered ?? false;
+  const isDragging = data.isDragging ?? false;
 
   return (
-    <div className="relative w-[320px] overflow-hidden rounded-xl border border-[#174128]/18 bg-white shadow-[0_10px_26px_rgba(10,50,24,0.12)]">
+    <div
+      className={`relative w-[320px] overflow-hidden rounded-xl border bg-white transition-all duration-150 ${
+        isDragging
+          ? "border-[#1f6a39]/70 shadow-[0_18px_38px_rgba(31,106,57,0.35)]"
+          : isHovered
+            ? "border-[#2d7b42]/55 shadow-[0_14px_30px_rgba(45,123,66,0.24)]"
+            : isEmphasized
+              ? "border-[#2d7b42]/40 shadow-[0_12px_28px_rgba(45,123,66,0.16)]"
+              : "border-[#174128]/18 shadow-[0_10px_26px_rgba(10,50,24,0.12)]"
+      }`}
+    >
       <div className="flex h-10 items-center justify-between border-b border-[#174128]/14 bg-[#f1f8ec] px-3 py-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-text-1">
           <Database className="h-3.5 w-3.5 text-accent" />
@@ -170,11 +192,22 @@ function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
           const rowCenterY = TABLE_HEADER_HEIGHT + TABLE_BODY_PADDING + index * TABLE_ROW_HEIGHT + TABLE_ROW_HEIGHT / 2;
           const isOutgoingForeignKey = outgoingColumns.has(column.name);
           const isIncomingReference = incomingColumns.has(column.name);
+          const relationEdgeIds = data.relationEdgeIdsByColumn[column.name] ?? [];
+          const isRelationColumn = relationEdgeIds.length > 0;
+          const isActiveRelationColumn =
+            data.activeRelationEdgeId !== null &&
+            data.activeRelationEdgeId !== undefined &&
+            relationEdgeIds.includes(data.activeRelationEdgeId);
+          const isHoveredRelationColumn =
+            data.hoveredRelationEdgeId !== null &&
+            data.hoveredRelationEdgeId !== undefined &&
+            relationEdgeIds.includes(data.hoveredRelationEdgeId);
+          const isInteractiveColumn = isRelationColumn || column.isPrimaryKey || column.isForeignKey;
 
           return (
             <div
               key={`${data.table.name}.${column.name}`}
-              className="grid h-[22px] grid-cols-[1fr_auto] items-center gap-2 text-[11px]"
+              className="h-[22px] text-[11px]"
             >
               {isIncomingReference ? (
                 <Handle
@@ -194,12 +227,47 @@ function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
                   className="!h-2.5 !w-2.5 !border-0 !bg-[#2ed52e]"
                 />
               ) : null}
-            <p className="flex min-w-0 items-center gap-1.5 truncate text-text-1">
-              {column.isPrimaryKey ? <KeyRound className="h-3 w-3 text-warning" /> : null}
-              {!column.isPrimaryKey && column.isForeignKey ? <Link2 className="h-3 w-3 text-accent" /> : null}
-              <span className="truncate">{column.name}</span>
-            </p>
-            <p className="truncate font-mono text-text-3">{column.fullType ?? column.type}</p>
+              <button
+                type="button"
+                className={`flex h-full w-full items-center justify-between rounded px-1 py-0.5 text-left ${
+                  isRelationColumn ? "cursor-pointer" : "cursor-default"
+                } ${
+                  isActiveRelationColumn
+                    ? "bg-[#d9efd5] text-[#1f6a39]"
+                    : isHoveredRelationColumn
+                      ? "bg-[#e6f3df] text-[#2d7b42]"
+                      : isInteractiveColumn
+                        ? "hover:bg-[#edf7e8]"
+                        : "text-text-1"
+                }`}
+                onClick={(event) => {
+                  if (!isRelationColumn) return;
+                  event.stopPropagation();
+                  data.onRelationColumnClick?.(relationEdgeIds);
+                }}
+                onMouseEnter={() => {
+                  if (!isRelationColumn) return;
+                  data.onRelationColumnHover?.(relationEdgeIds);
+                }}
+                onMouseLeave={() => data.onRelationColumnHoverEnd?.()}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {column.isPrimaryKey ? <KeyRound className="h-3 w-3 text-warning" /> : null}
+                  {!column.isPrimaryKey && column.isForeignKey ? <Link2 className="h-3 w-3 text-accent" /> : null}
+                  <span className="truncate">{column.name}</span>
+                  {column.isPrimaryKey ? (
+                    <span className="rounded bg-[#ffefcc] px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.04em] text-[#8d6a00]">
+                      PK
+                    </span>
+                  ) : null}
+                  {column.isForeignKey ? (
+                    <span className="rounded bg-[#dff2e4] px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.04em] text-[#1f6a39]">
+                      FK
+                    </span>
+                  ) : null}
+                </span>
+                <span className="truncate pl-2 font-mono text-text-3">{column.fullType ?? column.type}</span>
+              </button>
             </div>
           );
         })}
@@ -245,6 +313,8 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
     incomingByTable.get(relationship.toTable)?.add(relationship.toColumn);
   }
 
+  const relationEdgeIdsByTableColumn = new Map<string, Map<string, string[]>>();
+
   const nodes: Node<TableNodeData>[] = sortedTables.map((table, index) => {
     const position = positionsByTable.get(table.name) ?? { x: (index % 3) * 390, y: Math.floor(index / 3) * 330 };
     return {
@@ -255,12 +325,26 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
         table,
         outgoingForeignKeyColumns: [...(outgoingByTable.get(table.name) ?? [])],
         incomingReferenceColumns: [...(incomingByTable.get(table.name) ?? [])],
+        relationEdgeIdsByColumn: {},
       },
       draggable: true,
     };
   });
 
   const edges: Edge[] = schema.relationships.map((relationship, index) => {
+    const edgeId = `rel-${relationship.fromTable}-${relationship.fromColumn}-${relationship.toTable}-${relationship.toColumn}-${index}`;
+    const sourceTableMap = relationEdgeIdsByTableColumn.get(relationship.fromTable) ?? new Map<string, string[]>();
+    const sourceEdgeIds = sourceTableMap.get(relationship.fromColumn) ?? [];
+    sourceEdgeIds.push(edgeId);
+    sourceTableMap.set(relationship.fromColumn, sourceEdgeIds);
+    relationEdgeIdsByTableColumn.set(relationship.fromTable, sourceTableMap);
+
+    const targetTableMap = relationEdgeIdsByTableColumn.get(relationship.toTable) ?? new Map<string, string[]>();
+    const targetEdgeIds = targetTableMap.get(relationship.toColumn) ?? [];
+    targetEdgeIds.push(edgeId);
+    targetTableMap.set(relationship.toColumn, targetEdgeIds);
+    relationEdgeIdsByTableColumn.set(relationship.toTable, targetTableMap);
+
     const sourceColumns = columnSetByTable.get(relationship.fromTable);
     const targetColumns = columnSetByTable.get(relationship.toTable);
     const sourceHandle = sourceColumns?.has(relationship.fromColumn)
@@ -271,7 +355,7 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
       : undefined;
 
     return {
-      id: `rel-${relationship.fromTable}-${relationship.fromColumn}-${relationship.toTable}-${relationship.toColumn}-${index}`,
+      id: edgeId,
       source: relationship.fromTable,
       target: relationship.toTable,
       sourceHandle,
@@ -289,6 +373,19 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
     };
   });
 
+  for (const node of nodes) {
+    const tableColumnMap = relationEdgeIdsByTableColumn.get(node.id);
+    if (!tableColumnMap) continue;
+    const relationEdgeIdsByColumn: Record<string, string[]> = {};
+    for (const [columnName, edgeIds] of tableColumnMap.entries()) {
+      relationEdgeIdsByColumn[columnName] = edgeIds;
+    }
+    node.data = {
+      ...node.data,
+      relationEdgeIdsByColumn,
+    };
+  }
+
   return { nodes, edges };
 }
 
@@ -297,6 +394,10 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [selectedRelationEdgeId, setSelectedRelationEdgeId] = useState<string | null>(null);
+  const [hoveredRelationEdgeId, setHoveredRelationEdgeId] = useState<string | null>(null);
+  const [hoveredTableId, setHoveredTableId] = useState<string | null>(null);
+  const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
 
   const nodeTypes = useMemo(
     () => ({
@@ -316,43 +417,124 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
     return stillExists ? selectedTableId : null;
   }, [nodes, selectedTableId]);
 
-  const focusedTableIds = useMemo(() => {
-    if (!effectiveSelectedTableId) return null;
+  const effectiveSelectedRelationEdgeId = useMemo(() => {
+    if (!selectedRelationEdgeId) return null;
+    const stillExists = edges.some((edge) => edge.id === selectedRelationEdgeId);
+    return stillExists ? selectedRelationEdgeId : null;
+  }, [edges, selectedRelationEdgeId]);
 
-    const related = new Set<string>([effectiveSelectedTableId]);
+  const effectiveHoveredRelationEdgeId = useMemo(() => {
+    if (!hoveredRelationEdgeId) return null;
+    const stillExists = edges.some((edge) => edge.id === hoveredRelationEdgeId);
+    return stillExists ? hoveredRelationEdgeId : null;
+  }, [edges, hoveredRelationEdgeId]);
+
+  const effectiveHoveredTableId = useMemo(() => {
+    if (!hoveredTableId) return null;
+    const stillExists = nodes.some((node) => node.id === hoveredTableId);
+    return stillExists ? hoveredTableId : null;
+  }, [hoveredTableId, nodes]);
+
+  const effectiveDraggingTableId = useMemo(() => {
+    if (!draggingTableId) return null;
+    const stillExists = nodes.some((node) => node.id === draggingTableId);
+    return stillExists ? draggingTableId : null;
+  }, [draggingTableId, nodes]);
+
+  const effectiveRelationEdgeId = effectiveSelectedRelationEdgeId ?? effectiveHoveredRelationEdgeId;
+  const effectiveTableFocusId = effectiveSelectedTableId ?? effectiveHoveredTableId;
+
+  const focusedTableIds = useMemo(() => {
+    if (effectiveRelationEdgeId) {
+      const relationEdge = edges.find((edge) => edge.id === effectiveRelationEdgeId);
+      if (!relationEdge) return null;
+      return new Set<string>([relationEdge.source, relationEdge.target]);
+    }
+
+    if (!effectiveTableFocusId) return null;
+
+    const related = new Set<string>([effectiveTableFocusId]);
     for (const edge of edges) {
-      if (edge.source === effectiveSelectedTableId) {
+      if (edge.source === effectiveTableFocusId) {
         related.add(edge.target);
       }
-      if (edge.target === effectiveSelectedTableId) {
+      if (edge.target === effectiveTableFocusId) {
         related.add(edge.source);
       }
     }
     return related;
-  }, [edges, effectiveSelectedTableId]);
+  }, [edges, effectiveRelationEdgeId, effectiveTableFocusId]);
 
   const renderedNodes = useMemo(() => {
-    if (!focusedTableIds) return nodes;
     return nodes.map((node) => {
-      const isFocused = focusedTableIds.has(node.id);
+      const isFocused = focusedTableIds ? focusedTableIds.has(node.id) : true;
       return {
         ...node,
+        data: {
+          ...node.data,
+          activeRelationEdgeId: effectiveRelationEdgeId,
+          hoveredRelationEdgeId: effectiveHoveredRelationEdgeId,
+          isEmphasized: isFocused,
+          isHovered: node.id === effectiveHoveredTableId,
+          isDragging: node.id === effectiveDraggingTableId,
+          onRelationColumnClick: (edgeIds: string[]) => {
+            const nextEdgeId = edgeIds[0];
+            if (!nextEdgeId) return;
+            setSelectedTableId(null);
+            setSelectedRelationEdgeId(nextEdgeId);
+          },
+          onRelationColumnHover: (edgeIds: string[]) => {
+            const nextEdgeId = edgeIds[0];
+            if (!nextEdgeId) return;
+            setHoveredRelationEdgeId(nextEdgeId);
+          },
+          onRelationColumnHoverEnd: () => setHoveredRelationEdgeId(null),
+        },
         style: {
           ...node.style,
-          opacity: isFocused ? 1 : 0.28,
+          opacity: isFocused ? 1 : 0.26,
           transition: "opacity 140ms ease",
         },
       };
     });
-  }, [focusedTableIds, nodes]);
+  }, [
+    effectiveDraggingTableId,
+    effectiveHoveredRelationEdgeId,
+    effectiveHoveredTableId,
+    effectiveRelationEdgeId,
+    focusedTableIds,
+    nodes,
+  ]);
 
   const renderedEdges = useMemo(() => {
     return edges.map((edge) => {
+      const isActiveRelationEdge = effectiveRelationEdgeId !== null && edge.id === effectiveRelationEdgeId;
       const isRelatedToFocus =
-        effectiveSelectedTableId !== null &&
-        (edge.source === effectiveSelectedTableId || edge.target === effectiveSelectedTableId);
+        effectiveRelationEdgeId === null &&
+        effectiveTableFocusId !== null &&
+        (edge.source === effectiveTableFocusId || edge.target === effectiveTableFocusId);
 
-      if (!effectiveSelectedTableId) {
+      if (effectiveRelationEdgeId) {
+        if (isActiveRelationEdge) {
+          return {
+            ...edge,
+            animated: true,
+            label: edge.label,
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#1f6a39" },
+            style: { ...edge.style, stroke: "#1f6a39", strokeWidth: 2.6, strokeDasharray: "10 8", opacity: 1 },
+          };
+        }
+
+        return {
+          ...edge,
+          animated: false,
+          label: undefined,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#adc2b2" },
+          style: { ...edge.style, stroke: "#adc2b2", strokeWidth: 1.05, strokeDasharray: "3 7", opacity: 0.24 },
+        };
+      }
+
+      if (!effectiveTableFocusId) {
         return {
           ...edge,
           animated: false,
@@ -368,7 +550,7 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
           animated: true,
           label: edge.label,
           markerEnd: { type: MarkerType.ArrowClosed, color: "#2d7b42" },
-          style: { ...edge.style, stroke: "#2d7b42", strokeWidth: 2.35, strokeDasharray: "0", opacity: 1 },
+          style: { ...edge.style, stroke: "#2d7b42", strokeWidth: 2.35, strokeDasharray: "10 8", opacity: 1 },
         };
       }
 
@@ -380,7 +562,7 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
         style: { ...edge.style, stroke: "#adc2b2", strokeWidth: 1.05, strokeDasharray: "3 7", opacity: 0.26 },
       };
     });
-  }, [edges, effectiveSelectedTableId]);
+  }, [edges, effectiveRelationEdgeId, effectiveTableFocusId]);
 
   return (
     <Dialog
@@ -415,11 +597,35 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
                 fitViewOptions={{ padding: 0.15, minZoom: 0.3, maxZoom: 1.3 }}
                 minZoom={0.2}
                 maxZoom={1.6}
-                onNodeClick={(_, node) => setSelectedTableId(node.id)}
-                onPaneClick={() => setSelectedTableId(null)}
+                onNodeClick={(_, node) => {
+                  setSelectedRelationEdgeId(null);
+                  setSelectedTableId(node.id);
+                }}
+                onNodeMouseEnter={(_, node) => setHoveredTableId(node.id)}
+                onNodeMouseLeave={(_, node) => {
+                  if (draggingTableId === node.id) return;
+                  setHoveredTableId((current) => (current === node.id ? null : current));
+                }}
+                onNodeDragStart={(_, node) => {
+                  setDraggingTableId(node.id);
+                  setHoveredTableId(node.id);
+                }}
+                onNodeDragStop={(_, node) => {
+                  setDraggingTableId(null);
+                  setHoveredTableId(node.id);
+                }}
+                onEdgeMouseEnter={(_, edge) => setHoveredRelationEdgeId(edge.id)}
+                onEdgeMouseLeave={() => setHoveredRelationEdgeId(null)}
+                onEdgeClick={(_, edge) => {
+                  setSelectedTableId(null);
+                  setSelectedRelationEdgeId(edge.id);
+                }}
+                onPaneClick={() => {
+                  setSelectedTableId(null);
+                  setSelectedRelationEdgeId(null);
+                }}
                 defaultEdgeOptions={{
                   type: "smoothstep",
-                  pathOptions: { offset: 26, borderRadius: 14 },
                 }}
                 proOptions={{ hideAttribution: true }}
               >
@@ -434,14 +640,19 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
                 <Panel position="top-right">
                   <div className="rounded-lg border border-[#174128]/18 bg-white/90 px-3 py-2 text-[11px] text-text-2 shadow-sm backdrop-blur">
                     <p>
-                      {effectiveSelectedTableId
-                        ? `Focused: ${effectiveSelectedTableId}`
-                        : "Click a table to focus relationships"}
+                      {effectiveRelationEdgeId
+                        ? `Focused relation: ${effectiveRelationEdgeId}`
+                        : effectiveSelectedTableId
+                          ? `Focused: ${effectiveSelectedTableId}`
+                          : "Click a table, key, or line to focus relationships"}
                     </p>
-                    {effectiveSelectedTableId ? (
+                    {effectiveSelectedTableId || effectiveRelationEdgeId ? (
                       <button
                         className="mt-1 text-[11px] font-semibold text-accent hover:underline"
-                        onClick={() => setSelectedTableId(null)}
+                        onClick={() => {
+                          setSelectedTableId(null);
+                          setSelectedRelationEdgeId(null);
+                        }}
                       >
                         Clear focus
                       </button>
