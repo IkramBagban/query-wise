@@ -94,6 +94,7 @@ export interface ChartConfig {
   type: ChartType;
   xKey?: string;
   yKey?: string;
+  yKeys?: string[];
   nameKey?: string;
   valueKey?: string;
   title?: string;

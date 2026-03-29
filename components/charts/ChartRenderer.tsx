@@ -16,12 +16,30 @@ interface ChartRendererProps {
 export function ChartRenderer({ result, chartConfig }: ChartRendererProps) {
   const fallbackX = chartConfig.xKey ?? result.columns[0];
   const fallbackY = chartConfig.yKey ?? result.columns[1] ?? result.columns[0];
+  const fallbackYs =
+    chartConfig.yKeys && chartConfig.yKeys.length > 0
+      ? chartConfig.yKeys
+      : [fallbackY];
 
   switch (chartConfig.type) {
     case "bar":
-      return <BarChartView result={result} xKey={fallbackX} yKey={fallbackY} />;
+      return (
+        <BarChartView
+          result={result}
+          xKey={fallbackX}
+          yKey={fallbackY}
+          yKeys={chartConfig.yKeys}
+        />
+      );
     case "line":
-      return <LineChartView result={result} xKey={fallbackX} yKey={fallbackY} />;
+      return (
+        <LineChartView
+          result={result}
+          xKey={fallbackX}
+          yKey={fallbackY}
+          yKeys={fallbackYs}
+        />
+      );
     case "pie":
       return (
         <PieChartView
@@ -31,9 +49,23 @@ export function ChartRenderer({ result, chartConfig }: ChartRendererProps) {
         />
       );
     case "scatter":
-      return <ScatterChartView result={result} xKey={fallbackX} yKey={fallbackY} />;
+      return (
+        <ScatterChartView
+          result={result}
+          xKey={fallbackX}
+          yKey={fallbackY}
+          yKeys={fallbackYs}
+        />
+      );
     case "area":
-      return <AreaChartView result={result} xKey={fallbackX} yKey={fallbackY} />;
+      return (
+        <AreaChartView
+          result={result}
+          xKey={fallbackX}
+          yKey={fallbackY}
+          yKeys={fallbackYs}
+        />
+      );
     case "table":
       return <TableView result={result} />;
     default:

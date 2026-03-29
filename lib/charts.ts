@@ -27,7 +27,7 @@ function makeConfig(
 export function detectChartConfig(result: QueryResult): ChartConfig {
   const { columns, rows } = result;
 
-  if (rows.length === 0 || columns.length === 0) {
+  if (rows.length === 0 || columns.length === 0) {  
     return makeConfig("table", { availableTypes: ["table"] });
   }
 
@@ -68,6 +68,7 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
       return makeConfig("bar", {
         xKey: firstCol,
         yKey: secondCol,
+        yKeys: [secondCol],
         availableTypes: ["bar", "line", "area", "scatter", "pie", "table"],
       });
     }
@@ -81,6 +82,7 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
     return makeConfig("bar", {
       xKey: firstCol,
       yKey: numericCols[0],
+      yKeys: numericCols,
       availableTypes: ["bar", "line", "area", "scatter", "pie", "table"],
     });
   }

@@ -17,6 +17,7 @@ const ChartConfigSchema = z.object({
   type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]),
   xKey: z.string().optional(),
   yKey: z.string().optional(),
+  yKeys: z.array(z.string()).optional(),
   nameKey: z.string().optional(),
   valueKey: z.string().optional(),
   title: z.string().optional(),
