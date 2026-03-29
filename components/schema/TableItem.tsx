@@ -25,7 +25,7 @@ export function TableItem({ table }: TableItemProps) {
           {table.name}
         </span>
         <span className="flex items-center gap-2">
-          {typeof table.rowCount === "number" ? <Badge variant="info">{table.rowCount}</Badge> : null}
+          {typeof table.rowCount === "number" ? <Badge variant="info">{table.rowCount.toLocaleString()}</Badge> : null}
           <ChevronDown className={`h-4 w-4 text-text-3 transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>

@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SchemaSummary } from "@/components/schema/SchemaSummary";
 import { TableItem } from "@/components/schema/TableItem";
@@ -16,7 +17,7 @@ interface SchemaPanelProps {
 
 export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
   const [query, setQuery] = useState("");
-  const [showSummary, setShowSummary] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const filtered = useMemo(() => {
     if (!schema) return [];
@@ -43,10 +44,10 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setShowSummary((prev) => !prev)}
+          onClick={() => setSummaryOpen(true)}
           className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
         >
-          {showSummary ? "Hide" : "Summary"}
+          Summary
         </Button>
       </div>
       <div className="relative group">
@@ -58,11 +59,6 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
           className="h-10 rounded-xl border-[#164229]/14 bg-white pl-9 focus:border-[#2d7b42] focus:bg-white"
         />
       </div>
-      {showSummary ? (
-        <div className="animate-fade-in">
-          <SchemaSummary summary={schema?.summary ?? ""} />
-        </div>
-      ) : null}
       <div className="min-h-0 flex-1 space-y-1.5 overflow-auto pr-1">
         {isLoading ? (
           <div className="space-y-3">
@@ -80,6 +76,37 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
           filtered.map((table) => <TableItem key={table.name} table={table} />)
         )}
       </div>
+
+      <Dialog
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        panelClassName="max-h-[88vh] max-w-[min(1120px,94vw)] overflow-hidden p-0"
+      >
+        <div className="flex h-full max-h-[88vh] flex-col">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-text-1">Schema Summary</h2>
+              <p className="text-xs text-text-3">Structured overview of tables, columns, relationships, and sample values.</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setSummaryOpen(false)}>
+              Close
+            </Button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            <SchemaSummary schema={schema} />
+
+            <details className="mt-4 rounded-lg border border-border bg-surface p-3">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-text-3">
+                Raw LLM Schema Context
+              </summary>
+              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-text-2">
+                {schema?.summary || "Summary unavailable."}
+              </pre>
+            </details>
+          </div>
+        </div>
+      </Dialog>
     </aside>
 
   );

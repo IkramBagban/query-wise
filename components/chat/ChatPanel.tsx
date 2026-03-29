@@ -83,9 +83,9 @@ export function ChatPanel({
         id: createMessageId(),
         role: "assistant",
         content: body.explanation,
-        sql: body.sql,
-        result: body.result,
-        chartConfig: body.chartConfig,
+        sql: body.mode === "query" ? body.sql : undefined,
+        result: body.mode === "query" ? body.result : undefined,
+        chartConfig: body.mode === "query" ? body.chartConfig : undefined,
         timestamp: Date.now(),
       };
 
@@ -122,7 +122,7 @@ export function ChatPanel({
         onChartTypeChange={handleChartTypeChange}
         onSaveWidget={onSaveWidget}
       />
-      <div className="sticky bottom-0 z-20 bg-gradient-to-t from-[#edf8e8] via-[#f4faf2]/95 to-transparent px-2 pb-2 pt-2 backdrop-blur-sm sm:px-4 sm:pb-4 sm:pt-3">
+      <div className="sticky bottom-0 z-20 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
         <div className="mx-auto w-full max-w-[1080px]">
           <QueryInput
             disabled={isLoading}

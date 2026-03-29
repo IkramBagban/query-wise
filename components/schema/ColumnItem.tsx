@@ -16,7 +16,7 @@ export function ColumnItem({ column }: ColumnItemProps) {
         ) : null}
         <span className="truncate">{column.name}</span>
       </span>
-      <span className="shrink-0 font-mono text-[11px] text-text-3">{column.type}</span>
+      <span className="shrink-0 font-mono text-[11px] text-text-3">{column.fullType ?? column.type}</span>
     </div>
   );
 }
