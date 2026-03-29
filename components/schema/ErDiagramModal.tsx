@@ -48,6 +48,105 @@ function makeTargetHandleId(tableName: string, columnName: string): string {
   return `${tableName}::${columnName}::target`;
 }
 
+function getRelationAwarePositions(
+  tables: SchemaTable[],
+  degreeByTable: Map<string, number>,
+  relationships: SchemaInfo["relationships"],
+): Map<string, { x: number; y: number }> {
+  const tableByName = new Map(tables.map((table) => [table.name, table]));
+  const adjacency = new Map<string, Set<string>>();
+  for (const table of tables) {
+    adjacency.set(table.name, new Set<string>());
+  }
+
+  for (const relation of relationships) {
+    adjacency.get(relation.fromTable)?.add(relation.toTable);
+    adjacency.get(relation.toTable)?.add(relation.fromTable);
+  }
+
+  const positions = new Map<string, { x: number; y: number }>();
+  const visited = new Set<string>();
+  const columnGap = 430;
+  const rowGap = 270;
+  const componentGap = 170;
+  let currentY = 0;
+
+  const allTableNames = [...tableByName.keys()].sort((a, b) => {
+    const aDegree = degreeByTable.get(a) ?? 0;
+    const bDegree = degreeByTable.get(b) ?? 0;
+    if (bDegree !== aDegree) return bDegree - aDegree;
+    return a.localeCompare(b);
+  });
+
+  for (const seed of allTableNames) {
+    if (visited.has(seed)) continue;
+
+    const component: string[] = [];
+    const stack = [seed];
+    visited.add(seed);
+    while (stack.length > 0) {
+      const tableName = stack.pop();
+      if (!tableName) continue;
+      component.push(tableName);
+      for (const next of adjacency.get(tableName) ?? []) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        stack.push(next);
+      }
+    }
+
+    const root = [...component].sort((a, b) => {
+      const aDegree = degreeByTable.get(a) ?? 0;
+      const bDegree = degreeByTable.get(b) ?? 0;
+      if (bDegree !== aDegree) return bDegree - aDegree;
+      return a.localeCompare(b);
+    })[0];
+
+    const depthByTable = new Map<string, number>();
+    depthByTable.set(root, 0);
+    const queue = [root];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+      const depth = depthByTable.get(current) ?? 0;
+      for (const neighbor of adjacency.get(current) ?? []) {
+        if (depthByTable.has(neighbor)) continue;
+        depthByTable.set(neighbor, depth + 1);
+        queue.push(neighbor);
+      }
+    }
+
+    const layers = new Map<number, string[]>();
+    for (const tableName of component) {
+      const depth = depthByTable.get(tableName) ?? 0;
+      if (!layers.has(depth)) layers.set(depth, []);
+      layers.get(depth)?.push(tableName);
+    }
+
+    let componentMaxRows = 1;
+    const sortedDepths = [...layers.keys()].sort((a, b) => a - b);
+    for (const depth of sortedDepths) {
+      const layerTables = (layers.get(depth) ?? []).sort((a, b) => {
+        const aDegree = degreeByTable.get(a) ?? 0;
+        const bDegree = degreeByTable.get(b) ?? 0;
+        if (bDegree !== aDegree) return bDegree - aDegree;
+        return a.localeCompare(b);
+      });
+      componentMaxRows = Math.max(componentMaxRows, layerTables.length);
+      layerTables.forEach((tableName, rowIndex) => {
+        positions.set(tableName, {
+          x: depth * columnGap,
+          y: currentY + rowIndex * rowGap,
+        });
+      });
+    }
+
+    currentY += componentMaxRows * rowGap + componentGap;
+  }
+
+  return positions;
+}
+
 function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
   const outgoingColumns = new Set(data.outgoingForeignKeyColumns);
   const incomingColumns = new Set(data.incomingReferenceColumns);
@@ -129,10 +228,7 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
     if (bDegree !== aDegree) return bDegree - aDegree;
     return a.name.localeCompare(b.name);
   });
-
-  const columnsPerRow = 3;
-  const xGap = 390;
-  const yGap = 330;
+  const positionsByTable = getRelationAwarePositions(schema.tables, degreeByTable, schema.relationships);
 
   const outgoingByTable = new Map<string, Set<string>>();
   const incomingByTable = new Map<string, Set<string>>();
@@ -150,12 +246,11 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
   }
 
   const nodes: Node<TableNodeData>[] = sortedTables.map((table, index) => {
-    const col = index % columnsPerRow;
-    const row = Math.floor(index / columnsPerRow);
+    const position = positionsByTable.get(table.name) ?? { x: (index % 3) * 390, y: Math.floor(index / 3) * 330 };
     return {
       id: table.name,
       type: "tableNode",
-      position: { x: col * xGap, y: row * yGap },
+      position,
       data: {
         table,
         outgoingForeignKeyColumns: [...(outgoingByTable.get(table.name) ?? [])],
@@ -186,7 +281,7 @@ function buildGraph(schema: SchemaInfo | null): { nodes: Node<TableNodeData>[]; 
       label: relationship.fromColumn,
       markerEnd: { type: MarkerType.ArrowClosed, color: "#486856" },
       animated: false,
-      style: { stroke: "#486856", strokeWidth: 1.5, strokeDasharray: "4 4" },
+      style: { stroke: "#5f8a70", strokeWidth: 1.35, strokeDasharray: "4 6", opacity: 0.72 },
       labelStyle: { fontSize: 11, fill: "#355442", fontWeight: 600 },
       labelBgPadding: [6, 4],
       labelBgBorderRadius: 6,
@@ -262,7 +357,8 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
           ...edge,
           animated: false,
           label: undefined,
-          style: { ...edge.style, stroke: "#6b8f79", strokeWidth: 1.1, strokeDasharray: "4 6", opacity: 0.58 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#5f8a70" },
+          style: { ...edge.style, stroke: "#5f8a70", strokeWidth: 1.35, strokeDasharray: "4 6", opacity: 0.72 },
         };
       }
 
@@ -272,7 +368,7 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
           animated: true,
           label: edge.label,
           markerEnd: { type: MarkerType.ArrowClosed, color: "#2d7b42" },
-          style: { ...edge.style, stroke: "#2d7b42", strokeWidth: 2.2, strokeDasharray: "0", opacity: 1 },
+          style: { ...edge.style, stroke: "#2d7b42", strokeWidth: 2.35, strokeDasharray: "0", opacity: 1 },
         };
       }
 
@@ -280,8 +376,8 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
         ...edge,
         animated: false,
         label: undefined,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#a6bdaa" },
-        style: { ...edge.style, stroke: "#a6bdaa", strokeWidth: 1, strokeDasharray: "3 7", opacity: 0.2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#adc2b2" },
+        style: { ...edge.style, stroke: "#adc2b2", strokeWidth: 1.05, strokeDasharray: "3 7", opacity: 0.26 },
       };
     });
   }, [edges, effectiveSelectedTableId]);
