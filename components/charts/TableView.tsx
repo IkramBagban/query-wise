@@ -13,11 +13,25 @@ function isNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function formatDateLike(value: unknown): string {
   if (value instanceof Date) {
     return value.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
-  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+  // Avoid treating numeric strings like "166" as dates.
+  const looksLikeDateString =
+    typeof value === "string" &&
+    /[-/:T]/.test(value) &&
+    !Number.isNaN(Date.parse(value));
+  if (looksLikeDateString) {
     return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
   return String(value ?? "");
@@ -77,10 +91,12 @@ export function TableView({ result }: TableViewProps) {
             <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-surface" : "bg-surface-2"}>
               {result.columns.map((column) => {
                 const value = row[column];
-                const isNumeric = isNumber(value);
+                const numericValue = toFiniteNumber(value);
+                const isNumeric = numericValue !== null || isNumber(value);
+                const displayNumber = numericValue ?? (isNumber(value) ? value : 0);
                 return (
                   <td key={column} className={`border-b border-border px-3 py-2 ${isNumeric ? "text-right" : "text-left"}`}>
-                    {isNumeric ? formatNumber(value) : formatDateLike(value)}
+                    {isNumeric ? formatNumber(displayNumber) : formatDateLike(value)}
                   </td>
                 );
               })}
