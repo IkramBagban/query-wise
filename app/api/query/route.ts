@@ -122,6 +122,58 @@ function buildStrictRetryQuestion(question: string): string {
   ].join("\n");
 }
 
+type ClassifiedIntent = {
+  intent: "query" | "conversation" | "unsafe";
+  reply: string;
+};
+
+function classifyIntentHeuristically(question: string): ClassifiedIntent | null {
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) return { intent: "conversation", reply: "Share a data question and I’ll analyze it." };
+
+  if (/^(hi|hello|hey|yo|hola|thanks|thank you|ok|cool|nice|great)\b/.test(normalized) && normalized.length <= 24) {
+    return {
+      intent: "conversation",
+      reply: "Hi. Ask a data question and I’ll analyze your connected database.",
+    };
+  }
+
+  if (/\b(drop|delete|truncate|update|insert|alter|create)\b/.test(normalized)) {
+    return {
+      intent: "unsafe",
+      reply: "That would modify data. I can only run read-only analysis queries.",
+    };
+  }
+
+  return null;
+}
+
+function buildNoResultsMessage(question: string, schema: SchemaInfo): string {
+  const ranges = schema.tables
+    .flatMap((table) =>
+      table.columns
+        .filter((column) => column.range && /date|time|timestamp/i.test(column.type))
+        .map((column) => ({
+          table: table.name,
+          column: column.name,
+          min: column.range?.min ?? "",
+          max: column.range?.max ?? "",
+        })),
+    )
+    .filter((item) => item.min && item.max);
+
+  if (ranges.length === 0) {
+    return "No rows matched that filter. Try widening the date range or relaxing filters.";
+  }
+
+  const primary = ranges[0];
+  if (/\blast quarter\b|\blast month\b|\bpast\b|\brecent\b|\byesterday\b|\btoday\b/.test(question.toLowerCase())) {
+    return `No rows matched that filter. Data in ${primary.table}.${primary.column} spans ${primary.min} to ${primary.max}. Try adjusting the date window.`;
+  }
+
+  return "No rows matched that filter. Try broadening the filters and rerunning.";
+}
+
 export async function POST(req: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -142,19 +194,22 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const intent = await classifyQuestionIntent({
-      question,
-      provider,
-      model,
-      apiKey,
-    }).catch(() => ({ intent: "query" as const, reply: "" }));
+    const heuristicIntent = classifyIntentHeuristically(question);
+    const intent =
+      heuristicIntent ??
+      (await classifyQuestionIntent({
+        question,
+        provider,
+        model,
+        apiKey,
+      }).catch(() => ({ intent: "query" as const, reply: "" })));
 
     if (intent.intent !== "query") {
       const explanation =
         intent.reply ||
         (intent.intent === "unsafe"
           ? "I can only run safe, read-only analysis queries. I cannot modify or delete data."
-          : "Hey! Ask me a database question and I'll analyze it for you.");
+          : "Ask a database question and I’ll analyze it.");
 
       logEvent({
         type: "INFO",
@@ -292,13 +347,14 @@ export async function POST(req: NextRequest) {
 
     let explanation = "";
     if (finalResult.rowCount === 0) {
-      explanation = "No rows matched your question.";
+      explanation = buildNoResultsMessage(question, schema);
     } else {
       try {
         explanation = await generateExplanation({
           question,
           sql,
           rowCount: finalResult.rowCount,
+          history,
           provider,
           model,
           apiKey,

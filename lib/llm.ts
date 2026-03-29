@@ -83,6 +83,7 @@ interface GenerateExplanationParams {
   question: string;
   sql: string;
   rowCount: number;
+  history?: ChatMessage[];
   provider: Provider;
   model: string;
   apiKey: string;
@@ -256,8 +257,9 @@ export async function classifyQuestionIntent(
     "Return strict JSON only: {\"intent\":\"query|conversation|unsafe\",\"reply\":\"...\"}.",
     "Use intent=query only when user is asking to analyze/query database data.",
     "Use intent=conversation for greetings/small talk/off-topic requests.",
+    "Use intent=conversation when the question is ambiguous and needs clarification before SQL.",
     "Use intent=unsafe when user asks to modify/delete/drop/truncate/update/insert data or schema.",
-    "For conversation/unsafe intents, reply should be a short user-facing response.",
+    "For conversation/unsafe intents, reply should be a short analyst-style response without filler.",
     "For query intent, reply can be empty string.",
     "",
     `Message: ${params.question}`,
@@ -299,21 +301,30 @@ export async function classifyQuestionIntent(
 export async function generateExplanation(
   params: GenerateExplanationParams,
 ): Promise<string> {
+  const userMessages = (params.history ?? []).filter((message) => message.role === "user").map((message) => message.content);
+  const previousQuestion =
+    userMessages.length >= 2 ? userMessages[userMessages.length - 2] : "";
+
   const prompt = [
     `Question: ${params.question}`,
+    previousQuestion ? `Previous user question: ${previousQuestion}` : "",
     `SQL executed: ${params.sql}`,
     `Rows returned: ${params.rowCount}`,
-    "Write a brief explanation.",
+    "Write a concise analyst response in 2-4 lines.",
+    "No filler phrases.",
+    "If relative time language exists (last month/quarter), state the assumption clearly.",
+    "If this looks like a follow-up filter, explicitly say you narrowed/refined the previous analysis.",
+    "Focus on key result takeaway and what was filtered.",
   ].join("\n");
 
   const { text } = await withRetry(async () =>
     generateText({
       model: getModel(params.provider, params.model, params.apiKey),
       system:
-        "You are a data analyst. Explain query results in 1-2 sentences. Be specific about numbers.",
+        "You are a senior data analyst. Be direct, data-focused, and concise. Never use chatbot filler.",
       prompt,
       maxOutputTokens: 120,
-      temperature: 0.2,
+      temperature: 0.15,
     }),
   );
 
