@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ErDiagramModal } from "@/components/schema/ErDiagramModal";
 import { SchemaSummary } from "@/components/schema/SchemaSummary";
 import { TableItem } from "@/components/schema/TableItem";
 import type { SchemaInfo } from "@/types";
@@ -18,6 +19,7 @@ interface SchemaPanelProps {
 export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
   const [query, setQuery] = useState("");
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [erOpen, setErOpen] = useState(false);
 
   const filtered = useMemo(() => {
     if (!schema) return [];
@@ -41,14 +43,24 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
     <aside className="flex h-full min-h-0 w-full flex-col gap-4 bg-transparent p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#486856]">Schema</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setSummaryOpen(true)}
-          className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
-        >
-          Summary
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setErOpen(true)}
+            className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
+          >
+            ER Diagram
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSummaryOpen(true)}
+            className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
+          >
+            Summary
+          </Button>
+        </div>
       </div>
       <div className="relative group">
         <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-text-3 transition-colors group-focus-within:text-accent" />
@@ -107,6 +119,8 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
           </div>
         </div>
       </Dialog>
+
+      <ErDiagramModal open={erOpen} onOpenChange={setErOpen} schema={schema} />
     </aside>
 
   );

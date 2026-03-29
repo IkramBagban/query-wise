@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { resolveChartConfig } from "@/lib/charts";
 import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
-import { generateChartHint, generateExplanation, generateSQL } from "@/lib/llm";
+import { classifyQuestionIntent, generateChartHint, generateExplanation, generateSQL } from "@/lib/llm";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
 import { logEvent } from "@/lib/logger";
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const { question, history, connectionString, provider, model, apiKey } = parsed.data;
+    const { question, history, connectionString, provider, model, apiKey } = parsed.data;
 
   logEvent({
     type: "USER_QUERY",
@@ -142,6 +142,34 @@ export async function POST(req: NextRequest) {
   });
 
   try {
+    const intent = await classifyQuestionIntent({
+      question,
+      provider,
+      model,
+      apiKey,
+    }).catch(() => ({ intent: "query" as const, reply: "" }));
+
+    if (intent.intent !== "query") {
+      const explanation =
+        intent.reply ||
+        (intent.intent === "unsafe"
+          ? "I can only run safe, read-only analysis queries. I cannot modify or delete data."
+          : "Hey! Ask me a database question and I'll analyze it for you.");
+
+      logEvent({
+        type: "INFO",
+        timestamp: new Date().toISOString(),
+        message: "Conversation response (no SQL execution)",
+        meta: { question, intent: intent.intent }
+      });
+
+      const response: QueryResponse = {
+        mode: "conversation",
+        explanation,
+      };
+      return Response.json(response);
+    }
+
     const schema = await getCachedSchema(connectionString);
     const attempts = [
       question,
@@ -292,7 +320,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const response: QueryResponse = { sql, result: finalResult, chartConfig, explanation };
+    const response: QueryResponse = { mode: "query", sql, result: finalResult, chartConfig, explanation };
     logEvent({
       type: "INFO",
       timestamp: new Date().toISOString(),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, Code2, Save, Table2 } from "lucide-react";
+import { BarChart3, Code2, Save } from "lucide-react";
 
 import { ChartRenderer } from "@/components/charts/ChartRenderer";
 import { TableView } from "@/components/charts/TableView";
@@ -12,8 +12,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { toChartTypeOptions } from "@/lib/chartTypeOptions";
 import type { ChartType, ChatMessage } from "@/types";
 
-type ResultTab = "chart" | "table" | "sql";
-const VISUAL_CHART_TYPES: ChartType[] = ["bar", "line", "area", "scatter", "pie"];
+type ResultTab = "chart" | "sql";
 
 interface MessageResultCardProps {
   message: ChatMessage;
@@ -23,12 +22,7 @@ interface MessageResultCardProps {
 
 function getDefaultTab(message: ChatMessage): ResultTab {
   if (!message.result) return "sql";
-  const hasVisualChart = Boolean(
-    message.chartConfig?.availableTypes.some((type) => type !== "table"),
-  );
-  if (hasVisualChart) return "chart";
-  if (message.result) return "table";
-  return "sql";
+  return "chart";
 }
 
 export function MessageResultCard({
@@ -40,20 +34,16 @@ export function MessageResultCard({
   const [saving, setSaving] = useState(false);
 
   const chartTypes = useMemo(() => {
-    if (!message.result || message.result.rows.length === 0 || message.result.columns.length < 2) {
+    if (!message.result) {
       return [];
     }
 
-    const fromConfig =
-      message.chartConfig?.availableTypes.filter((type) => type !== "table") ?? [];
-    return Array.from(new Set([...fromConfig, ...VISUAL_CHART_TYPES]));
+    const fromConfig = message.chartConfig?.availableTypes ?? ["table"];
+    return Array.from(new Set(fromConfig));
   }, [message.chartConfig, message.result]);
 
-  const hasChart = chartTypes.length > 0;
-  const activeChartType =
-    message.chartConfig && message.chartConfig.type !== "table"
-      ? message.chartConfig.type
-      : chartTypes[0];
+  const hasResultView = chartTypes.length > 0;
+  const activeChartType = message.chartConfig?.type ?? chartTypes[0];
   const chartConfigForView =
     message.chartConfig && activeChartType
       ? { ...message.chartConfig, type: activeChartType }
@@ -72,7 +62,7 @@ export function MessageResultCard({
     <div className="overflow-hidden rounded-2xl border border-[#174128]/18 bg-[#f9fdf7] shadow-[0_12px_28px_rgba(14,41,24,0.08)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#174128]/10 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-4 py-3">
         <div className="flex flex-wrap gap-2">
-          {hasChart ? (
+          {hasResultView ? (
             <Tooltip content="Chart" side="bottom">
               <button
                 aria-label="Chart"
@@ -87,19 +77,6 @@ export function MessageResultCard({
               </button>
             </Tooltip>
           ) : null}
-          <Tooltip content="Table" side="bottom">
-            <button
-              aria-label="Table"
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
-                activeTab === "table"
-                  ? "bg-[#2ed52e] text-white shadow-[0_8px_20px_rgba(46,213,46,0.25)]"
-                  : "border border-[#174128]/16 bg-white text-black hover:text-black"
-              }`}
-              onClick={() => setActiveTab("table")}
-            >
-              <Table2 className={`h-4.5 w-4.5 ${activeTab === "table" ? "text-white" : "text-black"}`} strokeWidth={2.4} />
-            </button>
-          </Tooltip>
           {message.sql ? (
             <Tooltip content="Generated SQL" side="bottom">
               <button
@@ -137,7 +114,7 @@ export function MessageResultCard({
         </div>
       </div>
 
-      {activeTab === "chart" && hasChart && message.result && chartConfigForView ? (
+      {activeTab === "chart" && hasResultView && message.result && chartConfigForView ? (
         <div className="space-y-4 p-4">
           <div className="flex items-center justify-between gap-3">
             <Select
@@ -148,14 +125,12 @@ export function MessageResultCard({
             />
           </div>
           <div className="rounded-xl border border-[#174128]/16 bg-white p-3">
-            <ChartRenderer result={message.result} chartConfig={chartConfigForView} />
+            {chartConfigForView.type === "table" ? (
+              <TableView result={message.result} />
+            ) : (
+              <ChartRenderer result={message.result} chartConfig={chartConfigForView} />
+            )}
           </div>
-        </div>
-      ) : null}
-
-      {activeTab === "table" && message.result ? (
-        <div className="p-4">
-          <TableView result={message.result} />
         </div>
       ) : null}
 
