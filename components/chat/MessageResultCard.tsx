@@ -7,7 +7,9 @@ import { ChartRenderer } from "@/components/charts/ChartRenderer";
 import { TableView } from "@/components/charts/TableView";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
+import { toChartTypeOptions } from "@/lib/chartTypeOptions";
 import type { ChartType, ChatMessage } from "@/types";
 
 type ResultTab = "chart" | "table" | "sql";
@@ -137,20 +139,13 @@ export function MessageResultCard({
 
       {activeTab === "chart" && hasChart && message.result && chartConfigForView ? (
         <div className="space-y-4 p-4">
-          <div className="flex flex-wrap gap-2">
-            {chartTypes.map((type) => (
-              <button
-                key={type}
-                className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] transition ${
-                  activeChartType === type
-                    ? "bg-[#2ed52e] !text-white"
-                    : "border border-[#174128]/16 bg-white text-[#2ed52e] hover:text-[#2ed52e]"
-                }`}
-                onClick={() => onChartTypeChange(message.id, type)}
-              >
-                {type}
-              </button>
-            ))}
+          <div className="flex items-center justify-between gap-3">
+            <Select
+              value={activeChartType}
+              onChange={(value) => onChartTypeChange(message.id, value as ChartType)}
+              options={toChartTypeOptions(chartTypes)}
+              className="h-9 min-w-[140px] max-w-[180px]"
+            />
           </div>
           <div className="rounded-xl border border-[#174128]/16 bg-white p-3">
             <ChartRenderer result={message.result} chartConfig={chartConfigForView} />

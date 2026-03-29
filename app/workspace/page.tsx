@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Database, LayoutDashboard, Settings } from "lucide-react";
+import { Database, LayoutDashboard, PanelLeft, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -57,6 +57,7 @@ export default function WorkspacePage() {
   const [schema, setSchema] = useState<SchemaInfo | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [schemaOpen, setSchemaOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [connectTab, setConnectTab] = useState<"demo" | "custom">("demo");
@@ -220,8 +221,17 @@ export default function WorkspacePage() {
   };
   return (
     <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_6%_0%,rgba(116,204,99,0.16),transparent_24%),radial-gradient(circle_at_100%_0%,rgba(43,116,57,0.08),transparent_20%),#f4faf2] text-text-1">
-      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-[#174128]/14 bg-white/85 px-5 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md">
+      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-[#174128]/14 bg-white/85 px-3 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md sm:px-5">
         <div className="flex items-center gap-3">
+          <Tooltip content="Schema" side="bottom">
+            <Button
+              variant="icon"
+              onClick={() => setSchemaOpen(true)}
+              className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a] lg:hidden"
+            >
+              <PanelLeft className="h-4.5 w-4.5" strokeWidth={2.3} />
+            </Button>
+          </Tooltip>
           <span className="font-syne text-2xl font-bold tracking-tight">
             Query<span className="text-[#2ed52e]">Wise</span>
           </span>
@@ -256,8 +266,8 @@ export default function WorkspacePage() {
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 divide-x divide-[#174128]/12 overflow-hidden">
-        <div className="relative z-10 w-[290px] shrink-0 bg-[#f1f9ed]">
+      <section className="min-h-0 flex-1 overflow-hidden lg:flex lg:divide-x lg:divide-[#174128]/12">
+        <div className="relative z-10 hidden w-[290px] shrink-0 bg-[#f1f9ed] lg:block">
           <SchemaPanel schema={schema} isLoading={loadingSchema} />
         </div>
         
@@ -273,6 +283,12 @@ export default function WorkspacePage() {
           />
         </div>
       </section>
+
+      <Sheet open={schemaOpen} onOpenChange={setSchemaOpen}>
+        <div className="h-full overflow-hidden">
+          <SchemaPanel schema={schema} isLoading={loadingSchema} />
+        </div>
+      </Sheet>
 
 
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>

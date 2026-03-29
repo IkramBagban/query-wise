@@ -21,7 +21,7 @@ export function MessageList({ messages, isLoading, onChartTypeChange, onSaveWidg
   }, [isLoading, messages]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
       <div className="mx-auto w-full max-w-[1080px]">
         {messages.length === 0 ? (
           <div className="mx-auto mt-8 max-w-xl rounded-2xl border border-dashed border-[#164229]/28 bg-white/90 p-7 text-sm text-text-2 shadow-[0_14px_30px_rgba(14,41,24,0.07)]">

@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_QUERIES = [
@@ -102,7 +101,7 @@ export function QueryInput({
           }}
         />
         <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
-          <Select value={model} onChange={onModelChange} options={modelOptions} className="min-w-48" menuSide="top" />
+          <Select value={model} onChange={onModelChange} options={modelOptions} className="min-w-36 sm:min-w-48" menuSide="top" />
             <Button
               variant="primary"
               size="sm"
