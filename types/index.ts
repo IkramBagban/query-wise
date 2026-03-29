@@ -102,6 +102,18 @@ export interface ChartConfig {
 }
 
 /**
+ * Optional LLM hint for chart semantics. Must be validated before use.
+ */
+export interface ChartHint {
+  type?: ChartType;
+  xKey?: string;
+  yKey?: string;
+  yKeys?: string[];
+  nameKey?: string;
+  valueKey?: string;
+}
+
+/**
  * Single dashboard widget created from a query result.
  */
 export interface DashboardWidget {

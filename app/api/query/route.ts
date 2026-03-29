@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { NextRequest } from "next/server";
 
-import { detectChartConfig } from "@/lib/charts";
+import { resolveChartConfig } from "@/lib/charts";
 import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
-import { generateExplanation, generateSQL } from "@/lib/llm";
+import { generateChartHint, generateExplanation, generateSQL } from "@/lib/llm";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
 import { logEvent } from "@/lib/logger";
@@ -122,66 +122,6 @@ function buildStrictRetryQuestion(question: string): string {
   ].join("\n");
 }
 
-function fallbackSqlForQuestion(question: string): string | null {
-  const q = question.toLowerCase();
-
-  if (
-    q.includes("top 5 products") &&
-    q.includes("revenue") &&
-    q.includes("last month")
-  ) {
-    return `
-SELECT
-  p.name AS product_name,
-  SUM(oi.total_price) AS revenue
-FROM order_items oi
-JOIN products p ON p.id = oi.product_id
-JOIN orders o ON o.id = oi.order_id
-WHERE o.created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
-  AND o.created_at < date_trunc('month', CURRENT_DATE)
-GROUP BY p.name
-ORDER BY revenue DESC
-LIMIT 5
-`.trim();
-  }
-
-  if (
-    q.includes("top 10 customers") &&
-    (q.includes("total spend") || q.includes("spend"))
-  ) {
-    return `
-SELECT
-  c.id,
-  c.first_name,
-  c.last_name,
-  SUM(o.total_amount) AS total_spend
-FROM orders o
-JOIN customers c ON c.id = o.customer_id
-WHERE o.status NOT IN ('cancelled', 'refunded')
-GROUP BY c.id, c.first_name, c.last_name
-ORDER BY total_spend DESC
-LIMIT 10
-`.trim();
-  }
-
-  if (
-    (q.includes("daily order count") || q.includes("order count by day")) &&
-    q.includes("30 days")
-  ) {
-    return `
-SELECT
-  DATE(o.created_at) AS day,
-  COUNT(*) AS order_count
-FROM orders o
-WHERE o.created_at >= CURRENT_DATE - INTERVAL '30 days'
-GROUP BY DATE(o.created_at)
-ORDER BY day ASC
-`.trim();
-  }
-
-  return null;
-}
-
 export async function POST(req: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -213,95 +153,124 @@ export async function POST(req: NextRequest) {
     let result: Awaited<ReturnType<typeof executeQuery>> | null = null;
     let lastBlockedError: Error | null = null;
 
-    for (const attemptQuestion of attempts) {
-      sql = await generateSQL({
-        question: attemptQuestion,
-        schema,
-        history,
+    const tryModel = async (modelName: string): Promise<boolean> => {
+      for (const attemptQuestion of attempts) {
+        sql = await generateSQL({
+          question: attemptQuestion,
+          schema,
+          history,
+          provider,
+          model: modelName,
+          apiKey,
+        });
+
+        logEvent({
+          type: "LLM_RESPONSE",
+          timestamp: new Date().toISOString(),
+          message: sql,
+          meta: { attemptQuestion, model: modelName }
+        });
+
+        const validation = validateAndSanitizeSql(sql);
+        if (!validation.valid) {
+          lastBlockedError = new Error(validation.reason ?? "Query blocked");
+          continue;
+        }
+
+        try {
+          result = await executeQuery(sql, connectionString);
+          logEvent({
+            type: "SQL_QUERY",
+            timestamp: new Date().toISOString(),
+            message: sql,
+            meta: { connectionString, model: modelName }
+          });
+          return true;
+        } catch (error) {
+          if (!isBlockedQueryError(error)) {
+            logEvent({
+              type: "ERROR",
+              timestamp: new Date().toISOString(),
+              message: error instanceof Error ? error.message : String(error),
+              meta: { stack: error instanceof Error ? error.stack : undefined, sql, model: modelName }
+            });
+            throw error;
+          }
+          lastBlockedError =
+            error instanceof Error ? error : new Error("Query blocked");
+        }
+      }
+      return false;
+    };
+
+    await tryModel(model);
+
+    // Some models can occasionally return empty SQL; retry once with a stable Google fallback.
+    const lastBlockedMessage =
+      (lastBlockedError as { message?: string } | null)?.message ?? "";
+
+    if (!result && provider === "google" && lastBlockedMessage === "Query is empty.") {
+      const fallbackModel = model === "gemini-2.5-flash" ? "gemini-2.0-flash" : "gemini-2.5-flash";
+      logEvent({
+        type: "INFO",
+        timestamp: new Date().toISOString(),
+        message: "Retrying SQL generation with fallback model",
+        meta: { fromModel: model, toModel: fallbackModel, reason: lastBlockedMessage }
+      });
+      await tryModel(fallbackModel);
+    }
+
+    if (!result) {
+      const blockedError = lastBlockedError as Error | null;
+      logEvent({
+        type: "ERROR",
+        timestamp: new Date().toISOString(),
+        message: blockedError?.message || "No result after all attempts",
+        meta: { question }
+      });
+      throw (
+        blockedError ??
+        new Error("I couldn't generate a safe query for that question. Try rephrasing.")
+      );
+    }
+    const finalResult = result as Awaited<ReturnType<typeof executeQuery>>;
+
+    let chartHint = null;
+    try {
+      chartHint = await generateChartHint({
+        question,
+        sql,
+        result: finalResult,
         provider,
         model,
         apiKey,
       });
-
+    } catch (err) {
       logEvent({
-        type: "LLM_RESPONSE",
+        type: "ERROR",
         timestamp: new Date().toISOString(),
-        message: sql,
-        meta: { attemptQuestion }
+        message: err instanceof Error ? err.message : String(err),
+        meta: { chartHintFallback: true }
       });
-
-      const validation = validateAndSanitizeSql(sql);
-      if (!validation.valid) {
-        lastBlockedError = new Error(validation.reason ?? "Query blocked");
-        continue;
-      }
-
-      try {
-        result = await executeQuery(sql, connectionString);
-        logEvent({
-          type: "SQL_QUERY",
-          timestamp: new Date().toISOString(),
-          message: sql,
-          meta: { connectionString }
-        });
-        break;
-      } catch (error) {
-        if (!isBlockedQueryError(error)) {
-          logEvent({
-            type: "ERROR",
-            timestamp: new Date().toISOString(),
-            message: error instanceof Error ? error.message : String(error),
-            meta: { stack: error instanceof Error ? error.stack : undefined, sql }
-          });
-          throw error;
-        }
-        lastBlockedError =
-          error instanceof Error ? error : new Error("Query blocked");
-      }
     }
 
-    if (!result) {
-      const fallbackSql = fallbackSqlForQuestion(question);
-      if (fallbackSql) {
-        result = await executeQuery(fallbackSql, connectionString);
-        sql = fallbackSql;
-        logEvent({
-          type: "SQL_QUERY",
-          timestamp: new Date().toISOString(),
-          message: fallbackSql,
-          meta: { fallback: true, connectionString }
-        });
-      } else {
-        logEvent({
-          type: "ERROR",
-          timestamp: new Date().toISOString(),
-          message: lastBlockedError?.message || "No result and no fallback SQL",
-          meta: { question }
-        });
-        throw (
-          lastBlockedError ??
-          new Error("I couldn't generate a safe query for that question.")
-        );
-      }
-    }
-
-    const chartConfig = detectChartConfig(result);
+    const chartConfig = resolveChartConfig(finalResult, chartHint);
     logEvent({
       type: "CHART_RENDER",
       timestamp: new Date().toISOString(),
       message: chartConfig.type,
-      meta: { chartConfig }
+      meta: { chartConfig, chartHint }
     });
 
     let explanation = "";
-    if (result.rowCount === 0) {
+    if (finalResult.rowCount === 0) {
       explanation = "No rows matched your question.";
     } else {
       try {
         explanation = await generateExplanation({
           question,
           sql,
-          rowCount: result.rowCount,
+          rowCount: finalResult.rowCount,
           provider,
           model,
           apiKey,
@@ -313,7 +282,7 @@ export async function POST(req: NextRequest) {
           meta: { explanation }
         });
       } catch (err) {
-        explanation = `Found ${result.rowCount} result${result.rowCount !== 1 ? "s" : ""}.`;
+        explanation = `Found ${finalResult.rowCount} result${finalResult.rowCount !== 1 ? "s" : ""}.`;
         logEvent({
           type: "ERROR",
           timestamp: new Date().toISOString(),
@@ -323,12 +292,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const response: QueryResponse = { sql, result, chartConfig, explanation };
+    const response: QueryResponse = { sql, result: finalResult, chartConfig, explanation };
     logEvent({
       type: "INFO",
       timestamp: new Date().toISOString(),
       message: "Query completed",
-      meta: { question, sql, chartType: chartConfig.type, rowCount: result.rowCount }
+      meta: { question, sql, chartType: chartConfig.type, rowCount: finalResult.rowCount }
     });
     return Response.json(response);
   } catch (error) {

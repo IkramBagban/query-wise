@@ -3,11 +3,41 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 
 import { sleep } from "@/lib/utils";
-import type { ChatMessage, SchemaInfo } from "@/types";
+import type { ChartHint, ChatMessage, QueryResult, SchemaInfo } from "@/types";
 
 type Provider = "google" | "anthropic";
 
 export const SUPPORTED_MODELS = [
+  {
+    provider: "google",
+    model: "gemini-3.1-pro-preview",
+    label: "Gemini 3.1 Pro Preview",
+    tier: "powerful",
+  },
+  {
+    provider: "google",
+    model: "gemini-3-flash-preview",
+    label: "Gemini 3 Flash Preview",
+    tier: "fast",
+  },
+  {
+    provider: "google",
+    model: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro",
+    tier: "powerful",
+  },
+  {
+    provider: "google",
+    model: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    tier: "fast",
+  },
+  {
+    provider: "google",
+    model: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash-Lite",
+    tier: "fast",
+  },
   {
     provider: "google",
     model: "gemini-2.0-flash",
@@ -53,6 +83,15 @@ interface GenerateExplanationParams {
   question: string;
   sql: string;
   rowCount: number;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+}
+
+interface GenerateChartHintParams {
+  question: string;
+  sql: string;
+  result: QueryResult;
   provider: Provider;
   model: string;
   apiKey: string;
@@ -180,7 +219,7 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
       model: getModel(params.provider, params.model, params.apiKey),
       system: systemPrompt,
       messages,
-      maxOutputTokens: 1000,
+      maxOutputTokens: 1000,  
       temperature: 0.1,
     }),
   );
@@ -210,6 +249,79 @@ export async function generateExplanation(
   );
 
   return text.trim();
+}
+
+function sanitizeChartHint(raw: string): ChartHint | null {
+  try {
+    const parsed = JSON.parse(raw) as ChartHint;
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const pickString = (value: unknown): string | undefined =>
+      typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+    const pickStringArray = (value: unknown): string[] | undefined =>
+      Array.isArray(value)
+        ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
+        : undefined;
+
+    const type = pickString(parsed.type);
+    if (
+      type &&
+      type !== "bar" &&
+      type !== "line" &&
+      type !== "pie" &&
+      type !== "scatter" &&
+      type !== "area" &&
+      type !== "table"
+    ) {
+      return null;
+    }
+
+    return {
+      type: type as ChartHint["type"],
+      xKey: pickString(parsed.xKey),
+      yKey: pickString(parsed.yKey),
+      yKeys: pickStringArray(parsed.yKeys),
+      nameKey: pickString(parsed.nameKey),
+      valueKey: pickString(parsed.valueKey),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function generateChartHint(
+  params: GenerateChartHintParams,
+): Promise<ChartHint | null> {
+  const sampleRows = params.result.rows.slice(0, 12);
+  const prompt = [
+    "Choose the best visualization config for this SQL result.",
+    "Return JSON only with keys: type, xKey, yKey, yKeys, nameKey, valueKey.",
+    "Allowed type: bar | line | area | scatter | pie | table.",
+    "Rules:",
+    "- Prefer line/area for time series trends.",
+    "- Use pie only when exactly one categorical dimension + one numeric metric and <=10 rows.",
+    "- For comparison queries with multiple numeric metrics, use grouped bar and set yKeys.",
+    "- Never invent columns. Use only provided column names.",
+    "",
+    `Question: ${params.question}`,
+    `SQL: ${params.sql}`,
+    `Columns: ${JSON.stringify(params.result.columns)}`,
+    `Row count: ${params.result.rowCount}`,
+    `Sample rows: ${JSON.stringify(sampleRows)}`,
+  ].join("\n");
+
+  const { text } = await withRetry(async () =>
+    generateText({
+      model: getModel(params.provider, params.model, params.apiKey),
+      system:
+        "You are a chart planner for SQL results. Return strict JSON only, no markdown or prose.",
+      prompt,
+      maxOutputTokens: 220,
+      temperature: 0,
+    }),
+  );
+
+  return sanitizeChartHint(text.trim());
 }
 
 export async function validateModelAccess(

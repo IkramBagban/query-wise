@@ -1,5 +1,5 @@
 import { isDateColumn, isNumericColumn } from "@/lib/utils";
-import type { ChartConfig, ChartType, QueryResult } from "@/types";
+import type { ChartConfig, ChartHint, ChartType, QueryResult } from "@/types";
 
 function inferColumnType(rows: Record<string, unknown>[], column: string): string {
   const value = rows.find((row) => row[column] != null)?.[column];
@@ -26,8 +26,7 @@ function makeConfig(
 
 export function detectChartConfig(result: QueryResult): ChartConfig {
   const { columns, rows } = result;
-
-  if (rows.length === 0 || columns.length === 0) {  
+  if (rows.length === 0 || columns.length === 0) {
     return makeConfig("table", { availableTypes: ["table"] });
   }
 
@@ -88,4 +87,80 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
   }
 
   return makeConfig("table", { availableTypes: ["table", "bar", "line", "area", "scatter", "pie"] });
+}
+
+function isNumericResultColumn(rows: Record<string, unknown>[], column: string): boolean {
+  return rows.some((row) => isNumericColumn(inferColumnType([row], column)));
+}
+
+function applyChartHint(base: ChartConfig, result: QueryResult, hint?: ChartHint | null): ChartConfig {
+  if (!hint?.type) return base;
+
+  const { columns, rows } = result;
+  const columnSet = new Set(columns);
+
+  const hasColumn = (key?: string): key is string => Boolean(key && columnSet.has(key));
+  const numericKeys = (hint.yKeys ?? [])
+    .filter((key) => hasColumn(key) && isNumericResultColumn(rows, key));
+
+  if (hint.type === "pie") {
+    if (!hasColumn(hint.nameKey) || !hasColumn(hint.valueKey)) return base;
+    if (!isNumericResultColumn(rows, hint.valueKey)) return base;
+    return makeConfig("pie", {
+      nameKey: hint.nameKey,
+      valueKey: hint.valueKey,
+      availableTypes: ["pie", "bar", "line", "area", "scatter", "table"],
+    });
+  }
+
+  if (hint.type === "table") {
+    return makeConfig("table", { availableTypes: ["table", "bar", "line", "area", "scatter", "pie"] });
+  }
+
+  if (!hasColumn(hint.xKey)) return base;
+  const chosenYKeys = numericKeys.length > 0 ? numericKeys : undefined;
+  const chosenYKey =
+    (hasColumn(hint.yKey) && isNumericResultColumn(rows, hint.yKey) && hint.yKey) ||
+    chosenYKeys?.[0];
+
+  if (!chosenYKey) return base;
+
+  return makeConfig(hint.type, {
+    xKey: hint.xKey,
+    yKey: chosenYKey,
+    yKeys: chosenYKeys ?? [chosenYKey],
+    availableTypes: ["bar", "line", "area", "scatter", "pie", "table"],
+  });
+}
+
+export function resolveChartConfig(result: QueryResult, hint?: ChartHint | null): ChartConfig {
+  const base = detectChartConfig(result);
+  const resolved = applyChartHint(base, result, hint);
+
+  const withFallbackType = resolved.availableTypes.includes(resolved.type)
+    ? resolved
+    : {
+      ...resolved,
+      availableTypes: [resolved.type, ...resolved.availableTypes],
+    };
+
+  if (
+    (withFallbackType.type === "bar" ||
+      withFallbackType.type === "line" ||
+      withFallbackType.type === "area" ||
+      withFallbackType.type === "scatter") &&
+    withFallbackType.yKeys &&
+    withFallbackType.yKeys.length > 1
+  ) {
+    return withFallbackType;
+  }
+
+  if (withFallbackType.yKey && (!withFallbackType.yKeys || withFallbackType.yKeys.length === 0)) {
+    return {
+      ...withFallbackType,
+      yKeys: [withFallbackType.yKey],
+    };
+  }
+
+  return withFallbackType;
 }
