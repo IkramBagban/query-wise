@@ -6,6 +6,7 @@ import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
 import { generateExplanation, generateSQL } from "@/lib/llm";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
+import { logEvent } from "@/lib/logger";
 import type { QueryResponse, SchemaInfo } from "@/types";
 
 export const runtime = "nodejs";
@@ -193,6 +194,13 @@ export async function POST(req: NextRequest) {
 
   const { question, history, connectionString, provider, model, apiKey } = parsed.data;
 
+  logEvent({
+    type: "USER_QUERY",
+    timestamp: new Date().toISOString(),
+    message: question,
+    meta: { history, connectionString, provider, model }
+  });
+
   try {
     const schema = await getCachedSchema(connectionString);
     const attempts = [
@@ -215,6 +223,13 @@ export async function POST(req: NextRequest) {
         apiKey,
       });
 
+      logEvent({
+        type: "LLM_RESPONSE",
+        timestamp: new Date().toISOString(),
+        message: sql,
+        meta: { attemptQuestion }
+      });
+
       const validation = validateAndSanitizeSql(sql);
       if (!validation.valid) {
         lastBlockedError = new Error(validation.reason ?? "Query blocked");
@@ -223,9 +238,21 @@ export async function POST(req: NextRequest) {
 
       try {
         result = await executeQuery(sql, connectionString);
+        logEvent({
+          type: "SQL_QUERY",
+          timestamp: new Date().toISOString(),
+          message: sql,
+          meta: { connectionString }
+        });
         break;
       } catch (error) {
         if (!isBlockedQueryError(error)) {
+          logEvent({
+            type: "ERROR",
+            timestamp: new Date().toISOString(),
+            message: error instanceof Error ? error.message : String(error),
+            meta: { stack: error instanceof Error ? error.stack : undefined, sql }
+          });
           throw error;
         }
         lastBlockedError =
@@ -238,7 +265,19 @@ export async function POST(req: NextRequest) {
       if (fallbackSql) {
         result = await executeQuery(fallbackSql, connectionString);
         sql = fallbackSql;
+        logEvent({
+          type: "SQL_QUERY",
+          timestamp: new Date().toISOString(),
+          message: fallbackSql,
+          meta: { fallback: true, connectionString }
+        });
       } else {
+        logEvent({
+          type: "ERROR",
+          timestamp: new Date().toISOString(),
+          message: lastBlockedError?.message || "No result and no fallback SQL",
+          meta: { question }
+        });
         throw (
           lastBlockedError ??
           new Error("I couldn't generate a safe query for that question.")
@@ -247,6 +286,12 @@ export async function POST(req: NextRequest) {
     }
 
     const chartConfig = detectChartConfig(result);
+    logEvent({
+      type: "CHART_RENDER",
+      timestamp: new Date().toISOString(),
+      message: chartConfig.type,
+      meta: { chartConfig }
+    });
 
     let explanation = "";
     if (result.rowCount === 0) {
@@ -261,14 +306,38 @@ export async function POST(req: NextRequest) {
           model,
           apiKey,
         });
-      } catch {
+        logEvent({
+          type: "LLM_RESPONSE",
+          timestamp: new Date().toISOString(),
+          message: explanation,
+          meta: { explanation }
+        });
+      } catch (err) {
         explanation = `Found ${result.rowCount} result${result.rowCount !== 1 ? "s" : ""}.`;
+        logEvent({
+          type: "ERROR",
+          timestamp: new Date().toISOString(),
+          message: err instanceof Error ? err.message : String(err),
+          meta: { explanationFallback: true }
+        });
       }
     }
 
     const response: QueryResponse = { sql, result, chartConfig, explanation };
+    logEvent({
+      type: "INFO",
+      timestamp: new Date().toISOString(),
+      message: "Query completed",
+      meta: { question, sql, chartType: chartConfig.type, rowCount: result.rowCount }
+    });
     return Response.json(response);
   } catch (error) {
+    logEvent({
+      type: "ERROR",
+      timestamp: new Date().toISOString(),
+      message: error instanceof Error ? error.message : String(error),
+      meta: { stack: error instanceof Error ? error.stack : undefined }
+    });
     console.error("[api/query]", error);
     return Response.json(
       { error: toUserFriendlyMessage(error) },
