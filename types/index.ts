@@ -18,10 +18,13 @@ export interface DbConnection {
 export interface SchemaColumn {
   name: string;
   type: string;
+  fullType?: string;
   nullable: boolean;
   isPrimaryKey: boolean;
   isForeignKey: boolean;
   references?: { table: string; column: string };
+  defaultValue?: string | null;
+  enumValues?: string[];
 }
 
 /**
@@ -180,10 +183,11 @@ export interface QueryRequest {
  * Query API response payload.
  */
 export interface QueryResponse {
-  sql: string;
-  result: QueryResult;
-  chartConfig: ChartConfig;
+  mode: "query" | "conversation";
   explanation: string;
+  sql?: string;
+  result?: QueryResult;
+  chartConfig?: ChartConfig;
 }
 
 /**

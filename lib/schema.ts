@@ -5,7 +5,11 @@ type ColumnRow = {
   table_name: string;
   column_name: string;
   data_type: string;
+  full_data_type: string;
   is_nullable: "YES" | "NO";
+  column_default: string | null;
+  udt_schema: string;
+  udt_name: string;
   is_pk: boolean;
   is_fk: boolean;
   foreign_table_name: string | null;
@@ -14,6 +18,12 @@ type ColumnRow = {
 
 type TableRow = {
   table_name: string;
+};
+
+type EnumRow = {
+  enum_schema: string;
+  enum_name: string;
+  enum_label: string;
 };
 
 const pools = new Map<string, Pool>();
@@ -62,6 +72,10 @@ function escapeIdentifier(identifier: string): string {
 }
 
 function extractEnumLikeValues(table: SchemaTable, column: SchemaColumn): string[] {
+  if ((column.enumValues?.length ?? 0) > 0) {
+    return column.enumValues ?? [];
+  }
+
   const type = column.type.toLowerCase();
   if (!type.includes("char") && !type.includes("text")) {
     return [];
@@ -82,7 +96,11 @@ function buildSummary(tables: SchemaTable[], relationships: Relationship[]): str
   const lines: string[] = [
     "DATABASE SCHEMA SUMMARY",
     "=======================",
-    `This database has ${tables.length} tables with the following structure:`,
+    `This database has ${tables.length} tables.`,
+    "",
+    "OVERVIEW:",
+    `- Total tables: ${tables.length}`,
+    `- Total relationships: ${relationships.length}`,
     "",
   ];
 
@@ -92,6 +110,7 @@ function buildSummary(tables: SchemaTable[], relationships: Relationship[]): str
     lines.push("  Columns:");
 
     for (const column of table.columns) {
+      const typeLabel = column.fullType ?? column.type;
       const markers: string[] = [];
       if (column.isPrimaryKey) {
         markers.push("PRIMARY KEY");
@@ -106,8 +125,14 @@ function buildSummary(tables: SchemaTable[], relationships: Relationship[]): str
         markers.push(`values: ${enumValues.map((v) => `'${v}'`).join(", ")}`);
       }
 
+      markers.push(column.nullable ? "NULLABLE" : "NOT NULL");
+
+      if (column.defaultValue) {
+        markers.push(`default: ${column.defaultValue}`);
+      }
+
       const markerText = markers.length > 0 ? ` [${markers.join("; ")}]` : "";
-      lines.push(`    - ${column.name}: ${column.type}${markerText}`);
+      lines.push(`    - ${column.name}: ${typeLabel}${markerText}`);
     }
 
     lines.push("", "  Sample data:");
@@ -156,13 +181,23 @@ export async function introspectSchema(connectionString?: string): Promise<Schem
       c.table_name,
       c.column_name,
       c.data_type,
+      pg_catalog.format_type(a.atttypid, a.atttypmod) AS full_data_type,
       c.is_nullable,
+      c.column_default,
+      c.udt_schema,
+      c.udt_name,
       c.ordinal_position,
       CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_pk,
       CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END AS is_fk,
       fk.foreign_table_name,
       fk.foreign_column_name
     FROM information_schema.columns c
+    JOIN pg_catalog.pg_namespace ns
+      ON ns.nspname = c.table_schema
+    JOIN pg_catalog.pg_class cls
+      ON cls.relname = c.table_name AND cls.relnamespace = ns.oid
+    JOIN pg_catalog.pg_attribute a
+      ON a.attrelid = cls.oid AND a.attname = c.column_name AND a.attnum > 0 AND NOT a.attisdropped
     LEFT JOIN (
       SELECT kcu.table_name, kcu.column_name
       FROM information_schema.table_constraints tc
@@ -187,6 +222,26 @@ export async function introspectSchema(connectionString?: string): Promise<Schem
     ORDER BY c.table_name, c.ordinal_position
   `);
 
+  const enumResult = await pool.query<EnumRow>(`
+    SELECT
+      n.nspname AS enum_schema,
+      t.typname AS enum_name,
+      e.enumlabel AS enum_label
+    FROM pg_type t
+    JOIN pg_enum e ON e.enumtypid = t.oid
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+    ORDER BY n.nspname, t.typname, e.enumsortorder
+  `);
+
+  const enumValuesByType = new Map<string, string[]>();
+  for (const row of enumResult.rows) {
+    const key = `${row.enum_schema}.${row.enum_name}`;
+    const current = enumValuesByType.get(key) ?? [];
+    current.push(row.enum_label);
+    enumValuesByType.set(key, current);
+  }
+
   const columnsByTable = new Map<string, SchemaColumn[]>();
   const relationships: Relationship[] = [];
 
@@ -201,10 +256,13 @@ export async function introspectSchema(connectionString?: string): Promise<Schem
     columns.push({
       name: row.column_name,
       type: row.data_type,
+      fullType: row.full_data_type,
       nullable: row.is_nullable === "YES",
       isPrimaryKey: row.is_pk,
       isForeignKey: row.is_fk,
       references,
+      defaultValue: row.column_default,
+      enumValues: enumValuesByType.get(`${row.udt_schema}.${row.udt_name}`),
     });
 
     if (references) {
@@ -227,6 +285,7 @@ export async function introspectSchema(connectionString?: string): Promise<Schem
 
     let rowCount: number | undefined;
     let sampleData: Record<string, unknown>[] = [];
+    const safeTableName = escapeIdentifier(tableName);
 
     try {
       const countResult = await pool.query<{ estimate: string | number }>(
@@ -240,12 +299,18 @@ export async function introspectSchema(connectionString?: string): Promise<Schem
       } else if (typeof estimate === "number") {
         rowCount = Math.round(estimate);
       }
+
+      if (typeof rowCount !== "number" || Number.isNaN(rowCount) || rowCount < 0) {
+        const exactCountResult = await pool.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM ${safeTableName}`
+        );
+        rowCount = Number.parseInt(exactCountResult.rows[0]?.count ?? "0", 10);
+      }
     } catch {
       rowCount = undefined;
     }
 
     try {
-      const safeTableName = escapeIdentifier(tableName);
       const samples = await pool.query<Record<string, unknown>>(
         `SELECT * FROM ${safeTableName} LIMIT 3`
       );

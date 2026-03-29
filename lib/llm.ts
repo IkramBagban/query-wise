@@ -103,6 +103,13 @@ interface ValidateModelAccessParams {
   apiKey: string;
 }
 
+interface ClassifyQuestionIntentParams {
+  question: string;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+}
+
 type ModelMessage = { role: "user" | "assistant"; content: string };
 
 function getModel(provider: Provider, model: string, apiKey: string) {
@@ -175,7 +182,13 @@ export function buildSchemaContext(schema: SchemaInfo): string {
         const reference = column.references
           ? ` -> ${column.references.table}.${column.references.column}`
           : "";
-        return `  - ${column.name}: ${column.type} (${flags})${reference}`;
+        const enumInfo =
+          (column.enumValues?.length ?? 0) > 0
+            ? ` enum[${column.enumValues?.map((value) => `'${value}'`).join(", ")}]`
+            : "";
+        const defaultInfo = column.defaultValue ? ` default=${column.defaultValue}` : "";
+        const typeLabel = column.fullType ?? column.type;
+        return `  - ${column.name}: ${typeLabel} (${flags})${reference}${enumInfo}${defaultInfo}`;
       })
       .join("\n");
     return `Table ${table.name}\n${columns}`;
@@ -219,12 +232,61 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
       model: getModel(params.provider, params.model, params.apiKey),
       system: systemPrompt,
       messages,
-      maxOutputTokens: 1000,  
+      // Allow longer SQL (nested CTEs / complex joins) without truncation.
+      maxOutputTokens: 2500,
       temperature: 0.1,
     }),
   );
 
   return cleanSQL(text);
+}
+
+export async function classifyQuestionIntent(
+  params: ClassifyQuestionIntentParams,
+): Promise<{ intent: "query" | "conversation" | "unsafe"; reply: string }> {
+  const prompt = [
+    "Classify the user message for a conversational BI assistant.",
+    "Return strict JSON only: {\"intent\":\"query|conversation|unsafe\",\"reply\":\"...\"}.",
+    "Use intent=query only when user is asking to analyze/query database data.",
+    "Use intent=conversation for greetings/small talk/off-topic requests.",
+    "Use intent=unsafe when user asks to modify/delete/drop/truncate/update/insert data or schema.",
+    "For conversation/unsafe intents, reply should be a short user-facing response.",
+    "For query intent, reply can be empty string.",
+    "",
+    `Message: ${params.question}`,
+  ].join("\n");
+
+  const { text } = await withRetry(async () =>
+    generateText({
+      model: getModel(params.provider, params.model, params.apiKey),
+      system:
+        "You classify user intent for a SQL assistant. Return strict JSON only.",
+      prompt,
+      maxOutputTokens: 120,
+      temperature: 0,
+    }),
+  );
+
+  try {
+    const parsed = JSON.parse(text.trim()) as {
+      intent?: "query" | "conversation" | "unsafe";
+      reply?: string;
+    };
+    const intent = parsed.intent;
+    if (intent === "query" || intent === "conversation" || intent === "unsafe") {
+      return {
+        intent,
+        reply: typeof parsed.reply === "string" ? parsed.reply.trim() : "",
+      };
+    }
+  } catch {
+    // fall through
+  }
+
+  return {
+    intent: "query",
+    reply: "",
+  };
 }
 
 export async function generateExplanation(
@@ -301,6 +363,7 @@ export async function generateChartHint(
     "- Prefer line/area for time series trends.",
     "- Use pie only when exactly one categorical dimension + one numeric metric and <=10 rows.",
     "- For comparison queries with multiple numeric metrics, use grouped bar and set yKeys.",
+    "- Prefer table when result has high-cardinality text categories or many rows where charts become noisy.",
     "- Never invent columns. Use only provided column names.",
     "",
     `Question: ${params.question}`,
