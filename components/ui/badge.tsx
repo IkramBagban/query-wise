@@ -11,9 +11,10 @@ const variantClasses = {
 interface BadgeProps {
   variant?: keyof typeof variantClasses;
   children: React.ReactNode;
+  showDot?: boolean;
 }
 
-export function Badge({ variant = "neutral", children }: BadgeProps) {
+export function Badge({ variant = "neutral", children, showDot = true }: BadgeProps) {
   return (
     <span
       className={cn(
@@ -21,7 +22,7 @@ export function Badge({ variant = "neutral", children }: BadgeProps) {
         variantClasses[variant],
       )}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {showDot ? <span className="h-1.5 w-1.5 rounded-full bg-current" /> : null}
       {children}
     </span>
   );

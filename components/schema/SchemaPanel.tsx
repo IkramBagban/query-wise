@@ -41,14 +41,14 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col gap-4 bg-transparent p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#486856]">Schema</h2>
-        <div className="flex items-center gap-1.5">
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-[#486856]">Schema</h2>
+        <div className="grid grid-cols-2 gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setErOpen(true)}
-            className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
+            className="h-9 rounded-full border border-[#164229]/18 bg-white px-3 text-xs font-semibold text-[#123623] hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
           >
             ER Diagram
           </Button>
@@ -56,7 +56,7 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
             variant="ghost"
             size="sm"
             onClick={() => setSummaryOpen(true)}
-            className="h-8 shrink-0 rounded-full border border-[#164229]/18 bg-white text-[10px] font-semibold uppercase tracking-wider hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
+            className="h-9 rounded-full border border-[#164229]/18 bg-white px-3 text-xs font-semibold text-[#123623] hover:border-[#164229]/30 hover:bg-[#eaf8e2]"
           >
             Summary
           </Button>
@@ -71,7 +71,7 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
           className="h-10 rounded-xl border-[#164229]/14 bg-white pl-9 focus:border-[#2d7b42] focus:bg-white"
         />
       </div>
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, index) => (

@@ -15,9 +15,15 @@ export function TableItem({ table }: TableItemProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#174128]/15 bg-white shadow-[0_6px_18px_rgba(10,50,24,0.06)]">
+    <div
+      className={`overflow-hidden rounded-xl border bg-white shadow-[0_6px_18px_rgba(10,50,24,0.06)] transition-colors ${
+        open ? "border-[#2d7b42]/24" : "border-[#174128]/15"
+      }`}
+    >
       <button
-        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[#f4fbee]"
+        className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors ${
+          open ? "bg-[#f6fbf2]" : "hover:bg-[#f4fbee]"
+        }`}
         onClick={() => setOpen((prev) => !prev)}
       >
         <span className="flex items-center gap-2 text-sm font-medium text-text-1">
@@ -25,7 +31,11 @@ export function TableItem({ table }: TableItemProps) {
           {table.name}
         </span>
         <span className="flex items-center gap-2">
-          {typeof table.rowCount === "number" ? <Badge variant="info">{table.rowCount.toLocaleString()}</Badge> : null}
+          {typeof table.rowCount === "number" ? (
+            <Badge variant="info" showDot={false}>
+              {table.rowCount.toLocaleString()}
+            </Badge>
+          ) : null}
           <ChevronDown className={`h-4 w-4 text-text-3 transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
