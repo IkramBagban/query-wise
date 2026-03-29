@@ -26,6 +26,12 @@ type EnumRow = {
   enum_label: string;
 };
 
+type TopValueRow = {
+  column_name: string;
+  value: string;
+  count: string;
+};
+
 const pools = new Map<string, Pool>();
 
 function resolveConnectionString(connectionString?: string): string {
@@ -71,14 +77,42 @@ function escapeIdentifier(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
 
-function extractEnumLikeValues(table: SchemaTable, column: SchemaColumn): string[] {
+function isNumericType(type: string): boolean {
+  const normalized = type.toLowerCase();
+  return (
+    normalized.includes("int") ||
+    normalized.includes("numeric") ||
+    normalized.includes("decimal") ||
+    normalized.includes("real") ||
+    normalized.includes("double") ||
+    normalized.includes("serial")
+  );
+}
+
+function isTemporalType(type: string): boolean {
+  const normalized = type.toLowerCase();
+  return normalized.includes("timestamp") || normalized === "date" || normalized.includes("time");
+}
+
+function isCategoricalType(type: string): boolean {
+  const normalized = type.toLowerCase();
+  return (
+    normalized.includes("char") ||
+    normalized.includes("text") ||
+    normalized === "boolean" ||
+    normalized === "bool" ||
+    normalized === "enum" ||
+    normalized === "uuid"
+  );
+}
+
+function extractRepresentativeValues(table: SchemaTable, column: SchemaColumn): string[] {
   if ((column.enumValues?.length ?? 0) > 0) {
     return column.enumValues ?? [];
   }
 
-  const type = column.type.toLowerCase();
-  if (!type.includes("char") && !type.includes("text")) {
-    return [];
+  if ((column.topValues?.length ?? 0) > 0) {
+    return (column.topValues ?? []).map((item) => item.value).slice(0, 5);
   }
 
   const values = new Set<string>();
@@ -90,6 +124,47 @@ function extractEnumLikeValues(table: SchemaTable, column: SchemaColumn): string
   }
 
   return Array.from(values).slice(0, 5);
+}
+
+function buildRangeProfileQuery(tableName: string, columns: SchemaColumn[]): string | null {
+  const rangeColumns = columns.filter((column) => isNumericType(column.type) || isTemporalType(column.type));
+  if (rangeColumns.length === 0) return null;
+
+  const selectExpressions = rangeColumns
+    .flatMap((column) => {
+      const safeColumn = escapeIdentifier(column.name);
+      const minAlias = escapeIdentifier(`${column.name}__min`);
+      const maxAlias = escapeIdentifier(`${column.name}__max`);
+      return [`MIN(${safeColumn})::text AS ${minAlias}`, `MAX(${safeColumn})::text AS ${maxAlias}`];
+    })
+    .join(", ");
+
+  return `SELECT ${selectExpressions} FROM ${escapeIdentifier(tableName)}`;
+}
+
+function buildTopValuesQuery(tableName: string, columns: SchemaColumn[]): string | null {
+  const categoricalColumns = columns.filter(
+    (column) => isCategoricalType(column.type) || (column.enumValues?.length ?? 0) > 0
+  );
+  if (categoricalColumns.length === 0) return null;
+
+  const unions = categoricalColumns
+    .map((column) => {
+      const safeColumn = escapeIdentifier(column.name);
+      const escapedColumnName = column.name.replace(/'/g, "''");
+      return `SELECT '${escapedColumnName}' AS column_name, value, count
+FROM (
+  SELECT ${safeColumn}::text AS value, COUNT(*)::text AS count
+  FROM ${escapeIdentifier(tableName)}
+  WHERE ${safeColumn} IS NOT NULL
+  GROUP BY ${safeColumn}
+  ORDER BY COUNT(*) DESC, ${safeColumn}::text ASC
+  LIMIT 5
+) AS ${escapeIdentifier(`${column.name}__values`)}`;
+    })
+    .join("\nUNION ALL\n");
+
+  return unions;
 }
 
 function buildSummary(tables: SchemaTable[], relationships: Relationship[]): string {
@@ -120,9 +195,21 @@ function buildSummary(tables: SchemaTable[], relationships: Relationship[]): str
         markers.push(`FK → ${column.references.table}.${column.references.column}`);
       }
 
-      const enumValues = extractEnumLikeValues(table, column);
+      const enumValues = extractRepresentativeValues(table, column);
       if (enumValues.length > 0) {
         markers.push(`values: ${enumValues.map((v) => `'${v}'`).join(", ")}`);
+      }
+
+      if (column.range) {
+        markers.push(`range: ${column.range.min} → ${column.range.max}`);
+      }
+
+      if ((column.topValues?.length ?? 0) > 0) {
+        markers.push(
+          `top: ${(column.topValues ?? [])
+            .map((item) => `'${item.value}' (${item.count})`)
+            .join(", ")}`
+        );
       }
 
       markers.push(column.nullable ? "NULLABLE" : "NOT NULL");
@@ -317,6 +404,51 @@ export async function introspectSchema(connectionString?: string): Promise<Schem
       sampleData = samples.rows;
     } catch {
       sampleData = [];
+    }
+
+    try {
+      const rangeQuery = buildRangeProfileQuery(tableName, tableColumns);
+      if (rangeQuery) {
+        const rangeResult = await pool.query<Record<string, string | null>>(rangeQuery);
+        const rangeRow = rangeResult.rows[0];
+        if (rangeRow) {
+          for (const column of tableColumns) {
+            const min = rangeRow[`${column.name}__min`];
+            const max = rangeRow[`${column.name}__max`];
+            if (typeof min === "string" && min.length > 0 && typeof max === "string" && max.length > 0) {
+              column.range = { min, max };
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: range profiling is best-effort metadata enrichment.
+    }
+
+    try {
+      const topValuesQuery = buildTopValuesQuery(tableName, tableColumns);
+      if (topValuesQuery) {
+        const topValuesResult = await pool.query<TopValueRow>(topValuesQuery);
+        const topValuesByColumn = new Map<string, Array<{ value: string; count: number }>>();
+        for (const row of topValuesResult.rows) {
+          const list = topValuesByColumn.get(row.column_name) ?? [];
+          const parsedCount = Number.parseInt(row.count, 10);
+          list.push({
+            value: row.value,
+            count: Number.isNaN(parsedCount) ? 0 : parsedCount,
+          });
+          topValuesByColumn.set(row.column_name, list);
+        }
+
+        for (const column of tableColumns) {
+          const values = topValuesByColumn.get(column.name);
+          if ((values?.length ?? 0) > 0) {
+            column.topValues = values;
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: value distribution profiling is best-effort metadata enrichment.
     }
 
     tables.push({

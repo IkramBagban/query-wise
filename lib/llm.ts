@@ -186,9 +186,16 @@ export function buildSchemaContext(schema: SchemaInfo): string {
           (column.enumValues?.length ?? 0) > 0
             ? ` enum[${column.enumValues?.map((value) => `'${value}'`).join(", ")}]`
             : "";
+        const rangeInfo = column.range ? ` range[${column.range.min} -> ${column.range.max}]` : "";
+        const topValuesInfo =
+          (column.topValues?.length ?? 0) > 0
+            ? ` top[${column.topValues
+                ?.map((item) => `'${item.value}' (${item.count})`)
+                .join(", ")}]`
+            : "";
         const defaultInfo = column.defaultValue ? ` default=${column.defaultValue}` : "";
         const typeLabel = column.fullType ?? column.type;
-        return `  - ${column.name}: ${typeLabel} (${flags})${reference}${enumInfo}${defaultInfo}`;
+        return `  - ${column.name}: ${typeLabel} (${flags})${reference}${enumInfo}${rangeInfo}${topValuesInfo}${defaultInfo}`;
       })
       .join("\n");
     return `Table ${table.name}\n${columns}`;

@@ -108,14 +108,6 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
           <div className="min-h-0 flex-1 overflow-auto p-4">
             <SchemaSummary schema={schema} />
 
-            <details className="mt-4 rounded-lg border border-border bg-surface p-3">
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-text-3">
-                Raw LLM Schema Context
-              </summary>
-              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-text-2">
-                {schema?.summary || "Summary unavailable."}
-              </pre>
-            </details>
           </div>
         </div>
       </Dialog>

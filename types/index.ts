@@ -25,6 +25,8 @@ export interface SchemaColumn {
   references?: { table: string; column: string };
   defaultValue?: string | null;
   enumValues?: string[];
+  range?: { min: string; max: string };
+  topValues?: Array<{ value: string; count: number }>;
 }
 
 /**
