@@ -31,7 +31,7 @@ export default function LoginPage() {
       window.localStorage.setItem("llm_provider", JSON.stringify("google"));
     }
     if (!window.localStorage.getItem("llm_model")) {
-      window.localStorage.setItem("llm_model", JSON.stringify("gemini-1.5-flash"));
+      window.localStorage.setItem("llm_model", JSON.stringify("gemini-2.5-flash"));
     }
   }, []);
 

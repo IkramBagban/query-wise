@@ -3,7 +3,16 @@
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 export const SUPPORTED_MODELS = {
-  google: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+  google: [
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+  ],
   anthropic: ["claude-sonnet-4-5", "claude-3-7-sonnet"],
 } as const;
 
@@ -11,7 +20,7 @@ export type LlmProvider = keyof typeof SUPPORTED_MODELS;
 
 export function useSettings() {
   const provider = useLocalStorage<LlmProvider>("llm_provider", "google");
-  const model = useLocalStorage<string>("llm_model", "gemini-1.5-flash");
+  const model = useLocalStorage<string>("llm_model", "gemini-2.5-flash");
   const apiKey = useLocalStorage<string>("llm_api_key", "");
 
   return {
