@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Database, LayoutDashboard, PanelLeft, Settings } from "lucide-react";
+import { Database, PanelLeft, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -250,14 +250,20 @@ export default function WorkspacePage() {
             <Button
               variant="icon"
               onClick={() => setSchemaOpen(true)}
-              className="h-10 w-10 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a] lg:hidden"
+              className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a] lg:hidden"
             >
-              <PanelLeft className="h-4.5 w-4.5" strokeWidth={2.3} />
+              <PanelLeft className="h-5 w-5" strokeWidth={2.3} />
             </Button>
           </Tooltip>
           <span className="font-syne text-2xl font-bold tracking-tight">
             Query<span className="text-[#2ed52e]">Wise</span>
           </span>
+          <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">
+            <Link href="/dashboard" className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
+              Dashboard
+            </Link>
+            <span className="rounded-full bg-[#e7f6de] px-3 py-1.5 text-xs font-semibold text-[#174128]">Workspace</span>
+          </nav>
         </div>
 
         <div className="flex items-center gap-2">
@@ -278,13 +284,6 @@ export default function WorkspacePage() {
             >
               <Settings className="h-5 w-5" strokeWidth={2.3} />
             </Button>
-          </Tooltip>
-          <Tooltip content="Dashboard" side="bottom">
-            <Link href="/dashboard">
-              <Button variant="icon" className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]">
-                <LayoutDashboard className="h-5 w-5" strokeWidth={2.3} />
-              </Button>
-            </Link>
           </Tooltip>
         </div>
       </header>

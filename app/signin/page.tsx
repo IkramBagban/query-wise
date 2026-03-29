@@ -1,10 +1,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export default async function RootPage() {
+import { SignInView } from "@/components/SignInView";
+
+export default async function SignInPage() {
   const cookieStore = await cookies();
   const isAuthenticated = cookieStore.get("qw_session")?.value === "authenticated";
 
-  redirect(isAuthenticated ? "/dashboard" : "/signin");
-}
+  if (isAuthenticated) {
+    redirect("/dashboard");
+  }
 
+  return <SignInView />;
+}

@@ -56,22 +56,22 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_10%_0%,rgba(116,204,99,0.2),transparent_28%),radial-gradient(circle_at_95%_0%,rgba(43,116,57,0.08),transparent_22%),#f4faf2] px-6 py-5">
-      <header className="mb-5 flex flex-wrap items-center justify-between gap-3  px-4 py-3  ">
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-3">
-          {/* <input
-            value={dashboard.name}
-            onChange={(event) => setDashboard((prev) => ({ ...prev, name: event.target.value }))}
-            className="min-w-[220px] rounded-lg border border-transparent bg-transparent px-2 py-1 font-syne text-3xl text-text-1 outline-none focus:border-[#174128]/18 focus:bg-[#f6fcf4]"
-          /> */}
-          {/* {dashboard.shareId ? <span className="rounded-full bg-[#2ed52e]/15 px-2.5 py-1 text-xs font-semibold text-[#1f892d]">Shared</span> : null} */}
+          <span className="font-syne text-2xl font-bold tracking-tight">
+            Query<span className="text-[#2ed52e]">Wise</span>
+          </span>
+          <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">
+            <span className="rounded-full bg-[#e7f6de] px-3 py-1.5 text-xs font-semibold text-[#174128]">Dashboard</span>
+            <Link href="/workspace" className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
+              Workspace
+            </Link>
+          </nav>
         </div>
         <div className="flex gap-2">
           <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
             <Share2 className="h-4 w-4" /> Share
           </Button>
-          <Link href="/workspace">
-            <Button variant="ghost" className="border border-[#174128]/18 bg-white hover:bg-[#ecf9e5]">Back to Workspace</Button>
-          </Link>
         </div>
       </header>
 
