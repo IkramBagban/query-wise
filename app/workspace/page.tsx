@@ -59,6 +59,8 @@ export default function WorkspacePage() {
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [schemaWidth, setSchemaWidth] = useState(320);
+  const [resizingSchema, setResizingSchema] = useState(false);
 
   const [connectTab, setConnectTab] = useState<"demo" | "custom">("demo");
   const [connectionString, setConnectionString] = useState("");
@@ -75,6 +77,27 @@ export default function WorkspacePage() {
     if (!initialized) return;
     setConnectionOpen(!connection);
   }, [connection, initialized]);
+
+  useEffect(() => {
+    if (!resizingSchema) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const nextWidth = Math.min(520, Math.max(260, event.clientX));
+      setSchemaWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      setResizingSchema(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizingSchema]);
 
   const fetchSchema = async (cs?: string) => {
     setLoadingSchema(true);
@@ -266,9 +289,28 @@ export default function WorkspacePage() {
         </div>
       </header>
 
-      <section className="min-h-0 flex-1 overflow-hidden lg:flex lg:divide-x lg:divide-[#174128]/12">
-        <div className="relative z-10 hidden w-[290px] shrink-0 bg-[#f1f9ed] lg:block">
+      <section className="min-h-0 flex-1 overflow-hidden lg:flex">
+        <div
+          className="relative z-10 hidden shrink-0 bg-[#f1f9ed] lg:block"
+          style={{ width: `${schemaWidth}px` }}
+        >
           <SchemaPanel schema={schema} isLoading={loadingSchema} />
+        </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize schema sidebar"
+          className="group relative hidden w-3 shrink-0 cursor-col-resize lg:block"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            setResizingSchema(true);
+          }}
+        >
+          <div
+            className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
+              resizingSchema ? "w-[2px] bg-[#2d7b42]/45" : "w-px bg-[#174128]/16 group-hover:bg-[#2d7b42]/35"
+            }`}
+          />
         </div>
         
         <div className="relative flex h-full min-w-0 flex-1 overflow-hidden bg-transparent">
