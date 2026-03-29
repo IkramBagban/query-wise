@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatSchemaTypeLabel } from "@/lib/schema-type-label";
 import type { SchemaInfo } from "@/types";
 
 interface SchemaSummaryProps {
@@ -140,6 +141,7 @@ export function SchemaSummary({ schema }: SchemaSummaryProps) {
                     </div>
                     <div className="divide-y divide-border">
                       {table.columns.map((column) => {
+                        const typeLabel = formatSchemaTypeLabel(column.fullType ?? column.type);
                         const constraints = [
                           column.isPrimaryKey ? "PK" : null,
                           column.isForeignKey ? `FK -> ${column.references?.table}.${column.references?.column}` : null,
@@ -155,7 +157,7 @@ export function SchemaSummary({ schema }: SchemaSummaryProps) {
                               <p className="truncate font-medium text-text-1">{column.name}</p>
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate font-mono text-text-3">{column.fullType ?? column.type}</p>
+                              <p className="truncate font-mono text-text-3">{typeLabel}</p>
                             </div>
                             <div className="space-y-1">
                               <p className="text-[11px] text-text-3">{constraints.join(" | ")}</p>

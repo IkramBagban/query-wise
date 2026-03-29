@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Database, KeyRound, Link2 } from "lucide-react";
 
+import { formatSchemaTypeLabel } from "@/lib/schema-type-label";
 import { TABLE_BODY_PADDING, TABLE_HEADER_HEIGHT, TABLE_ROW_HEIGHT, makeSourceHandleId, makeTargetHandleId } from "./graph";
 import type { TableNode as TableNodeType } from "./types";
 
@@ -39,6 +40,7 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
 
       <div className="space-y-0 p-2.5">
         {data.table.columns.map((column, index) => {
+          const typeLabel = formatSchemaTypeLabel(column.fullType ?? column.type);
           const rowCenterY = TABLE_HEADER_HEIGHT + TABLE_BODY_PADDING + index * TABLE_ROW_HEIGHT + TABLE_ROW_HEIGHT / 2;
           const isOutgoingForeignKey = outgoingColumns.has(column.name);
           const isIncomingReference = incomingColumns.has(column.name);
@@ -113,7 +115,7 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
                     </span>
                   ) : null}
                 </span>
-                <span className="truncate pl-2 font-mono text-text-3">{column.fullType ?? column.type}</span>
+                <span className="truncate pl-2 font-mono text-text-3">{typeLabel}</span>
               </button>
             </div>
           );
@@ -122,4 +124,3 @@ export function TableNode({ data }: NodeProps<TableNodeType>) {
     </div>
   );
 }
-

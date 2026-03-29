@@ -1,5 +1,6 @@
 import { Link2, KeyRound } from "lucide-react";
 
+import { formatSchemaTypeLabel } from "@/lib/schema-type-label";
 import type { SchemaColumn } from "@/types";
 
 interface ColumnItemProps {
@@ -7,6 +8,8 @@ interface ColumnItemProps {
 }
 
 export function ColumnItem({ column }: ColumnItemProps) {
+  const typeLabel = formatSchemaTypeLabel(column.fullType ?? column.type);
+
   return (
     <div className="flex items-center justify-between gap-2 rounded px-2 py-1 text-xs text-text-2 hover:bg-surface-3">
       <span className="flex min-w-0 items-center gap-1.5 truncate text-text-1">
@@ -16,7 +19,7 @@ export function ColumnItem({ column }: ColumnItemProps) {
         ) : null}
         <span className="truncate">{column.name}</span>
       </span>
-      <span className="shrink-0 font-mono text-[11px] text-text-3">{column.fullType ?? column.type}</span>
+      <span className="shrink-0 font-mono text-[11px] text-text-3">{typeLabel}</span>
     </div>
   );
 }
