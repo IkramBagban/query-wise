@@ -1,9 +1,10 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
+import { z } from "zod";
 
 import { sleep } from "@/lib/utils";
-import type { ChartHint, ChatMessage, QueryResult, SchemaInfo } from "@/types";
+import type { ChartHint, ChatMessage, SchemaInfo } from "@/types";
 
 type Provider = "google" | "anthropic";
 
@@ -79,36 +80,35 @@ interface GenerateSQLParams {
   apiKey: string;
 }
 
-interface GenerateExplanationParams {
-  question: string;
-  sql: string;
-  rowCount: number;
-  history?: ChatMessage[];
-  provider: Provider;
-  model: string;
-  apiKey: string;
-}
-
-interface GenerateChartHintParams {
-  question: string;
-  sql: string;
-  result: QueryResult;
-  provider: Provider;
-  model: string;
-  apiKey: string;
-}
-
 interface ValidateModelAccessParams {
   provider: Provider;
   model: string;
   apiKey: string;
 }
 
-interface ClassifyQuestionIntentParams {
+export interface ExecuteQueryToolResult {
+  sql: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  executionTimeMs: number;
+}
+
+interface RunConstrainedAgentParams {
   question: string;
+  history: ChatMessage[];
+  schema: SchemaInfo;
   provider: Provider;
   model: string;
   apiKey: string;
+  executeQueryTool: (question: string) => Promise<ExecuteQueryToolResult>;
+}
+
+export interface ConstrainedAgentResponse {
+  mode: "query" | "conversation";
+  explanation: string;
+  chartHint: ChartHint | null;
+  toolResult: ExecuteQueryToolResult | null;
 }
 
 type ModelMessage = { role: "user" | "assistant"; content: string };
@@ -169,39 +169,48 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
   throw new Error("Unreachable");
 }
 
-export function buildSchemaContext(schema: SchemaInfo): string {
-  const tableLines = schema.tables.map((table) => {
-    const columns = table.columns
-      .map((column) => {
-        const flags = [
-          column.isPrimaryKey ? "pk" : null,
-          column.isForeignKey ? "fk" : null,
-          column.nullable ? "nullable" : "not-null",
-        ]
-          .filter(Boolean)
-          .join(", ");
-        const reference = column.references
-          ? ` -> ${column.references.table}.${column.references.column}`
-          : "";
-        const enumInfo =
-          (column.enumValues?.length ?? 0) > 0
-            ? ` enum[${column.enumValues?.map((value) => `'${value}'`).join(", ")}]`
+function buildStructuredTableContext(schema: SchemaInfo): string {
+  return schema.tables
+    .map((table) => {
+      const columns = table.columns
+        .map((column) => {
+          const flags = [
+            column.isPrimaryKey ? "pk" : null,
+            column.isForeignKey ? "fk" : null,
+            column.nullable ? "nullable" : "not-null",
+          ]
+            .filter(Boolean)
+            .join(", ");
+          const reference = column.references
+            ? ` -> ${column.references.table}.${column.references.column}`
             : "";
-        const rangeInfo = column.range ? ` range[${column.range.min} -> ${column.range.max}]` : "";
-        const topValuesInfo =
-          (column.topValues?.length ?? 0) > 0
-            ? ` top[${column.topValues
-                ?.map((item) => `'${item.value}' (${item.count})`)
-                .join(", ")}]`
+          const enumInfo =
+            (column.enumValues?.length ?? 0) > 0
+              ? ` enum[${column.enumValues?.map((value) => `'${value}'`).join(", ")}]`
+              : "";
+          const rangeInfo = column.range
+            ? ` range[${column.range.min} -> ${column.range.max}]`
             : "";
-        const defaultInfo = column.defaultValue ? ` default=${column.defaultValue}` : "";
-        const typeLabel = column.fullType ?? column.type;
-        return `  - ${column.name}: ${typeLabel} (${flags})${reference}${enumInfo}${rangeInfo}${topValuesInfo}${defaultInfo}`;
-      })
-      .join("\n");
-    return `Table ${table.name}\n${columns}`;
-  });
+          const topValuesInfo =
+            (column.topValues?.length ?? 0) > 0
+              ? ` top[${column.topValues
+                  ?.map((item) => `'${item.value}' (${item.count})`)
+                  .join(", ")}]`
+              : "";
+          const defaultInfo = column.defaultValue
+            ? ` default=${column.defaultValue}`
+            : "";
+          const typeLabel = column.fullType ?? column.type;
+          return `  - ${column.name}: ${typeLabel} (${flags})${reference}${enumInfo}${rangeInfo}${topValuesInfo}${defaultInfo}`;
+        })
+        .join("\n");
 
+      return `Table ${table.name}\n${columns}`;
+    })
+    .join("\n\n");
+}
+
+export function buildSchemaContext(schema: SchemaInfo): string {
   return [
     "You are a SQL expert. You generate PostgreSQL SELECT queries based on natural language questions.",
     "",
@@ -217,8 +226,115 @@ export function buildSchemaContext(schema: SchemaInfo): string {
     schema.summary,
     "",
     "STRUCTURED TABLE DETAILS:",
-    tableLines.join("\n\n"),
+    buildStructuredTableContext(schema),
   ].join("\n");
+}
+
+function buildConstrainedAgentSystemPrompt(schema: SchemaInfo): string {
+  return [
+    "You are a senior data analyst operating a conversational BI assistant.",
+    "",
+    "Style:",
+    "- concise, direct, and data-focused",
+    "- natural but brief acknowledgements",
+    "- no chatbot filler",
+    "",
+    "Decision policy:",
+    "- Use the execute_query tool when the user asks to analyze database data.",
+    "- If the user message is non-database chat, answer directly without any tool call.",
+    "- If the user asks to modify data/schema, do not call tools; explain that analysis is read-only.",
+    "",
+    "Tool policy:",
+    "- Tool input must be a clean natural-language analysis question.",
+    "- Do not invent SQL directly in your response.",
+    "- After tool output is available, summarize the result in analyst tone and choose a chart hint.",
+    "",
+    "Output contract:",
+    "- Return strict JSON only. No markdown.",
+    'JSON shape: {"mode":"query|conversation","explanation":"string","chartHint":null|{"type":"bar|line|pie|scatter|area|table","xKey":"string?","yKey":"string?","yKeys":["string"],"nameKey":"string?","valueKey":"string?"}}',
+    "- For conversation mode, chartHint must be null.",
+    "- For query mode, chartHint must use only column names from tool output.",
+    "",
+    "Schema summary:",
+    schema.summary,
+    "",
+    "Structured schema:",
+    buildStructuredTableContext(schema),
+  ].join("\n");
+}
+
+function sanitizeChartHint(raw: unknown): ChartHint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const parsed = raw as ChartHint;
+
+  const pickString = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  const pickStringArray = (value: unknown): string[] | undefined =>
+    Array.isArray(value)
+      ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
+      : undefined;
+
+  const type = pickString(parsed.type);
+  if (
+    type &&
+    type !== "bar" &&
+    type !== "line" &&
+    type !== "pie" &&
+    type !== "scatter" &&
+    type !== "area" &&
+    type !== "table"
+  ) {
+    return null;
+  }
+
+  return {
+    type: type as ChartHint["type"],
+    xKey: pickString(parsed.xKey),
+    yKey: pickString(parsed.yKey),
+    yKeys: pickStringArray(parsed.yKeys),
+    nameKey: pickString(parsed.nameKey),
+    valueKey: pickString(parsed.valueKey),
+  };
+}
+
+function parseAgentJson(rawText: string): {
+  mode: "query" | "conversation";
+  explanation: string;
+  chartHint: ChartHint | null;
+} | null {
+  const trimmed = rawText.trim();
+  if (!trimmed) return null;
+
+  const cleaned = trimmed
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(cleaned) as {
+      mode?: unknown;
+      explanation?: unknown;
+      chartHint?: unknown;
+    };
+
+    const mode = parsed.mode === "query" || parsed.mode === "conversation"
+      ? parsed.mode
+      : null;
+
+    if (!mode) return null;
+
+    const explanation =
+      typeof parsed.explanation === "string" ? parsed.explanation.trim() : "";
+
+    return {
+      mode,
+      explanation,
+      chartHint: sanitizeChartHint(parsed.chartHint),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function generateSQL(params: GenerateSQLParams): Promise<string> {
@@ -249,160 +365,83 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
   return cleanSQL(text);
 }
 
-export async function classifyQuestionIntent(
-  params: ClassifyQuestionIntentParams,
-): Promise<{ intent: "query" | "conversation" | "unsafe"; reply: string }> {
-  const prompt = [
-    "Classify the user message for a conversational BI assistant.",
-    "Return strict JSON only: {\"intent\":\"query|conversation|unsafe\",\"reply\":\"...\"}.",
-    "Use intent=query only when user is asking to analyze/query database data.",
-    "Use intent=conversation for greetings/small talk/off-topic requests.",
-    "Use intent=conversation when the question is ambiguous and needs clarification before SQL.",
-    "Use intent=unsafe when user asks to modify/delete/drop/truncate/update/insert data or schema.",
-    "For conversation/unsafe intents, reply should be a short analyst-style response without filler.",
-    "For query intent, reply can be empty string.",
-    "",
-    `Message: ${params.question}`,
-  ].join("\n");
+export async function runConstrainedAnalystAgent(
+  params: RunConstrainedAgentParams,
+): Promise<ConstrainedAgentResponse> {
+  const systemPrompt = buildConstrainedAgentSystemPrompt(params.schema);
 
-  const { text } = await withRetry(async () =>
-    generateText({
-      model: getModel(params.provider, params.model, params.apiKey),
-      system:
-        "You classify user intent for a SQL assistant. Return strict JSON only.",
-      prompt,
-      maxOutputTokens: 120,
-      temperature: 0,
-    }),
-  );
+  const historyMessages: ModelMessage[] = params.history
+    .slice(-12)
+    .map((message) => ({
+      role: message.role,
+      content: message.role === "user" ? message.content : (message.sql ?? message.content),
+    }));
 
-  try {
-    const parsed = JSON.parse(text.trim()) as {
-      intent?: "query" | "conversation" | "unsafe";
-      reply?: string;
+  const hasLatestQuestion =
+    historyMessages.length > 0 &&
+    historyMessages[historyMessages.length - 1]?.role === "user" &&
+    historyMessages[historyMessages.length - 1]?.content.trim() === params.question.trim();
+
+  const messages: ModelMessage[] = hasLatestQuestion
+    ? historyMessages
+    : [...historyMessages, { role: "user", content: params.question }];
+
+  let toolResult: ExecuteQueryToolResult | null = null;
+
+  const runTurn = async (forcedTool: boolean): Promise<string> => {
+    const result = await withRetry(async () =>
+      generateText({
+        model: getModel(params.provider, params.model, params.apiKey),
+        system: systemPrompt,
+        messages,
+        tools: {
+          execute_query: tool({
+            description:
+              "Executes a database analysis question against the connected PostgreSQL schema and returns SQL + result rows.",
+            inputSchema: z.object({
+              question: z.string().trim().min(1).max(700),
+            }),
+            strict: true,
+            execute: async ({ question }) => {
+              const output = await params.executeQueryTool(question);
+              toolResult = output;
+              return output;
+            },
+          }),
+        },
+        activeTools: ["execute_query"],
+        toolChoice: forcedTool ? "required" : "auto",
+        stopWhen: stepCountIs(8),
+        maxOutputTokens: 600,
+        temperature: 0.1,
+      }),
+    );
+    return result.text;
+  };
+
+  let text = await runTurn(false);
+  let parsed = parseAgentJson(text);
+
+  if (parsed?.mode === "query" && !toolResult) {
+    text = await runTurn(true);
+    parsed = parseAgentJson(text);
+  }
+
+  if (parsed) {
+    return {
+      mode: toolResult ? "query" : parsed.mode,
+      explanation: parsed.explanation,
+      chartHint: parsed.chartHint,
+      toolResult,
     };
-    const intent = parsed.intent;
-    if (intent === "query" || intent === "conversation" || intent === "unsafe") {
-      return {
-        intent,
-        reply: typeof parsed.reply === "string" ? parsed.reply.trim() : "",
-      };
-    }
-  } catch {
-    // fall through
   }
 
   return {
-    intent: "query",
-    reply: "",
+    mode: toolResult ? "query" : "conversation",
+    explanation: text.trim(),
+    chartHint: null,
+    toolResult,
   };
-}
-
-export async function generateExplanation(
-  params: GenerateExplanationParams,
-): Promise<string> {
-  const userMessages = (params.history ?? []).filter((message) => message.role === "user").map((message) => message.content);
-  const previousQuestion =
-    userMessages.length >= 2 ? userMessages[userMessages.length - 2] : "";
-
-  const prompt = [
-    `Question: ${params.question}`,
-    previousQuestion ? `Previous user question: ${previousQuestion}` : "",
-    `SQL executed: ${params.sql}`,
-    `Rows returned: ${params.rowCount}`,
-    "Write a concise analyst response in 2-4 lines.",
-    "No filler phrases.",
-    "If relative time language exists (last month/quarter), state the assumption clearly.",
-    "If this looks like a follow-up filter, explicitly say you narrowed/refined the previous analysis.",
-    "Focus on key result takeaway and what was filtered.",
-  ].join("\n");
-
-  const { text } = await withRetry(async () =>
-    generateText({
-      model: getModel(params.provider, params.model, params.apiKey),
-      system:
-        "You are a senior data analyst. Be direct, data-focused, and concise. Never use chatbot filler.",
-      prompt,
-      maxOutputTokens: 120,
-      temperature: 0.15,
-    }),
-  );
-
-  return text.trim();
-}
-
-function sanitizeChartHint(raw: string): ChartHint | null {
-  try {
-    const parsed = JSON.parse(raw) as ChartHint;
-    if (!parsed || typeof parsed !== "object") return null;
-
-    const pickString = (value: unknown): string | undefined =>
-      typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-    const pickStringArray = (value: unknown): string[] | undefined =>
-      Array.isArray(value)
-        ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
-        : undefined;
-
-    const type = pickString(parsed.type);
-    if (
-      type &&
-      type !== "bar" &&
-      type !== "line" &&
-      type !== "pie" &&
-      type !== "scatter" &&
-      type !== "area" &&
-      type !== "table"
-    ) {
-      return null;
-    }
-
-    return {
-      type: type as ChartHint["type"],
-      xKey: pickString(parsed.xKey),
-      yKey: pickString(parsed.yKey),
-      yKeys: pickStringArray(parsed.yKeys),
-      nameKey: pickString(parsed.nameKey),
-      valueKey: pickString(parsed.valueKey),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function generateChartHint(
-  params: GenerateChartHintParams,
-): Promise<ChartHint | null> {
-  const sampleRows = params.result.rows.slice(0, 12);
-  const prompt = [
-    "Choose the best visualization config for this SQL result.",
-    "Return JSON only with keys: type, xKey, yKey, yKeys, nameKey, valueKey.",
-    "Allowed type: bar | line | area | scatter | pie | table.",
-    "Rules:",
-    "- Prefer line/area for time series trends.",
-    "- Use pie only when exactly one categorical dimension + one numeric metric and <=10 rows.",
-    "- For comparison queries with multiple numeric metrics, use grouped bar and set yKeys.",
-    "- Prefer table when result has high-cardinality text categories or many rows where charts become noisy.",
-    "- Never invent columns. Use only provided column names.",
-    "",
-    `Question: ${params.question}`,
-    `SQL: ${params.sql}`,
-    `Columns: ${JSON.stringify(params.result.columns)}`,
-    `Row count: ${params.result.rowCount}`,
-    `Sample rows: ${JSON.stringify(sampleRows)}`,
-  ].join("\n");
-
-  const { text } = await withRetry(async () =>
-    generateText({
-      model: getModel(params.provider, params.model, params.apiKey),
-      system:
-        "You are a chart planner for SQL results. Return strict JSON only, no markdown or prose.",
-      prompt,
-      maxOutputTokens: 220,
-      temperature: 0,
-    }),
-  );
-
-  return sanitizeChartHint(text.trim());
 }
 
 export async function validateModelAccess(

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { resolveChartConfig } from "@/lib/charts";
 import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
-import { classifyQuestionIntent, generateChartHint, generateExplanation, generateSQL } from "@/lib/llm";
+import { generateSQL, runConstrainedAnalystAgent } from "@/lib/llm";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
 import { logEvent } from "@/lib/logger";
@@ -64,114 +64,11 @@ function toUserFriendlyMessage(error: unknown): string {
     return "Rate limit reached. Please wait a moment and try again.";
   }
 
-  const message =
-    error instanceof Error ? error.message : "I couldn't process that query.";
-  const normalized = message.toLowerCase();
-
-  if (
-    normalized.includes("safe query") ||
-    normalized.includes("not allowed") ||
-    normalized.includes("only select") ||
-    normalized.includes("blocked")
-  ) {
-    return "I couldn't generate a safe query for that question. Try rephrasing.";
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
   }
 
-  if (
-    normalized.includes("statement timeout") ||
-    normalized.includes("timeout") ||
-    normalized.includes("timed out")
-  ) {
-    if (normalized.includes("connection timeout") || normalized.includes("connection terminated")) {
-      return "Database connection timed out. Please try again in a few seconds.";
-    }
-    return "Query took too long to execute. Try a more specific question.";
-  }
-
-  return message;
-}
-
-function isBlockedQueryError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const message = error.message.toLowerCase();
-  return message.includes("blocked keyword") || message.includes("only select queries are allowed");
-}
-
-function buildSafeRetryQuestion(question: string): string {
-  return [
-    question,
-    "",
-    "CRITICAL SQL SAFETY REQUIREMENTS:",
-    "- Return exactly one PostgreSQL query.",
-    "- Query must start with SELECT or WITH.",
-    "- Do NOT use CREATE, INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CALL, EXEC, GRANT, REVOKE.",
-    "- Do NOT include markdown, comments, or explanations.",
-  ].join("\n");
-}
-
-function buildStrictRetryQuestion(question: string): string {
-  return [
-    question,
-    "",
-    "HARD CONSTRAINTS:",
-    "- Output one SQL statement only.",
-    "- Must begin with SELECT or WITH.",
-    "- Do not include CREATE/INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/GRANT/REVOKE/CALL/EXEC.",
-    "- No comments and no markdown.",
-    "- Prefer direct aggregation query over CTE if possible.",
-  ].join("\n");
-}
-
-type ClassifiedIntent = {
-  intent: "query" | "conversation" | "unsafe";
-  reply: string;
-};
-
-function classifyIntentHeuristically(question: string): ClassifiedIntent | null {
-  const normalized = question.trim().toLowerCase();
-  if (!normalized) return { intent: "conversation", reply: "Share a data question and I’ll analyze it." };
-
-  if (/^(hi|hello|hey|yo|hola|thanks|thank you|ok|cool|nice|great)\b/.test(normalized) && normalized.length <= 24) {
-    return {
-      intent: "conversation",
-      reply: "Hi. Ask a data question and I’ll analyze your connected database.",
-    };
-  }
-
-  if (/\b(drop|delete|truncate|update|insert|alter|create)\b/.test(normalized)) {
-    return {
-      intent: "unsafe",
-      reply: "That would modify data. I can only run read-only analysis queries.",
-    };
-  }
-
-  return null;
-}
-
-function buildNoResultsMessage(question: string, schema: SchemaInfo): string {
-  const ranges = schema.tables
-    .flatMap((table) =>
-      table.columns
-        .filter((column) => column.range && /date|time|timestamp/i.test(column.type))
-        .map((column) => ({
-          table: table.name,
-          column: column.name,
-          min: column.range?.min ?? "",
-          max: column.range?.max ?? "",
-        })),
-    )
-    .filter((item) => item.min && item.max);
-
-  if (ranges.length === 0) {
-    return "No rows matched that filter. Try widening the date range or relaxing filters.";
-  }
-
-  const primary = ranges[0];
-  if (/\blast quarter\b|\blast month\b|\bpast\b|\brecent\b|\byesterday\b|\btoday\b/.test(question.toLowerCase())) {
-    return `No rows matched that filter. Data in ${primary.table}.${primary.column} spans ${primary.min} to ${primary.max}. Try adjusting the date window.`;
-  }
-
-  return "No rows matched that filter. Try broadening the filters and rerunning.";
+  return "Unknown error.";
 }
 
 export async function POST(req: NextRequest) {
@@ -184,212 +81,146 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
 
-    const { question, history, connectionString, provider, model, apiKey } = parsed.data;
+  const { question, history, connectionString, provider, model, apiKey } = parsed.data;
 
   logEvent({
     type: "USER_QUERY",
     timestamp: new Date().toISOString(),
     message: question,
-    meta: { history, connectionString, provider, model }
+    meta: { history, connectionString, provider, model },
   });
 
   try {
-    const heuristicIntent = classifyIntentHeuristically(question);
-    const intent =
-      heuristicIntent ??
-      (await classifyQuestionIntent({
-        question,
-        provider,
-        model,
-        apiKey,
-      }).catch(() => ({ intent: "query" as const, reply: "" })));
-
-    if (intent.intent !== "query") {
-      const explanation =
-        intent.reply ||
-        (intent.intent === "unsafe"
-          ? "I can only run safe, read-only analysis queries. I cannot modify or delete data."
-          : "Ask a database question and I’ll analyze it.");
-
-      logEvent({
-        type: "INFO",
-        timestamp: new Date().toISOString(),
-        message: "Conversation response (no SQL execution)",
-        meta: { question, intent: intent.intent }
-      });
-
-      const response: QueryResponse = {
-        mode: "conversation",
-        explanation,
-      };
-      return Response.json(response);
-    }
-
     const schema = await getCachedSchema(connectionString);
-    const attempts = [
+
+    const agentTurn = await runConstrainedAnalystAgent({
       question,
-      buildSafeRetryQuestion(question),
-      buildStrictRetryQuestion(question),
-    ];
-
-    let sql = "";
-    let result: Awaited<ReturnType<typeof executeQuery>> | null = null;
-    let lastBlockedError: Error | null = null;
-
-    const tryModel = async (modelName: string): Promise<boolean> => {
-      for (const attemptQuestion of attempts) {
-        sql = await generateSQL({
-          question: attemptQuestion,
-          schema,
-          history,
-          provider,
-          model: modelName,
-          apiKey,
-        });
-
-        logEvent({
-          type: "LLM_RESPONSE",
-          timestamp: new Date().toISOString(),
-          message: sql,
-          meta: { attemptQuestion, model: modelName }
-        });
-
-        const validation = validateAndSanitizeSql(sql);
-        if (!validation.valid) {
-          lastBlockedError = new Error(validation.reason ?? "Query blocked");
-          continue;
-        }
-
+      history,
+      schema,
+      provider,
+      model,
+      apiKey,
+      executeQueryTool: async (toolQuestion) => {
         try {
-          result = await executeQuery(sql, connectionString);
+          const sql = await generateSQL({
+            question: toolQuestion,
+            schema,
+            history,
+            provider,
+            model,
+            apiKey,
+          });
+
+          logEvent({
+            type: "LLM_RESPONSE",
+            timestamp: new Date().toISOString(),
+            message: sql,
+            meta: { tool: "execute_query", question: toolQuestion, model },
+          });
+
+          const validation = validateAndSanitizeSql(sql);
+          if (!validation.valid) {
+            throw new Error(validation.reason ?? "Query blocked");
+          }
+
+          const result = await executeQuery(sql, connectionString);
+
           logEvent({
             type: "SQL_QUERY",
             timestamp: new Date().toISOString(),
             message: sql,
-            meta: { connectionString, model: modelName }
+            meta: { connectionString, model, rowCount: result.rowCount },
           });
-          return true;
+
+          return {
+            sql,
+            columns: result.columns,
+            rows: result.rows,
+            rowCount: result.rowCount,
+            executionTimeMs: result.executionTimeMs,
+          };
         } catch (error) {
-          if (!isBlockedQueryError(error)) {
-            logEvent({
-              type: "ERROR",
-              timestamp: new Date().toISOString(),
-              message: error instanceof Error ? error.message : String(error),
-              meta: { stack: error instanceof Error ? error.stack : undefined, sql, model: modelName }
-            });
-            throw error;
-          }
-          lastBlockedError =
-            error instanceof Error ? error : new Error("Query blocked");
+          logEvent({
+            type: "ERROR",
+            timestamp: new Date().toISOString(),
+            message: error instanceof Error ? error.message : String(error),
+            meta: {
+              stack: error instanceof Error ? error.stack : undefined,
+              tool: "execute_query",
+              toolQuestion,
+            },
+          });
+          throw error;
         }
-      }
-      return false;
-    };
+      },
+    });
 
-    await tryModel(model);
+    logEvent({
+      type: "LLM_RESPONSE",
+      timestamp: new Date().toISOString(),
+      message: agentTurn.explanation,
+      meta: { mode: agentTurn.mode, chartHint: agentTurn.chartHint },
+    });
 
-    // Some models can occasionally return empty SQL; retry once with a stable Google fallback.
-    const lastBlockedMessage =
-      (lastBlockedError as { message?: string } | null)?.message ?? "";
+    if (agentTurn.mode === "query" && agentTurn.toolResult) {
+      const finalResult = {
+        columns: agentTurn.toolResult.columns,
+        rows: agentTurn.toolResult.rows,
+        rowCount: agentTurn.toolResult.rowCount,
+        executionTimeMs: agentTurn.toolResult.executionTimeMs,
+      };
 
-    if (!result && provider === "google" && lastBlockedMessage === "Query is empty.") {
-      const fallbackModel = model === "gemini-2.5-flash" ? "gemini-2.0-flash" : "gemini-2.5-flash";
+      const chartConfig = resolveChartConfig(finalResult, agentTurn.chartHint);
+
+      logEvent({
+        type: "CHART_RENDER",
+        timestamp: new Date().toISOString(),
+        message: chartConfig.type,
+        meta: { chartConfig, chartHint: agentTurn.chartHint },
+      });
+
+      const response: QueryResponse = {
+        mode: "query",
+        explanation: agentTurn.explanation,
+        sql: agentTurn.toolResult.sql,
+        result: finalResult,
+        chartConfig,
+      };
+
       logEvent({
         type: "INFO",
         timestamp: new Date().toISOString(),
-        message: "Retrying SQL generation with fallback model",
-        meta: { fromModel: model, toModel: fallbackModel, reason: lastBlockedMessage }
-      });
-      await tryModel(fallbackModel);
-    }
-
-    if (!result) {
-      const blockedError = lastBlockedError as Error | null;
-      logEvent({
-        type: "ERROR",
-        timestamp: new Date().toISOString(),
-        message: blockedError?.message || "No result after all attempts",
-        meta: { question }
-      });
-      throw (
-        blockedError ??
-        new Error("I couldn't generate a safe query for that question. Try rephrasing.")
-      );
-    }
-    const finalResult = result as Awaited<ReturnType<typeof executeQuery>>;
-
-    let chartHint = null;
-    try {
-      chartHint = await generateChartHint({
-        question,
-        sql,
-        result: finalResult,
-        provider,
-        model,
-        apiKey,
-      });
-    } catch (err) {
-      logEvent({
-        type: "ERROR",
-        timestamp: new Date().toISOString(),
-        message: err instanceof Error ? err.message : String(err),
-        meta: { chartHintFallback: true }
-      });
-    }
-
-    const chartConfig = resolveChartConfig(finalResult, chartHint);
-    logEvent({
-      type: "CHART_RENDER",
-      timestamp: new Date().toISOString(),
-      message: chartConfig.type,
-      meta: { chartConfig, chartHint }
-    });
-
-    let explanation = "";
-    if (finalResult.rowCount === 0) {
-      explanation = buildNoResultsMessage(question, schema);
-    } else {
-      try {
-        explanation = await generateExplanation({
+        message: "Query completed",
+        meta: {
           question,
-          sql,
+          sql: agentTurn.toolResult.sql,
+          chartType: chartConfig.type,
           rowCount: finalResult.rowCount,
-          history,
-          provider,
-          model,
-          apiKey,
-        });
-        logEvent({
-          type: "LLM_RESPONSE",
-          timestamp: new Date().toISOString(),
-          message: explanation,
-          meta: { explanation }
-        });
-      } catch (err) {
-        explanation = `Found ${finalResult.rowCount} result${finalResult.rowCount !== 1 ? "s" : ""}.`;
-        logEvent({
-          type: "ERROR",
-          timestamp: new Date().toISOString(),
-          message: err instanceof Error ? err.message : String(err),
-          meta: { explanationFallback: true }
-        });
-      }
+        },
+      });
+
+      return Response.json(response);
     }
 
-    const response: QueryResponse = { mode: "query", sql, result: finalResult, chartConfig, explanation };
+    const response: QueryResponse = {
+      mode: "conversation",
+      explanation: agentTurn.explanation,
+    };
+
     logEvent({
       type: "INFO",
       timestamp: new Date().toISOString(),
-      message: "Query completed",
-      meta: { question, sql, chartType: chartConfig.type, rowCount: finalResult.rowCount }
+      message: "Conversation response (no SQL execution)",
+      meta: { question },
     });
+
     return Response.json(response);
   } catch (error) {
     logEvent({
       type: "ERROR",
       timestamp: new Date().toISOString(),
       message: error instanceof Error ? error.message : String(error),
-      meta: { stack: error instanceof Error ? error.stack : undefined }
+      meta: { stack: error instanceof Error ? error.stack : undefined },
     });
     console.error("[api/query]", error);
     return Response.json(
