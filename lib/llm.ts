@@ -1,6 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 
 import { sleep } from "@/lib/utils";
@@ -102,6 +102,8 @@ interface RunConstrainedAgentParams {
   model: string;
   apiKey: string;
   executeQueryTool: (question: string) => Promise<ExecuteQueryToolResult>;
+  onTextDelta?: (chunk: string) => void;
+  onStage?: (label: string) => void;
 }
 
 export interface ConstrainedAgentResponse {
@@ -337,6 +339,52 @@ function parseAgentJson(rawText: string): {
   }
 }
 
+function decodeJsonStringChunk(value: string): string {
+  return value
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, "\"")
+    .replace(/\\\\/g, "\\");
+}
+
+function extractExplanationValue(rawText: string): { value: string; complete: boolean } | null {
+  const keyIndex = rawText.indexOf("\"explanation\"");
+  if (keyIndex < 0) return null;
+
+  let i = keyIndex + "\"explanation\"".length;
+  while (i < rawText.length && /\s/.test(rawText[i])) i += 1;
+  if (rawText[i] !== ":") return null;
+  i += 1;
+  while (i < rawText.length && /\s/.test(rawText[i])) i += 1;
+  if (rawText[i] !== "\"") return null;
+  i += 1;
+
+  const chars: string[] = [];
+  let escaped = false;
+  while (i < rawText.length) {
+    const ch = rawText[i];
+    if (escaped) {
+      chars.push(`\\${ch}`);
+      escaped = false;
+      i += 1;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "\"") {
+      return { value: decodeJsonStringChunk(chars.join("")), complete: true };
+    }
+    chars.push(ch);
+    i += 1;
+  }
+
+  return { value: decodeJsonStringChunk(chars.join("")), complete: false };
+}
+
 export async function generateSQL(params: GenerateSQLParams): Promise<string> {
   const systemPrompt = buildSchemaContext(params.schema);
   const historyMessages: ModelMessage[] = params.history
@@ -389,8 +437,8 @@ export async function runConstrainedAnalystAgent(
   let toolResult: ExecuteQueryToolResult | null = null;
 
   const runTurn = async (forcedTool: boolean): Promise<string> => {
-    const result = await withRetry(async () =>
-      generateText({
+    return withRetry(async () => {
+      const result = streamText({
         model: getModel(params.provider, params.model, params.apiKey),
         system: systemPrompt,
         messages,
@@ -403,6 +451,7 @@ export async function runConstrainedAnalystAgent(
             }),
             strict: true,
             execute: async ({ question }) => {
+              params.onStage?.("Generating SQL");
               const output = await params.executeQueryTool(question);
               toolResult = output;
               return output;
@@ -414,9 +463,31 @@ export async function runConstrainedAnalystAgent(
         stopWhen: stepCountIs(8),
         maxOutputTokens: 600,
         temperature: 0.1,
-      }),
-    );
-    return result.text;
+        experimental_onToolCallStart: () => {
+          params.onStage?.("Calling execute_query");
+        },
+        experimental_onToolCallFinish: () => {
+          params.onStage?.("Tool finished");
+        },
+      });
+
+      let fullText = "";
+      let emittedLen = 0;
+
+      for await (const chunk of result.textStream) {
+        fullText += chunk;
+        const partial = extractExplanationValue(fullText);
+        if (!partial) continue;
+        if (partial.value.length <= emittedLen) continue;
+        const delta = partial.value.slice(emittedLen);
+        emittedLen = partial.value.length;
+        if (delta.length > 0) {
+          params.onTextDelta?.(delta);
+        }
+      }
+
+      return fullText;
+    });
   };
 
   let text = await runTurn(false);
