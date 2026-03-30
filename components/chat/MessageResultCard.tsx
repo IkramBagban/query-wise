@@ -59,7 +59,7 @@ export function MessageResultCard({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#174128]/18 bg-[#f9fdf7] shadow-[0_12px_28px_rgba(14,41,24,0.08)]">
+    <div className="overflow-visible rounded-2xl border border-[#174128]/18 bg-[#f9fdf7] shadow-[0_12px_28px_rgba(14,41,24,0.08)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#174128]/10 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-4 py-3">
         <div className="flex flex-wrap gap-2">
           {hasResultView ? (
