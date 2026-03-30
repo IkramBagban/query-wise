@@ -51,7 +51,7 @@ function readDashboard(): Dashboard {
 
 export default function WorkspacePage() {
   const { pushToast } = useToast();
-  const { connection, initialized, saveConnection, maskedConnection } = useConnection();
+  const { connection, initialized, saveConnection, clearConnection, maskedConnection } = useConnection();
   const { provider, setProvider, model, setModel, apiKey, setApiKey } = useSettings();
 
   const [schema, setSchema] = useState<SchemaInfo | null>(null);
@@ -314,6 +314,8 @@ export default function WorkspacePage() {
         
         <div className="relative flex h-full min-w-0 flex-1 overflow-hidden bg-transparent">
           <ChatPanel
+            isDatabaseConnected={Boolean(connection)}
+            onOpenConnectionModal={() => setConnectionOpen(true)}
             connectionString={connection?.connectionString}
             provider={provider}
             model={model}
@@ -334,6 +336,25 @@ export default function WorkspacePage() {
 
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <div className="space-y-4">
+          {connection ? (
+            <div className="flex items-center justify-between rounded-md border border-[#174128]/16 bg-[#f5fbf1] px-3 py-2">
+              <div className="text-xs">
+                <p className="font-semibold text-[#1f5a35]">Connected: {maskedConnection}</p>
+                <p className="text-[#355442]">Switch database or disconnect below.</p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  clearConnection();
+                  setSchema(null);
+                  pushToast({ title: "Disconnected", description: "Database connection cleared.", variant: "success" });
+                }}
+                className="border border-danger/20 bg-white text-danger hover:bg-danger/10"
+              >
+                Disconnect
+              </Button>
+            </div>
+          ) : null}
           <div className="inline-flex items-center rounded-md border border-border bg-surface-2 p-1" role="tablist" aria-label="Database source">
             <button
               type="button"
@@ -451,9 +472,24 @@ export default function WorkspacePage() {
           <div className="space-y-3 rounded-lg border border-border p-3">
             <h3 className="text-xs uppercase tracking-[0.12em] text-text-3">Database</h3>
             <p className="text-xs text-text-2">Current: {connection ? maskedConnection : "Not connected"}</p>
-            <Button variant="ghost" onClick={() => { setSettingsOpen(false); setConnectionOpen(true); }}>
-              Change Database
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => { setSettingsOpen(false); setConnectionOpen(true); }}>
+                {connection ? "Change Database" : "Connect Database"}
+              </Button>
+              {connection ? (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    clearConnection();
+                    setSchema(null);
+                    pushToast({ title: "Disconnected", description: "Database connection cleared.", variant: "success" });
+                  }}
+                  className="border border-danger/20 bg-white text-danger hover:bg-danger/10"
+                >
+                  Disconnect
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-2 rounded-lg border border-border p-3 text-xs text-text-2">

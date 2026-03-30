@@ -21,6 +21,8 @@ const EXAMPLE_QUERIES = [
 
 interface QueryInputProps {
   disabled?: boolean;
+  databaseConnected?: boolean;
+  onRequestConnectDatabase?: () => void;
   model: string;
   modelOptions: { label: string; value: string }[];
   onModelChange: (value: string) => void;
@@ -29,6 +31,8 @@ interface QueryInputProps {
 
 export function QueryInput({
   disabled = false,
+  databaseConnected = true,
+  onRequestConnectDatabase,
   model,
   modelOptions,
   onModelChange,
@@ -58,7 +62,7 @@ export function QueryInput({
 
   const send = async () => {
     const question = value.trim();
-    if (!question || disabled) return;
+    if (!question || disabled || !databaseConnected) return;
     setValue("");
     if (textareaRef.current) textareaRef.current.style.height = "44px";
     await onSubmit(question);
@@ -70,9 +74,12 @@ export function QueryInput({
         {chips.map((chip) => (
             <button
             key={chip}
+              type="button"
+              disabled={disabled || !databaseConnected}
               className={cn(
                 "group relative max-w-full truncate rounded-full border border-[#174128]/16 bg-[#f5fbf1] px-3 py-1.5 text-[10px] font-medium text-text-2 transition-all",
                 "hover:border-accent/35 hover:bg-[#ebf8e4] hover:text-accent focus:ring-2 focus:ring-accent/20",
+                (disabled || !databaseConnected) && "cursor-not-allowed opacity-55",
               )}
               onClick={() => setValue(chip)}
               title={chip}
@@ -81,13 +88,25 @@ export function QueryInput({
             </button>
         ))}
       </div>
+      {!databaseConnected ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[#174128]/20 bg-[#edf8e9] px-3 py-2 text-xs text-[#1f5a35]">
+          <p>Database not connected. Click to connect and start chatting.</p>
+          <button
+            type="button"
+            onClick={onRequestConnectDatabase}
+            className="rounded-lg border border-[#174128]/25 bg-white px-2.5 py-1 font-semibold text-[#1f5a35]"
+          >
+            Connect DB
+          </button>
+        </div>
+      ) : null}
       <div className="relative rounded-2xl border border-[#174128]/22 bg-[#f7fcf3] p-1.5 transition-all duration-300 focus-within:border-accent/45 focus-within:ring-2 focus-within:ring-accent/15">
         <textarea
           ref={textareaRef}
           rows={1}
           value={value}
-          disabled={disabled}
-          placeholder="Ask a question about your database..."
+          disabled={disabled || !databaseConnected}
+          placeholder={databaseConnected ? "Ask a question about your database..." : "Connect database to start querying..."}
           className="max-h-32 min-h-[46px] w-full resize-none bg-transparent px-4 py-3 text-sm text-text-1 outline-none placeholder:text-text-3"
           onChange={(event) => {
             setValue(event.target.value);
@@ -115,7 +134,7 @@ export function QueryInput({
               variant="primary"
               size="sm"
               onClick={() => void send()}
-              disabled={disabled || !value.trim()}
+              disabled={disabled || !databaseConnected || !value.trim()}
               className="h-9 rounded-xl bg-[#2ed52e] px-4 text-white transition-transform hover:brightness-105 active:scale-95"
             >
               <ArrowUp className="mr-1.5 h-3.5 w-3.5" /> <span className="text-xs font-bold uppercase tracking-wider">Search</span>

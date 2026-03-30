@@ -7,6 +7,8 @@ import { MessageList } from "@/components/chat/MessageList";
 import type { ChartType, ChatMessage, QueryRequest, QueryResponse } from "@/types";
 
 interface ChatPanelProps {
+  isDatabaseConnected: boolean;
+  onOpenConnectionModal: () => void;
   connectionString?: string;
   provider: "google" | "anthropic";
   model: string;
@@ -53,6 +55,8 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
 }
 
 export function ChatPanel({
+  isDatabaseConnected,
+  onOpenConnectionModal,
   connectionString,
   provider,
   model,
@@ -67,6 +71,17 @@ export function ChatPanel({
   const [pendingContent, setPendingContent] = useState("");
 
   const handleSend = async (question: string) => {
+    if (!isDatabaseConnected) {
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        content: "Database is not connected yet. Click Connect DB to continue.",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      return;
+    }
+
     const userMessage: ChatMessage = {
       id: createMessageId(),
       role: "user",
@@ -256,7 +271,9 @@ export function ChatPanel({
       <div className="sticky bottom-0 z-20 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
         <div className="mx-auto w-full max-w-[1080px]">
           <QueryInput
-            disabled={isLoading}
+            disabled={isLoading || !isDatabaseConnected}
+            databaseConnected={isDatabaseConnected}
+            onRequestConnectDatabase={onOpenConnectionModal}
             model={model}
             modelOptions={modelOptions}
             onModelChange={onModelChange}
