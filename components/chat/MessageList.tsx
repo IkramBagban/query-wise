@@ -9,11 +9,20 @@ import type { ChartType, ChatMessage } from "@/types";
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
+  pendingStage?: string | null;
+  pendingContent?: string;
   onChartTypeChange: (messageId: string, type: ChartType) => void;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
 }
 
-export function MessageList({ messages, isLoading, onChartTypeChange, onSaveWidget }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  pendingStage,
+  pendingContent = "",
+  onChartTypeChange,
+  onSaveWidget,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -47,6 +56,8 @@ export function MessageList({ messages, isLoading, onChartTypeChange, onSaveWidg
           <div className="animate-fade-in">
             <MessageBubble
               pending
+              pendingStage={pendingStage}
+              pendingContent={pendingContent}
               message={{ id: "pending", role: "assistant", content: "", timestamp: 0 }}
               onChartTypeChange={onChartTypeChange}
               onSaveWidget={onSaveWidget}

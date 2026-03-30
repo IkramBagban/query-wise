@@ -10,11 +10,20 @@ import type { ChartType, ChatMessage } from "@/types";
 interface MessageBubbleProps {
   message: ChatMessage;
   pending?: boolean;
+  pendingStage?: string | null;
+  pendingContent?: string;
   onChartTypeChange: (messageId: string, type: ChartType) => void;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
 }
 
-export function MessageBubble({ message, pending = false, onChartTypeChange, onSaveWidget }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  pending = false,
+  pendingStage,
+  pendingContent = "",
+  onChartTypeChange,
+  onSaveWidget,
+}: MessageBubbleProps) {
   if (pending) {
     return (
       <div className="flex max-w-[78%] items-start gap-2">
@@ -22,7 +31,7 @@ export function MessageBubble({ message, pending = false, onChartTypeChange, onS
           <Sparkles className="h-4 w-4" />
         </span>
         <div className="rounded-2xl border border-[#174128]/16 bg-white px-4 py-3 shadow-[0_8px_22px_rgba(14,41,24,0.08)]">
-          <ThinkingIndicator />
+          <ThinkingIndicator stage={pendingStage} content={pendingContent} />
         </div>
       </div>
     );
