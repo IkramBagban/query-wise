@@ -271,7 +271,7 @@ export function ChatPanel({
       <div className="sticky bottom-0 z-20 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
         <div className="mx-auto w-full max-w-[1080px]">
           <QueryInput
-            disabled={isLoading || !isDatabaseConnected}
+            disabled={!isDatabaseConnected}
             databaseConnected={isDatabaseConnected}
             onRequestConnectDatabase={onOpenConnectionModal}
             model={model}

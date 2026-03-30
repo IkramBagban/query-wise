@@ -62,7 +62,7 @@ export function QueryInput({
 
   const send = async () => {
     const question = value.trim();
-    if (!question || disabled || !databaseConnected) return;
+    if (!question || !databaseConnected) return;
     setValue("");
     if (textareaRef.current) textareaRef.current.style.height = "44px";
     await onSubmit(question);
@@ -75,11 +75,11 @@ export function QueryInput({
             <button
             key={chip}
               type="button"
-              disabled={disabled || !databaseConnected}
+              disabled={!databaseConnected}
               className={cn(
                 "group relative max-w-full truncate rounded-full border border-[#174128]/16 bg-[#f5fbf1] px-3 py-1.5 text-[10px] font-medium text-text-2 transition-all",
                 "hover:border-accent/35 hover:bg-[#ebf8e4] hover:text-accent focus:ring-2 focus:ring-accent/20",
-                (disabled || !databaseConnected) && "cursor-not-allowed opacity-55",
+                !databaseConnected && "cursor-not-allowed opacity-55",
               )}
               onClick={() => setValue(chip)}
               title={chip}
@@ -105,7 +105,7 @@ export function QueryInput({
           ref={textareaRef}
           rows={1}
           value={value}
-          disabled={disabled || !databaseConnected}
+          disabled={!databaseConnected}
           placeholder={databaseConnected ? "Ask a question about your database..." : "Connect database to start querying..."}
           className="max-h-32 min-h-[46px] w-full resize-none bg-transparent px-4 py-3 text-sm text-text-1 outline-none placeholder:text-text-3"
           onChange={(event) => {
@@ -134,7 +134,7 @@ export function QueryInput({
               variant="primary"
               size="sm"
               onClick={() => void send()}
-              disabled={disabled || !databaseConnected || !value.trim()}
+              disabled={!databaseConnected || !value.trim()}
               className="h-9 rounded-xl bg-[#2ed52e] px-4 text-white transition-transform hover:brightness-105 active:scale-95"
             >
               <ArrowUp className="mr-1.5 h-3.5 w-3.5" /> <span className="text-xs font-bold uppercase tracking-wider">Search</span>
