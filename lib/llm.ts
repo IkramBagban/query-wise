@@ -40,24 +40,6 @@ export const SUPPORTED_MODELS = [
     tier: "fast",
   },
   {
-    provider: "google",
-    model: "gemini-2.0-flash",
-    label: "Gemini 2.0 Flash",
-    tier: "fast",
-  },
-  {
-    provider: "google",
-    model: "gemini-1.5-pro",
-    label: "Gemini 1.5 Pro",
-    tier: "powerful",
-  },
-  {
-    provider: "google",
-    model: "gemini-1.5-flash",
-    label: "Gemini 1.5 Flash",
-    tier: "fast",
-  },
-  {
     provider: "anthropic",
     model: "claude-sonnet-4-5",
     label: "Claude Sonnet",

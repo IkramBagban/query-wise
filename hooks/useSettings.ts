@@ -13,7 +13,12 @@ export const SUPPORTED_MODELS = {
     "gemini-1.5-pro",
     "gemini-1.5-flash",
   ],
-  anthropic: ["claude-sonnet-4-5", "claude-3-7-sonnet"],
+  anthropic: [
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5-20251001",
+  ],
 } as const;
 
 export type LlmProvider = keyof typeof SUPPORTED_MODELS;
