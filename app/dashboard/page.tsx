@@ -8,8 +8,9 @@ import { EmptyDashboard } from "@/components/dashboard/EmptyDashboard";
 import { ShareModal } from "@/components/dashboard/ShareModal";
 import { WidgetCard } from "@/components/dashboard/WidgetCard";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/useToast";
-import type { ChartType, Dashboard } from "@/types";
+import type { Dashboard, DashboardWidget } from "@/types";
 
 function fallbackDashboard(): Dashboard {
   return {
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<Dashboard>(fallbackDashboard);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<DashboardWidget | null>(null);
 
   useEffect(() => {
     const raw = window.localStorage.getItem("qw_dashboard");
@@ -52,6 +54,16 @@ export default function DashboardPage() {
     setShareUrl(body.url);
     setShareModalOpen(true);
     setDashboard((prev) => ({ ...prev, shareId: body.shareId }));
+  };
+
+  const confirmRemoveWidget = () => {
+    if (!removeTarget) return;
+    setDashboard((prev) => ({
+      ...prev,
+      widgets: prev.widgets.filter((item) => item.id !== removeTarget.id),
+      updatedAt: Date.now(),
+    }));
+    setRemoveTarget(null);
   };
 
   return (
@@ -95,27 +107,7 @@ export default function DashboardPage() {
             }} onDragOver={(event) => event.preventDefault()}>
               <WidgetCard
                 widget={widget}
-                onTitleChange={(title) =>
-                  setDashboard((prev) => ({
-                    ...prev,
-                    widgets: prev.widgets.map((item) => (item.id === widget.id ? { ...item, title } : item)),
-                  }))
-                }
-                onTypeChange={(type: ChartType) =>
-                  setDashboard((prev) => ({
-                    ...prev,
-                    widgets: prev.widgets.map((item) =>
-                      item.id === widget.id ? { ...item, chartConfig: { ...item.chartConfig, type } } : item,
-                    ),
-                  }))
-                }
-                onRemove={() =>
-                  setDashboard((prev) => ({
-                    ...prev,
-                    widgets: prev.widgets.filter((item) => item.id !== widget.id),
-                    updatedAt: Date.now(),
-                  }))
-                }
+                onRemove={() => setRemoveTarget(widget)}
               />
             </div>
           ))}
@@ -123,6 +115,30 @@ export default function DashboardPage() {
       )}
 
       <ShareModal open={shareModalOpen} onOpenChange={setShareModalOpen} url={shareUrl} />
+      <Dialog
+        open={Boolean(removeTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null);
+        }}
+        panelClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-text-1">Remove widget?</h2>
+            <p className="text-sm text-text-2">
+              This will remove the saved chart from your dashboard.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRemoveTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmRemoveWidget}>
+              Remove
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </main>
   );
 }

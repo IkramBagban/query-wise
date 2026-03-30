@@ -622,20 +622,37 @@ function weightedRating(): number {
 
 async function seedReviews(
   client: PoolClient,
+  customerIds: number[],
   orderMeta: Map<number, { customerId: number; productId: number; createdAt: Date }>
 ): Promise<void> {
   logStep("Seeding reviews");
 
+  // 70% of customers will write reviews, 30% never will
+  // This guarantees ~150 customers with zero reviews
+  const reviewerSet = new Set(
+    customerIds.filter(() => Math.random() < 0.70)
+  );
+
+  // Get all delivered orders
   const deliveredOrdersResult = await client.query<{ id: number }>(
     "SELECT id FROM orders WHERE status = 'delivered'"
   );
   const deliveredIds = deliveredOrdersResult.rows.map((r) => Number(r.id));
-  const selectedForReview = deliveredIds.filter(() => Math.random() < 0.4);
 
   const reviewRows: Array<Array<string | number | Date>> = [];
-  for (const orderId of selectedForReview) {
+
+  for (const orderId of deliveredIds) {
     const meta = orderMeta.get(orderId);
     if (!meta) continue;
+
+    // Skip if this customer is in the non-reviewer group
+    if (!reviewerSet.has(meta.customerId)) continue;
+
+    // About 55% of eligible orders from reviewers get a review so
+    // the dataset consistently clears the minimum review count checks.
+    // (reviewers don't review every purchase)
+    if (Math.random() > 0.55) continue;
+
     const rating = weightedRating();
     const createdAt = faker.date.soon({ days: 30, refDate: meta.createdAt });
     reviewRows.push([
@@ -659,7 +676,8 @@ async function seedReviews(
     );
   }
 
-  logStep(`Inserted ${reviewRows.length} reviews`);
+  logStep(`Inserted ${reviewRows.length} reviews from ${reviewerSet.size} reviewers`);
+  logStep(`Non-reviewers: ${customerIds.length - reviewerSet.size} customers`);
 }
 
 async function verifyCounts(client: PoolClient): Promise<void> {
@@ -672,7 +690,7 @@ async function verifyCounts(client: PoolClient): Promise<void> {
     { table: "reviews", min: 2500 },
   ];
 
-  for (const check of checks) {
+  for (const check of checks) { 
     const result = await client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM ${check.table}`);
     const count = Number(result.rows[0]?.count ?? 0);
     logStep(`${check.table}: ${count}`);
@@ -694,7 +712,7 @@ async function main(): Promise<void> {
     const customerIds = await seedCustomers(client);
     const products = await seedProducts(client, categoryIds);
     const orderMeta = await seedOrdersAndItems(client, customerIds, products);
-    await seedReviews(client, orderMeta);
+    await seedReviews(client, customerIds, orderMeta);
     await verifyCounts(client);
 
     await client.query("COMMIT");

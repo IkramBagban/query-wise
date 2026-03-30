@@ -334,22 +334,28 @@ export default function WorkspacePage() {
 
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-md border border-border bg-surface-2 p-1" role="tablist" aria-label="Database source">
             <button
-              className={`rounded px-2 py-1 text-xs ${
+              type="button"
+              role="tab"
+              aria-selected={connectTab === "demo"}
+              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                 connectTab === "demo"
-                  ? "bg-[#2ed52e] text-white"
-                  : "bg-surface-2 text-text-2"
+                  ? "bg-surface text-text-1 shadow-[0_0_0_1px_rgba(22,66,40,0.16)]"
+                  : "text-text-2 hover:text-text-1"
               }`}
               onClick={() => setConnectTab("demo")}
             >
               Demo Database
             </button>
             <button
-              className={`rounded px-2 py-1 text-xs ${
+              type="button"
+              role="tab"
+              aria-selected={connectTab === "custom"}
+              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
                 connectTab === "custom"
-                  ? "bg-[#2ed52e] text-white"
-                  : "bg-surface-2 text-text-2"
+                  ? "bg-surface text-text-1 shadow-[0_0_0_1px_rgba(22,66,40,0.16)]"
+                  : "text-text-2 hover:text-text-1"
               }`}
               onClick={() => setConnectTab("custom")}
             >
@@ -363,7 +369,7 @@ export default function WorkspacePage() {
               <Button
                 loading={connecting}
                 onClick={() => void connectToDatabase("demo")}
-                className="bg-[#2ed52e] text-white"
+                className="bg-accent text-white"
               >
                 Connect to Demo
               </Button>

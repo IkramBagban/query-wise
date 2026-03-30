@@ -114,6 +114,11 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+input,
+textarea,
+select {
   color: inherit;
 }
 
