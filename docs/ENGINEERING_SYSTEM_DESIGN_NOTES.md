@@ -491,3 +491,61 @@ Why this is the right approach:
   3. Confirm SQL event appears before result event for query mode.
   4. Simulate provider/API errors and verify `error` event surfaces user-friendly message.
   5. Verify non-stream JSON callers still receive standard `QueryResponse`.
+
+## 18) Structured output contract for analyst agent (JSON leakage fix)
+
+- Changed file:
+  - `lib/llm.ts`
+
+- What changed:
+  - Replaced manual text-to-JSON parsing with AI SDK structured output:
+    - `streamText(..., output: Output.object({ schema: AgentOutputSchema }))`
+  - Agent output (`mode`, `explanation`, `chartHint`) is now schema-validated instead of relying on prompt-format compliance.
+  - Streaming explanation now comes from `partialOutputStream` (`partial.explanation`) rather than regex extraction from raw JSON text.
+  - Removed raw fallback behavior that previously allowed trailing `{"mode":...}` JSON blobs to leak into the user-visible brief.
+
+- Why this decision:
+  - Manual parsing was brittle when model returned prose + JSON in one response.
+  - Assignment grading penalizes polish and response quality; JSON leakage visibly degraded UX.
+  - Structured output is provider-agnostic in AI SDK and works with tool calling in the same turn.
+
+- Tradeoffs and risks:
+  - Partial structured outputs are not schema-validated while streaming; only final output is validated.
+  - If model fails to satisfy schema after retries, the route surfaces an error instead of degraded mixed text.
+
+- How to test:
+  1. Run a query that previously leaked JSON in explanation and verify no `{"mode":...}` text appears in brief.
+  2. Confirm chart/table markdown-style narrative remains intact when model includes tables in explanation.
+  3. Verify streamed text still appears progressively during execution.
+  4. Verify final response still includes chart config and result payload for query mode.
+
+## 18) Anthropic model catalog refresh (Claude 4.6 + Opus)
+
+- Changed files:
+  - `hooks/useSettings.ts`
+  - `lib/llm.ts`
+
+- What changed:
+  - Replaced old `claude-3-7-sonnet` option in UI settings with current Claude 4.6 generation options.
+  - Added:
+    - `claude-opus-4-6`
+    - `claude-sonnet-4-6`
+  - Kept modern fallback options:
+    - `claude-sonnet-4-5`
+    - `claude-haiku-4-5-20251001`
+  - Updated backend model metadata labels in `lib/llm.ts` to match these IDs.
+
+- Why this decision:
+  - Product should surface current top-tier Anthropic models in provider settings.
+  - Avoids presenting deprecated/older model choices by default.
+  - Aligns UI model dropdown and backend model catalog naming.
+
+- Tradeoffs and risks:
+  - New IDs require account access/entitlement on Anthropic side; some users may receive provider-side access errors.
+  - Keeping 4.5 entries provides fallback when 4.6 is unavailable.
+
+- How to test:
+  1. Open Workspace Settings -> Provider: `Anthropic`.
+  2. Confirm dropdown includes `claude-opus-4-6` and `claude-sonnet-4-6`.
+  3. Run `Test API Key` with Anthropic provider and selected 4.6 model.
+  4. Send a query and verify SQL + chart response still returns successfully.

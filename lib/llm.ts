@@ -1,6 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateText, stepCountIs, streamText, tool } from "ai";
+import { generateText, Output, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 
 import { sleep } from "@/lib/utils";
@@ -44,13 +44,7 @@ export const SUPPORTED_MODELS = [
     model: "claude-sonnet-4-5",
     label: "Claude Sonnet",
     tier: "powerful",
-  },
-  {
-    provider: "anthropic",
-    model: "claude-haiku-4-5-20251001",
-    label: "Claude Haiku",
-    tier: "fast",
-  },
+  }
 ] as const;
 
 interface GenerateSQLParams {
@@ -94,6 +88,23 @@ export interface ConstrainedAgentResponse {
   chartHint: ChartHint | null;
   toolResult: ExecuteQueryToolResult | null;
 }
+
+const AgentChartHintSchema = z.object({
+  type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]).optional(),
+  xKey: z.string().trim().min(1).optional(),
+  yKey: z.string().trim().min(1).optional(),
+  yKeys: z.array(z.string().trim().min(1)).optional(),
+  nameKey: z.string().trim().min(1).optional(),
+  valueKey: z.string().trim().min(1).optional(),
+});
+
+const AgentOutputSchema = z.object({
+  mode: z.enum(["query", "conversation"]),
+  explanation: z.string(),
+  chartHint: AgentChartHintSchema.nullable().optional().default(null),
+});
+
+type AgentOutput = z.infer<typeof AgentOutputSchema>;
 
 type ModelMessage = { role: "user" | "assistant"; content: string };
 
@@ -233,12 +244,6 @@ function buildConstrainedAgentSystemPrompt(schema: SchemaInfo): string {
     "- Do not invent SQL directly in your response.",
     "- After tool output is available, summarize the result in analyst tone and choose a chart hint.",
     "",
-    "Output contract:",
-    "- Return strict JSON only. No markdown.",
-    'JSON shape: {"mode":"query|conversation","explanation":"string","chartHint":null|{"type":"bar|line|pie|scatter|area|table","xKey":"string?","yKey":"string?","yKeys":["string"],"nameKey":"string?","valueKey":"string?"}}',
-    "- For conversation mode, chartHint must be null.",
-    "- For query mode, chartHint must use only column names from tool output.",
-    "",
     "Schema summary:",
     schema.summary,
     "",
@@ -281,90 +286,19 @@ function sanitizeChartHint(raw: unknown): ChartHint | null {
   };
 }
 
-function parseAgentJson(rawText: string): {
-  mode: "query" | "conversation";
-  explanation: string;
-  chartHint: ChartHint | null;
-} | null {
-  const trimmed = rawText.trim();
-  if (!trimmed) return null;
-
-  const cleaned = trimmed
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
-
-  try {
-    const parsed = JSON.parse(cleaned) as {
-      mode?: unknown;
-      explanation?: unknown;
-      chartHint?: unknown;
-    };
-
-    const mode = parsed.mode === "query" || parsed.mode === "conversation"
-      ? parsed.mode
-      : null;
-
-    if (!mode) return null;
-
-    const explanation =
-      typeof parsed.explanation === "string" ? parsed.explanation.trim() : "";
-
-    return {
-      mode,
-      explanation,
-      chartHint: sanitizeChartHint(parsed.chartHint),
-    };
-  } catch {
-    return null;
+function getDeltaFromProgress(previous: string, current: string): string {
+  if (!current) return "";
+  if (!previous) return current;
+  if (current.startsWith(previous)) {
+    return current.slice(previous.length);
   }
-}
 
-function decodeJsonStringChunk(value: string): string {
-  return value
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\"/g, "\"")
-    .replace(/\\\\/g, "\\");
-}
-
-function extractExplanationValue(rawText: string): { value: string; complete: boolean } | null {
-  const keyIndex = rawText.indexOf("\"explanation\"");
-  if (keyIndex < 0) return null;
-
-  let i = keyIndex + "\"explanation\"".length;
-  while (i < rawText.length && /\s/.test(rawText[i])) i += 1;
-  if (rawText[i] !== ":") return null;
-  i += 1;
-  while (i < rawText.length && /\s/.test(rawText[i])) i += 1;
-  if (rawText[i] !== "\"") return null;
-  i += 1;
-
-  const chars: string[] = [];
-  let escaped = false;
-  while (i < rawText.length) {
-    const ch = rawText[i];
-    if (escaped) {
-      chars.push(`\\${ch}`);
-      escaped = false;
-      i += 1;
-      continue;
-    }
-    if (ch === "\\") {
-      escaped = true;
-      i += 1;
-      continue;
-    }
-    if (ch === "\"") {
-      return { value: decodeJsonStringChunk(chars.join("")), complete: true };
-    }
-    chars.push(ch);
+  const maxPrefix = Math.min(previous.length, current.length);
+  let i = 0;
+  while (i < maxPrefix && previous[i] === current[i]) {
     i += 1;
   }
-
-  return { value: decodeJsonStringChunk(chars.join("")), complete: false };
+  return current.slice(i);
 }
 
 export async function generateSQL(params: GenerateSQLParams): Promise<string> {
@@ -418,11 +352,12 @@ export async function runConstrainedAnalystAgent(
 
   let toolResult: ExecuteQueryToolResult | null = null;
 
-  const runTurn = async (forcedTool: boolean): Promise<string> => {
+  const runTurn = async (forcedTool: boolean): Promise<AgentOutput> => {
     return withRetry(async () => {
       const result = streamText({
         model: getModel(params.provider, params.model, params.apiKey),
         system: systemPrompt,
+        output: Output.object({ schema: AgentOutputSchema }),
         messages,
         tools: {
           execute_query: tool({
@@ -453,46 +388,37 @@ export async function runConstrainedAnalystAgent(
         },
       });
 
-      let fullText = "";
-      let emittedLen = 0;
+      let streamedExplanation = "";
 
-      for await (const chunk of result.textStream) {
-        fullText += chunk;
-        const partial = extractExplanationValue(fullText);
-        if (!partial) continue;
-        if (partial.value.length <= emittedLen) continue;
-        const delta = partial.value.slice(emittedLen);
-        emittedLen = partial.value.length;
+      for await (const partial of result.partialOutputStream) {
+        const nextExplanation =
+          partial && typeof partial === "object" && typeof partial.explanation === "string"
+            ? partial.explanation
+            : "";
+
+        if (!nextExplanation) continue;
+        const delta = getDeltaFromProgress(streamedExplanation, nextExplanation);
+        streamedExplanation = nextExplanation;
         if (delta.length > 0) {
           params.onTextDelta?.(delta);
         }
       }
 
-      return fullText;
+      const output = await result.output;
+      return output;
     });
   };
 
-  let text = await runTurn(false);
-  let parsed = parseAgentJson(text);
+  let output = await runTurn(false);
 
-  if (parsed?.mode === "query" && !toolResult) {
-    text = await runTurn(true);
-    parsed = parseAgentJson(text);
-  }
-
-  if (parsed) {
-    return {
-      mode: toolResult ? "query" : parsed.mode,
-      explanation: parsed.explanation,
-      chartHint: parsed.chartHint,
-      toolResult,
-    };
+  if (output.mode === "query" && !toolResult) {
+    output = await runTurn(true);
   }
 
   return {
-    mode: toolResult ? "query" : "conversation",
-    explanation: text.trim(),
-    chartHint: null,
+    mode: toolResult ? "query" : output.mode,
+    explanation: output.explanation.trim(),
+    chartHint: sanitizeChartHint(output.chartHint),
     toolResult,
   };
 }
