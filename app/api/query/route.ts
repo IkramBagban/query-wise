@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { resolveChartConfig } from "@/lib/charts";
 import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
+import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
 import { generateSQL, runConstrainedAnalystAgent } from "@/lib/llm";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
@@ -24,10 +25,10 @@ const QueryRequestSchema = z.object({
           timestamp: z.number().int(),
         })
         .passthrough(),
-    )
-    .max(100),
+  )
+  .max(100),
   connectionString: z.string().trim().min(1).optional(),
-  provider: z.enum(["google", "anthropic"]),
+  provider: z.enum(LLM_PROVIDER_IDS),
   model: z.string().trim().min(1).max(120),
   apiKey: z.string().trim().min(1),
 });

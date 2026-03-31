@@ -2,10 +2,11 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
+import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
 import { validateModelAccess } from "@/lib/llm";
 
 const LlmTestRequestSchema = z.object({
-  provider: z.enum(["google", "anthropic"]),
+  provider: z.enum(LLM_PROVIDER_IDS),
   model: z.string().trim().min(1).max(120),
   apiKey: z.string().trim().min(1),
 });
@@ -28,4 +29,3 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ error: message }, { status: 400 });
   }
 }
-

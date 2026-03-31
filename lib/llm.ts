@@ -3,37 +3,22 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, Output, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 
+import {
+  LLM_MODEL_CATALOG,
+  SUPPORTED_MODELS_BY_PROVIDER,
+  type LlmProvider,
+} from "@/lib/llm-config";
 import { sleep } from "@/lib/utils";
 import type { ChartHint, ChatMessage, SchemaInfo } from "@/types";
 
-type Provider = "google" | "anthropic";
+type Provider = LlmProvider;
 
-export const SUPPORTED_MODELS = [
-  {
-    provider: "google",
-    model: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro Preview",
-    tier: "powerful",
-  },
-  {
-    provider: "google",
-    model: "gemini-3-flash-preview",
-    label: "Gemini 3 Flash Preview",
-    tier: "fast",
-  },
-  {
-    provider: "anthropic",
-    model: "claude-opus-4-6",
-    label: "Claude Opus 4.6",
-    tier: "powerful",
-  },
-  {
-    provider: "anthropic",
-    model: "claude-sonnet-4-6",
-    label: "Claude Sonnet 4.6",
-    tier: "fast",
-  }
-] as const;
+export const SUPPORTED_MODELS = LLM_MODEL_CATALOG;
+
+const PROVIDER_MODELS: Record<Provider, string[]> = {
+  google: [...SUPPORTED_MODELS_BY_PROVIDER.google],
+  anthropic: [...SUPPORTED_MODELS_BY_PROVIDER.anthropic],
+};
 
 interface GenerateSQLParams {
   question: string;
@@ -133,9 +118,54 @@ function getStatusCode(error: unknown): number | null {
 function isRetryableError(error: unknown): boolean {
   const statusCode = getStatusCode(error);
   if (statusCode === 401) return false;
+  if (statusCode === 403) return false;
   if (statusCode === 429) return true;
   if (statusCode !== null) return statusCode >= 500;
   return true;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "";
+}
+
+function isAuthError(error: unknown): boolean {
+  const statusCode = getStatusCode(error);
+  if (statusCode === 401 || statusCode === 403) return true;
+
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("invalid api key") ||
+    message.includes("authentication") ||
+    message.includes("unauthorized")
+  );
+}
+
+function shouldFallbackToAnotherModel(error: unknown): boolean {
+  if (isAuthError(error)) return false;
+
+  const statusCode = getStatusCode(error);
+  if (statusCode === 429) return true;
+  if (statusCode !== null && statusCode >= 500) return true;
+  if (statusCode === 404) return true;
+
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("model") ||
+    message.includes("not found") ||
+    message.includes("unsupported") ||
+    message.includes("unavailable") ||
+    message.includes("overloaded") ||
+    message.includes("capacity") ||
+    message.includes("deprecated")
+  );
+}
+
+function getModelCandidates(provider: Provider, preferredModel: string): string[] {
+  const providerModels = PROVIDER_MODELS[provider];
+  const candidates = [preferredModel, ...providerModels];
+  return [...new Set(candidates)];
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
@@ -150,6 +180,28 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
     }
   }
   throw new Error("Unreachable");
+}
+
+async function withModelFallback<T>(params: {
+  provider: Provider;
+  model: string;
+  execute: (model: string) => Promise<T>;
+}): Promise<T> {
+  const candidates = getModelCandidates(params.provider, params.model);
+  let lastError: unknown;
+
+  for (const candidate of candidates) {
+    try {
+      return await withRetry(() => params.execute(candidate));
+    } catch (error) {
+      lastError = error;
+      if (!shouldFallbackToAnotherModel(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Model execution failed");
 }
 
 function buildStructuredTableContext(schema: SchemaInfo): string {
@@ -303,16 +355,19 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
     { role: "user", content: params.question },
   ];
 
-  const { text } = await withRetry(async () =>
-    generateText({
-      model: getModel(params.provider, params.model, params.apiKey),
-      system: systemPrompt,
-      messages,
-      // Allow longer SQL (nested CTEs / complex joins) without truncation.
-      maxOutputTokens: 2500,
-      temperature: 0.1,
-    }),
-  );
+  const { text } = await withModelFallback({
+    provider: params.provider,
+    model: params.model,
+    execute: async (candidateModel) =>
+      generateText({
+        model: getModel(params.provider, candidateModel, params.apiKey),
+        system: systemPrompt,
+        messages,
+        // Allow longer SQL (nested CTEs / complex joins) without truncation.
+        maxOutputTokens: 2500,
+        temperature: 0.1,
+      }),
+  });
 
   return cleanSQL(text);
 }
@@ -341,59 +396,67 @@ export async function runConstrainedAnalystAgent(
   let toolResult: ExecuteQueryToolResult | null = null;
 
   const runTurn = async (forcedTool: boolean): Promise<AgentOutput> => {
-    return withRetry(async () => {
-      const result = streamText({
-        model: getModel(params.provider, params.model, params.apiKey),
-        system: systemPrompt,
-        output: Output.object({ schema: AgentOutputSchema }),
-        messages,
-        tools: {
-          execute_query: tool({
-            description:
-              "Executes a database analysis question against the connected PostgreSQL schema and returns SQL + result rows.",
-            inputSchema: z.object({
-              question: z.string().trim().min(1).max(700),
+    return withModelFallback({
+      provider: params.provider,
+      model: params.model,
+      execute: async (candidateModel) => {
+        const result = streamText({
+          model: getModel(params.provider, candidateModel, params.apiKey),
+          system: systemPrompt,
+          output: Output.object({ schema: AgentOutputSchema }),
+          messages,
+          tools: {
+            execute_query: tool({
+              description:
+                "Executes a database analysis question against the connected PostgreSQL schema and returns SQL + result rows.",
+              inputSchema: z.object({
+                question: z.string().trim().min(1).max(700),
+              }),
+              strict: true,
+              execute: async ({ question }) => {
+                params.onStage?.("Generating SQL");
+                const output = await params.executeQueryTool(question);
+                toolResult = output;
+                return output;
+              },
             }),
-            strict: true,
-            execute: async ({ question }) => {
-              params.onStage?.("Generating SQL");
-              const output = await params.executeQueryTool(question);
-              toolResult = output;
-              return output;
-            },
-          }),
-        },
-        activeTools: ["execute_query"],
-        toolChoice: forcedTool ? "required" : "auto",
-        stopWhen: stepCountIs(8),
-        maxOutputTokens: 600,
-        temperature: 0.1,
-        experimental_onToolCallStart: () => {
-          params.onStage?.("Calling execute_query");
-        },
-        experimental_onToolCallFinish: () => {
-          params.onStage?.("Tool finished");
-        },
-      });
+          },
+          activeTools: ["execute_query"],
+          toolChoice: forcedTool ? "required" : "auto",
+          stopWhen: stepCountIs(8),
+          maxOutputTokens: 600,
+          temperature: 0.1,
+          experimental_onToolCallStart: () => {
+            params.onStage?.("Calling execute_query");
+          },
+          experimental_onToolCallFinish: () => {
+            params.onStage?.("Tool finished");
+          },
+        });
 
-      let streamedExplanation = "";
+        let streamedExplanation = "";
+        const bufferedDeltas: string[] = [];
 
-      for await (const partial of result.partialOutputStream) {
-        const nextExplanation =
-          partial && typeof partial === "object" && typeof partial.explanation === "string"
-            ? partial.explanation
-            : "";
+        for await (const partial of result.partialOutputStream) {
+          const nextExplanation =
+            partial && typeof partial === "object" && typeof partial.explanation === "string"
+              ? partial.explanation
+              : "";
 
-        if (!nextExplanation) continue;
-        const delta = getDeltaFromProgress(streamedExplanation, nextExplanation);
-        streamedExplanation = nextExplanation;
-        if (delta.length > 0) {
+          if (!nextExplanation) continue;
+          const delta = getDeltaFromProgress(streamedExplanation, nextExplanation);
+          streamedExplanation = nextExplanation;
+          if (delta.length > 0) {
+            bufferedDeltas.push(delta);
+          }
+        }
+
+        const output = await result.output;
+        for (const delta of bufferedDeltas) {
           params.onTextDelta?.(delta);
         }
-      }
-
-      const output = await result.output;
-      return output;
+        return output;
+      },
     });
   };
 
@@ -414,14 +477,17 @@ export async function runConstrainedAnalystAgent(
 export async function validateModelAccess(
   params: ValidateModelAccessParams,
 ): Promise<void> {
-  await withRetry(async () =>
-    generateText({
-      model: getModel(params.provider, params.model, params.apiKey),
-      system:
-        "You are a health check assistant. Reply with exactly: OK",
-      prompt: "Respond with OK.",
-      maxOutputTokens: 10,
-      temperature: 0,
-    }),
-  );
+  await withModelFallback({
+    provider: params.provider,
+    model: params.model,
+    execute: async (candidateModel) =>
+      generateText({
+        model: getModel(params.provider, candidateModel, params.apiKey),
+        system:
+          "You are a health check assistant. Reply with exactly: OK",
+        prompt: "Respond with OK.",
+        maxOutputTokens: 10,
+        temperature: 0,
+      }),
+  });
 }

@@ -1,23 +1,15 @@
 "use client";
 
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-
-export const SUPPORTED_MODELS = {
-  google: [
-    "gemini-3.1-pro-preview",
-    "gemini-3-flash-preview",
-  ],
-  anthropic: [
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-  ],
-} as const;
-
-export type LlmProvider = keyof typeof SUPPORTED_MODELS;
+import {
+  DEFAULT_LLM_MODEL,
+  DEFAULT_LLM_PROVIDER,
+  type LlmProvider,
+} from "@/lib/llm-config";
 
 export function useSettings() {
-  const provider = useLocalStorage<LlmProvider>("llm_provider", "google");
-  const model = useLocalStorage<string>("llm_model", "gemini-3-flash-preview");
+  const provider = useLocalStorage<LlmProvider>("llm_provider", DEFAULT_LLM_PROVIDER);
+  const model = useLocalStorage<string>("llm_model", DEFAULT_LLM_MODEL);
   const apiKey = useLocalStorage<string>("llm_api_key", "");
 
   return {

@@ -13,7 +13,12 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useConnection } from "@/hooks/useConnection";
-import { useSettings, SUPPORTED_MODELS, type LlmProvider } from "@/hooks/useSettings";
+import { useSettings } from "@/hooks/useSettings";
+import {
+  LLM_PROVIDER_OPTIONS,
+  SUPPORTED_MODELS_BY_PROVIDER,
+  type LlmProvider,
+} from "@/lib/llm-config";
 import { useToast } from "@/hooks/useToast";
 import type { ChatMessage, Dashboard, DashboardWidget, SchemaInfo, SchemaResponse } from "@/types";
 
@@ -171,23 +176,27 @@ export default function WorkspacePage() {
   };
 
   const providerOptions = useMemo(
-    () => [
-      { label: "Google", value: "google" },
-      { label: "Anthropic", value: "anthropic" },
-    ],
+    () => LLM_PROVIDER_OPTIONS.map((item) => ({ label: item.label, value: item.value })),
     [],
   );
 
   const modelOptions = useMemo(
-    () => (SUPPORTED_MODELS[provider] ?? []).map((item) => ({ label: item, value: item })),
+    () => (SUPPORTED_MODELS_BY_PROVIDER[provider] ?? []).map((item) => ({ label: item, value: item })),
     [provider],
   );
+
+  useEffect(() => {
+    const availableModels = SUPPORTED_MODELS_BY_PROVIDER[provider] as readonly string[];
+    if (!availableModels.includes(model)) {
+      setModel(availableModels[0] ?? model);
+    }
+  }, [model, provider, setModel]);
 
   const handleProviderChange = (value: string) => {
     const next = value as LlmProvider;
     setProvider(next);
     // Auto-select first model for the new provider
-    const fallback = SUPPORTED_MODELS[next][0];
+    const fallback = SUPPORTED_MODELS_BY_PROVIDER[next][0];
     if (fallback) {
       setModel(fallback);
     }

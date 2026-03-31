@@ -4,13 +4,14 @@ import { useState } from "react";
 
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
+import type { LlmProvider } from "@/lib/llm-config";
 import type { ChartType, ChatMessage, QueryRequest, QueryResponse } from "@/types";
 
 interface ChatPanelProps {
   isDatabaseConnected: boolean;
   onOpenConnectionModal: () => void;
   connectionString?: string;
-  provider: "google" | "anthropic";
+  provider: LlmProvider;
   model: string;
   providerOptions: { label: string; value: string }[];
   modelOptions: { label: string; value: string }[];

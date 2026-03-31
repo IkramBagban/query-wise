@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import type { LlmProvider } from "@/lib/llm-config";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_QUERIES = [
@@ -23,7 +24,7 @@ interface QueryInputProps {
   disabled?: boolean;
   databaseConnected?: boolean;
   onRequestConnectDatabase?: () => void;
-  provider: string;
+  provider: LlmProvider;
   model: string;
   providerOptions: { label: string; value: string }[];
   modelOptions: { label: string; value: string }[];
