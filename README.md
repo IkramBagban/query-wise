@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QueryWise
 
-## Getting Started
+QueryWise is a conversational BI app for PostgreSQL.  
+Connect a database (demo or custom), ask questions in natural language, and get:
+- generated SQL,
+- query results,
+- auto-selected charts,
+- and dashboard widgets that can be shared by link.
 
-First, run the development server:
+## Tech Stack
+- Next.js 16 (App Router, API routes)
+- TypeScript
+- PostgreSQL (`pg`)
+- AI SDK with Google + Anthropic providers
+- Recharts
 
+## Repository
+- GitHub: [ikramBagban/query-wise](https://github.com/ikramBagban/query-wise/)
+
+## Prerequisites
+- Node.js 20+
+- Bun (recommended in this repo) or npm
+- A PostgreSQL database for demo seeding (`DEMO_DATABASE_URL`)
+- One LLM API key from either:
+  - Google AI Studio (Gemini), or
+  - Anthropic (Claude)
+
+## 1) Clone and install
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/ikramBagban/query-wise.git
+cd query-wise
+bun install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+If you prefer npm:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 2) Configure environment
+Create `.env` in the project root.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+You can start from:
+```bash
+cp .env.example .env
+```
 
-## Learn More
+Required variables:
+```env
+DEMO_DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
+DEMO_USERNAME=demo
+DEMO_PASSWORD=querywise
+NEXTAUTH_SECRET=your-secret
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+Notes:
+- This project’s convention is `.env` as the single local env file.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 3) Seed the demo database
+```bash
+npm run seed
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+What this creates:
+- ecommerce schema with customers, products, orders, order items, categories, reviews
+- 10K+ orders over the last 12 months
 
-## Deploy on Vercel
+## 4) Run the app
+```bash
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open:
+- [http://localhost:3000](http://localhost:3000)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Sign in with your configured demo credentials:
+- username: `DEMO_USERNAME`
+- password: `DEMO_PASSWORD`
+
+## 5) Use the product
+1. Open Workspace.
+2. Connect to Demo DB (or connect your own PostgreSQL connection string).
+3. In Settings, choose provider + model and paste your own API key.
+4. Ask natural-language data questions.
+5. Save useful results to dashboard widgets and share links.
+
+## Build check
+```bash
+npm run build
+```
+
