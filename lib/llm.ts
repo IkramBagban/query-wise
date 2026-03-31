@@ -22,28 +22,16 @@ export const SUPPORTED_MODELS = [
     tier: "fast",
   },
   {
-    provider: "google",
-    model: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
+    provider: "anthropic",
+    model: "claude-opus-4-6",
+    label: "Claude Opus 4.6",
     tier: "powerful",
-  },
-  {
-    provider: "google",
-    model: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    tier: "fast",
-  },
-  {
-    provider: "google",
-    model: "gemini-2.5-flash-lite",
-    label: "Gemini 2.5 Flash-Lite",
-    tier: "fast",
   },
   {
     provider: "anthropic",
-    model: "claude-sonnet-4-5",
-    label: "Claude Sonnet",
-    tier: "powerful",
+    model: "claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    tier: "fast",
   }
 ] as const;
 

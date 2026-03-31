@@ -23,8 +23,11 @@ interface QueryInputProps {
   disabled?: boolean;
   databaseConnected?: boolean;
   onRequestConnectDatabase?: () => void;
+  provider: string;
   model: string;
+  providerOptions: { label: string; value: string }[];
   modelOptions: { label: string; value: string }[];
+  onProviderChange: (value: string) => void;
   onModelChange: (value: string) => void;
   onSubmit: (question: string) => Promise<void>;
 }
@@ -33,8 +36,11 @@ export function QueryInput({
   disabled = false,
   databaseConnected = true,
   onRequestConnectDatabase,
+  provider,
   model,
+  providerOptions,
   modelOptions,
+  onProviderChange,
   onModelChange,
   onSubmit,
 }: QueryInputProps) {
@@ -120,16 +126,28 @@ export function QueryInput({
           }}
         />
         <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
-          <Select
-            value={model}
-            onChange={onModelChange}
-            options={modelOptions}
-            className={cn(
-              "min-w-40 sm:min-w-52",
-              "[&>button]:h-9 [&>button]:rounded-xl [&>button]:border-[#174128]/24 [&>button]:bg-[#f2f9ed] [&>button]:text-[13px] [&>button]:font-medium",
-            )}
-            menuSide="top"
-          />
+          <div className="flex items-center gap-2">
+            <Select
+              value={provider}
+              onChange={onProviderChange}
+              options={providerOptions}
+              className={cn(
+                "min-w-32",
+                "[&>button]:h-9 [&>button]:rounded-xl [&>button]:border-[#174128]/24 [&>button]:bg-[#f2f9ed] [&>button]:text-[13px] [&>button]:font-medium",
+              )}
+              menuSide="top"
+            />
+            <Select
+              value={model}
+              onChange={onModelChange}
+              options={modelOptions}
+              className={cn(
+                "min-w-40 sm:min-w-52",
+                "[&>button]:h-9 [&>button]:rounded-xl [&>button]:border-[#174128]/24 [&>button]:bg-[#f2f9ed] [&>button]:text-[13px] [&>button]:font-medium",
+              )}
+              menuSide="top"
+            />
+          </div>
             <Button
               variant="primary"
               size="sm"

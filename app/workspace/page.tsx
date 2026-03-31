@@ -183,6 +183,16 @@ export default function WorkspacePage() {
     [provider],
   );
 
+  const handleProviderChange = (value: string) => {
+    const next = value as LlmProvider;
+    setProvider(next);
+    // Auto-select first model for the new provider
+    const fallback = SUPPORTED_MODELS[next][0];
+    if (fallback) {
+      setModel(fallback);
+    }
+  };
+
   const onSaveWidget = async (message: ChatMessage) => {
     const widget = createDashboardWidget(message);
     if (!widget) return;
@@ -319,7 +329,9 @@ export default function WorkspacePage() {
             connectionString={connection?.connectionString}
             provider={provider}
             model={model}
+            providerOptions={providerOptions}
             modelOptions={modelOptions}
+            onProviderChange={handleProviderChange}
             onModelChange={setModel}
             apiKey={apiKey}
             onSaveWidget={onSaveWidget}
@@ -433,12 +445,7 @@ export default function WorkspacePage() {
             <h3 className="text-xs uppercase tracking-[0.12em] text-text-3">LLM configuration</h3>
             <Select
               value={provider}
-              onChange={(value) => {
-                const next = value as LlmProvider;
-                setProvider(next);
-                const fallback = SUPPORTED_MODELS[next][0];
-                setModel(fallback);
-              }}
+              onChange={handleProviderChange}
               options={providerOptions}
             />
             <Select value={model} onChange={setModel} options={modelOptions} />

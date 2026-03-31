@@ -12,7 +12,9 @@ interface ChatPanelProps {
   connectionString?: string;
   provider: "google" | "anthropic";
   model: string;
+  providerOptions: { label: string; value: string }[];
   modelOptions: { label: string; value: string }[];
+  onProviderChange: (value: string) => void;
   onModelChange: (value: string) => void;
   apiKey: string;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
@@ -60,7 +62,9 @@ export function ChatPanel({
   connectionString,
   provider,
   model,
+  providerOptions,
   modelOptions,
+  onProviderChange,
   onModelChange,
   apiKey,
   onSaveWidget,
@@ -274,8 +278,11 @@ export function ChatPanel({
             disabled={!isDatabaseConnected}
             databaseConnected={isDatabaseConnected}
             onRequestConnectDatabase={onOpenConnectionModal}
+            provider={provider}
             model={model}
+            providerOptions={providerOptions}
             modelOptions={modelOptions}
+            onProviderChange={onProviderChange}
             onModelChange={onModelChange}
             onSubmit={handleSend}
           />

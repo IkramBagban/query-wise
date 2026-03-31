@@ -42,9 +42,6 @@ export default async function SharedDashboardPage({
           <WidgetCard key={widget.id} widget={widget} readOnly />
         ))}
       </section>
-      <footer className="mt-8 border-t border-[#174128]/12 pt-4 text-center text-xs text-[#355442]">
-        Create your own at querywise.app
-      </footer>
     </main>
   );
 }
