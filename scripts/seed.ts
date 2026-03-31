@@ -3,12 +3,12 @@ import type { PoolClient } from "pg";
 import { Pool } from "pg";
 import * as dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
 
 const DEMO_DATABASE_URL = process.env.DEMO_DATABASE_URL;
 
 if (!DEMO_DATABASE_URL) {
-  throw new Error("DEMO_DATABASE_URL is missing in .env.local");
+  throw new Error("DEMO_DATABASE_URL is missing in .env");
 }
 
 const pool = new Pool({
