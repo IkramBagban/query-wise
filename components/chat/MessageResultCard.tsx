@@ -80,17 +80,17 @@ export function MessageResultCard({
 
   const renderCard = (isExpanded: boolean) => (
     <div
-      className={`overflow-visible rounded-2xl border border-[#174128]/18 bg-[#f9fdf7] shadow-[0_12px_28px_rgba(14,41,24,0.08)] ${
+      className={`overflow-visible rounded-2xl border border-[#174128]/15 bg-[#f7fcf4] shadow-[0_8px_20px_rgba(14,41,24,0.06)] sm:border-[#174128]/18 sm:shadow-[0_12px_28px_rgba(14,41,24,0.08)] ${
         isExpanded ? "min-h-[520px]" : ""
       }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#174128]/10 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#174128]/10 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex flex-wrap gap-2">
           {hasResultView ? (
             <Tooltip content="Chart" side="bottom">
               <button
                 aria-label="Chart"
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition sm:h-9 sm:w-9 ${
                   activeTab === "chart"
                     ? "bg-[#2ed52e] text-white shadow-[0_8px_20px_rgba(46,213,46,0.25)]"
                     : "border border-[#174128]/16 bg-white text-black"
@@ -105,7 +105,7 @@ export function MessageResultCard({
             <Tooltip content="Generated SQL" side="bottom">
               <button
                 aria-label="Generated SQL"
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] transition sm:h-9 sm:w-9 ${
                   activeTab === "sql"
                     ? "bg-[#2ed52e] text-white shadow-[0_8px_20px_rgba(46,213,46,0.25)]"
                     : "border border-[#174128]/16 bg-white text-black"
@@ -117,7 +117,7 @@ export function MessageResultCard({
             </Tooltip>
           ) : null}
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-black">
+        <div className="flex items-center gap-1.5 text-[11px] text-black sm:gap-2">
           {message.result ? (
             <span className="font-semibold">
               {message.result.rowCount} rows · {message.result.executionTimeMs}ms
@@ -140,7 +140,7 @@ export function MessageResultCard({
               type="button"
               disabled={saving}
               onClick={() => void handleSave()}
-              className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-[#174128]/18 bg-white px-3 text-[11px] font-semibold uppercase tracking-[0.14em] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-[#174128]/18 bg-white px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.14em]"
             >
               {saving ? (
                 <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#174128]/40 border-t-[#174128]" />
@@ -154,12 +154,12 @@ export function MessageResultCard({
       </div>
 
       {activeTab === "chart" && hasResultView && message.result && chartConfigForView ? (
-        <div className={`space-y-4 p-4 ${isExpanded ? "min-h-[440px]" : ""}`}>
+        <div className={`space-y-3 p-3 sm:space-y-4 sm:p-4 ${isExpanded ? "min-h-[440px]" : ""}`}>
           <div className="flex items-center justify-between gap-3">
-            <div ref={chartMenuRef} className="relative inline-flex min-w-[140px] max-w-[180px]">
+            <div ref={chartMenuRef} className="relative inline-flex min-w-[128px] max-w-[170px] sm:min-w-[140px] sm:max-w-[180px]">
               <button
                 type="button"
-                className="inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1"
+                className="inline-flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1 sm:h-9"
                 onClick={() => setChartMenuOpen((prev) => !prev)}
               >
                 <span className="truncate">
@@ -193,7 +193,7 @@ export function MessageResultCard({
               ) : null}
             </div>
           </div>
-          <div className={`rounded-xl border border-[#174128]/16 bg-white p-3 ${isExpanded ? "h-[380px]" : ""}`}>
+          <div className={`rounded-xl border border-[#174128]/16 bg-white p-2.5 sm:p-3 ${isExpanded ? "h-[380px]" : "min-h-[220px]"}`}>
             {chartConfigForView.type === "table" ? (
               <TableView result={message.result} />
             ) : (
@@ -217,7 +217,7 @@ export function MessageResultCard({
       <Dialog
         open={expanded}
         onOpenChange={setExpanded}
-        panelClassName="max-w-6xl p-4"
+        panelClassName="max-w-[94vw] p-3 sm:max-w-6xl sm:p-4"
       >
         {renderCard(true)}
       </Dialog>

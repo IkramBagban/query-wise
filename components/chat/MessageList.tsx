@@ -32,15 +32,17 @@ export function MessageList({
   }, [isLoading, messages, pendingStage, pendingContent]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
+    <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-3 sm:px-6 sm:py-5">
       <div className="mx-auto w-full max-w-[1080px]">
         {messages.length === 0 ? (
-          <div className="mx-auto mt-8 max-w-xl rounded-2xl border border-dashed border-[#164229]/28 bg-white/90 p-7 text-sm text-text-2 shadow-[0_14px_30px_rgba(14,41,24,0.07)]">
-            <p className="mb-2 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#24593a]">
+          <div className="mx-auto mt-3 max-w-xl rounded-2xl border border-dashed border-[#164229]/28 bg-white/90 p-4 text-[13px] text-text-2 shadow-[0_14px_30px_rgba(14,41,24,0.07)] sm:mt-8 sm:p-7 sm:text-sm">
+            <div className="mb-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#24593a] sm:text-[11px]">
               <MessagesSquare className="h-4 w-4" />
               Conversation
+            </div>
+            <p className="leading-relaxed">
+              Ask your first question to start analysis. Results, charts, and generated SQL will appear inline here.
             </p>
-            Ask your first question to start analysis. Results, charts, and generated SQL will appear inline here.
           </div>
         ) : null}
         <div className="flex flex-col gap-4 pb-2">

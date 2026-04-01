@@ -16,9 +16,19 @@ interface SelectProps {
   options: SelectOption[];
   className?: string;
   menuSide?: "top" | "bottom";
+  menuAlign?: "left" | "right" | "mobile-right-desktop-left";
+  menuMinWidthClassName?: string;
 }
 
-export function Select({ value, onChange, options, className, menuSide = "bottom" }: SelectProps) {
+export function Select({
+  value,
+  onChange,
+  options,
+  className,
+  menuSide = "bottom",
+  menuAlign = "left",
+  menuMinWidthClassName,
+}: SelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -43,7 +53,7 @@ export function Select({ value, onChange, options, className, menuSide = "bottom
   }, []);
 
   return (
-    <div ref={rootRef} className={cn("relative inline-flex min-w-40", className)}>
+    <div ref={rootRef} className={cn("relative inline-flex min-w-0 sm:min-w-40", className)}>
       <button
         type="button"
         className={cn(
@@ -60,8 +70,12 @@ export function Select({ value, onChange, options, className, menuSide = "bottom
       {open ? (
         <div
           className={cn(
-            "absolute left-0 z-50 w-full overflow-hidden rounded-md border border-border-2 bg-surface-2 p-1 shadow-2xl",
+            "absolute z-50 w-full overflow-hidden rounded-md border border-border-2 bg-surface-2 p-1 shadow-2xl",
+            menuAlign === "left" ? "left-0" : "",
+            menuAlign === "right" ? "right-0" : "",
+            menuAlign === "mobile-right-desktop-left" ? "right-0 sm:left-0 sm:right-auto" : "",
             menuSide === "top" ? "bottom-10" : "top-10",
+            menuMinWidthClassName,
           )}
         >
           {options.map((option) => {
@@ -71,7 +85,7 @@ export function Select({ value, onChange, options, className, menuSide = "bottom
                 key={option.value}
                 type="button"
                 className={cn(
-                  "flex w-full items-center justify-between rounded px-2 py-1.5 text-xs transition-colors",
+                  "flex w-full items-start justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors",
                   isActive ? "bg-accent/20 text-text-1" : "text-text-2 hover:bg-surface-3 hover:text-text-1",
                 )}
                 onClick={() => {
@@ -79,7 +93,7 @@ export function Select({ value, onChange, options, className, menuSide = "bottom
                   setOpen(false);
                 }}
               >
-                <span className="truncate">{option.label}</span>
+                <span className="min-w-0 whitespace-normal break-words">{option.label}</span>
                 {isActive ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
               </button>
             );

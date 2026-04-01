@@ -110,11 +110,11 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   if (pending) {
     return (
-      <div className="flex max-w-[78%] items-start gap-2">
+      <div className="flex w-full max-w-[92%] items-start gap-2 sm:max-w-[78%]">
         <span className="mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-[#174128]/20 bg-[#edf7ea] text-[#1f5c2f]">
           <Sparkles className="h-4 w-4" />
         </span>
-        <div className="rounded-2xl border border-[#174128]/16 bg-white px-4 py-3 shadow-[0_8px_22px_rgba(14,41,24,0.08)]">
+        <div className="min-w-0 rounded-2xl border border-[#174128]/16 bg-white px-4 py-3 shadow-[0_8px_22px_rgba(14,41,24,0.08)]">
           <ThinkingIndicator stage={pendingStage} content={pendingContent} />
         </div>
       </div>
@@ -123,9 +123,9 @@ export function MessageBubble({
 
   if (message.role === "user") {
     return (
-      <div className="ml-auto flex w-full max-w-[78%] items-start justify-end gap-2">
-        <div className="rounded-2xl bg-[#2ed52e] px-4 py-3 text-sm font-medium text-white shadow-[0_12px_24px_rgba(46,213,46,0.28)]">
-          <RichText content={message.content} className="text-sm leading-relaxed text-white" />
+      <div className="ml-auto flex w-full max-w-[92%] items-start justify-end gap-2 sm:max-w-[78%]">
+        <div className="min-w-0 rounded-2xl bg-[#2ed52e] px-4 py-3 text-sm font-medium text-white shadow-[0_12px_24px_rgba(46,213,46,0.28)]">
+          <RichText content={message.content} className="break-words text-[13px] leading-relaxed text-white sm:text-sm" />
         </div>
         <Tooltip content="You">
           <span className="mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-[#174128]/25 bg-white text-[#255d35] shadow-[0_4px_14px_rgba(14,41,24,0.08)]">
@@ -137,14 +137,14 @@ export function MessageBubble({
   }
 
   return (
-    <div className="flex max-w-[82%] items-start gap-2">
+    <div className="flex w-full max-w-[92%] items-start gap-2 sm:max-w-[82%]">
       <Tooltip content="QueryWise Analyst">
         <span className="mt-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-[#174128]/20 bg-[#edf7ea] text-[#1d552e]">
           <Bot className="h-4 w-4" />
         </span>
       </Tooltip>
-      <div className="w-full space-y-3 rounded-2xl border border-[#174128]/16 bg-white px-4 py-4 shadow-[0_10px_26px_rgba(14,41,24,0.08)]">
-        <RichText content={message.content} className="text-sm leading-relaxed text-text-1" />
+      <div className="min-w-0 w-full space-y-3 rounded-2xl border border-[#174128]/16 bg-white px-4 py-4 shadow-[0_10px_26px_rgba(14,41,24,0.08)]">
+        <RichText content={message.content} className="break-words text-[13px] leading-relaxed text-text-1 sm:text-sm" />
         {message.result || message.sql ? (
           <MessageResultCard
             message={message}

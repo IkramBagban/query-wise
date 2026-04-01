@@ -241,48 +241,56 @@ export default function WorkspacePage() {
   };
   return (
     <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_6%_0%,rgba(116,204,99,0.16),transparent_24%),radial-gradient(circle_at_100%_0%,rgba(43,116,57,0.08),transparent_20%),#f4faf2] text-text-1">
-      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-[#174128]/14 bg-white/85 px-3 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md sm:px-5">
-        <div className="flex items-center gap-3">
-          <Tooltip content="Schema" side="bottom">
-            <Button
-              variant="icon"
-              onClick={() => setSchemaOpen(true)}
-              className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a] lg:hidden"
-            >
-              <PanelLeft className="h-5 w-5" strokeWidth={2.3} />
-            </Button>
-          </Tooltip>
-          <span className="font-syne text-2xl font-bold tracking-tight">
-            Query<span className="text-[#2ed52e]">Wise</span>
-          </span>
-          <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">
-            <Link href="/dashboard" className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
-              Dashboard
-            </Link>
-            <span className="rounded-full bg-[#e7f6de] px-3 py-1.5 text-xs font-semibold text-[#174128]">Workspace</span>
-          </nav>
-        </div>
+      <header className="z-20 shrink-0 border-b border-[#174128]/14 bg-white/85 px-3 py-3 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md sm:px-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Tooltip content="Schema" side="bottom">
+              <Button
+                variant="icon"
+                onClick={() => setSchemaOpen(true)}
+                className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a] lg:hidden"
+              >
+                <PanelLeft className="h-5 w-5" strokeWidth={2.3} />
+              </Button>
+            </Tooltip>
+            <span className="truncate font-syne text-2xl font-bold tracking-tight">
+              Query<span className="text-[#2ed52e]">Wise</span>
+            </span>
+            <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">
+              <Link href="/dashboard" className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
+                Dashboard
+              </Link>
+              <span className="rounded-full bg-[#e7f6de] px-3 py-1.5 text-xs font-semibold text-[#174128]">Workspace</span>
+            </nav>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <Tooltip content="Database" side="bottom">
-            <Button
-              variant="icon"
-              onClick={() => setConnectionOpen(true)}
-              className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
-            >
-              <Database className="h-5 w-5" strokeWidth={2.3} />
-            </Button>
-          </Tooltip>
-          <Tooltip content="Settings" side="bottom">
-            <Button
-              variant="icon"
-              onClick={() => setSettingsOpen(true)}
-              className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
-            >
-              <Settings className="h-5 w-5" strokeWidth={2.3} />
-            </Button>
-          </Tooltip>
+          <div className="flex items-center gap-2">
+            <Tooltip content="Database" side="bottom">
+              <Button
+                variant="icon"
+                onClick={() => setConnectionOpen(true)}
+                className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
+              >
+                <Database className="h-5 w-5" strokeWidth={2.3} />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Settings" side="bottom">
+              <Button
+                variant="icon"
+                onClick={() => setSettingsOpen(true)}
+                className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
+              >
+                <Settings className="h-5 w-5" strokeWidth={2.3} />
+              </Button>
+            </Tooltip>
+          </div>
         </div>
+        <nav className="mt-3 flex items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:hidden">
+          <Link href="/dashboard" className="flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
+            Dashboard
+          </Link>
+          <span className="flex-1 rounded-full bg-[#e7f6de] px-3 py-1.5 text-center text-xs font-semibold text-[#174128]">Workspace</span>
+        </nav>
       </header>
 
       <section className="min-h-0 flex-1 overflow-hidden lg:flex">
@@ -315,7 +323,6 @@ export default function WorkspacePage() {
             onOpenConnectionModal={() => setConnectionOpen(true)}
             onOpenSettingsModal={() => setSettingsOpen(true)}
             connectionString={connection?.connectionString}
-            schema={schema}
             provider={provider}
             model={model}
             providerOptions={providerOptions}

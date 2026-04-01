@@ -4,14 +4,13 @@ import { useAppState } from "@/components/providers/AppStateProvider";
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
 import type { LlmProvider } from "@/lib/llm-config";
-import type { ChartType, ChatMessage, QueryRequest, QueryResponse, SchemaInfo } from "@/types";
+import type { ChartType, ChatMessage, QueryRequest, QueryResponse } from "@/types";
 
 interface ChatPanelProps {
   isDatabaseConnected: boolean;
   onOpenConnectionModal: () => void;
   onOpenSettingsModal: () => void;
   connectionString?: string;
-  schema: SchemaInfo | null;
   provider: LlmProvider;
   model: string;
   providerOptions: { label: string; value: string }[];
@@ -74,7 +73,6 @@ export function ChatPanel({
   onOpenConnectionModal,
   onOpenSettingsModal,
   connectionString,
-  schema,
   provider,
   model,
   providerOptions,
@@ -301,8 +299,8 @@ export function ChatPanel({
         onChartTypeChange={handleChartTypeChange}
         onSaveWidget={onSaveWidget}
       />
-      <div className="sticky bottom-0 z-20 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
-        <div className="mx-auto w-full max-w-[1080px]">
+      <div className="sticky bottom-0 z-20 bg-gradient-to-t from-[#eef6ea] via-[#eef6ea]/95 to-transparent pl-2 pr-3 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
+        <div className="mx-auto w-full max-w-[980px]">
           <QueryInput
             disabled={!isDatabaseConnected}
             databaseConnected={isDatabaseConnected}

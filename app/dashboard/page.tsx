@@ -48,8 +48,8 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_10%_0%,rgba(116,204,99,0.2),transparent_28%),radial-gradient(circle_at_95%_0%,rgba(43,116,57,0.08),transparent_22%),#f4faf2] px-6 py-5">
-      <header className="mb-5 flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-3">
+      <header className="mb-5 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between gap-3 sm:justify-start">
           <span className="font-syne text-2xl font-bold tracking-tight">
             Query<span className="text-[#2ed52e]">Wise</span>
           </span>
@@ -59,8 +59,19 @@ export default function DashboardPage() {
               Workspace
             </Link>
           </nav>
+          <div className="flex gap-2 sm:hidden">
+            <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
+              <Share2 className="h-4 w-4" /> Share
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <nav className="flex items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:hidden">
+          <span className="flex-1 rounded-full bg-[#e7f6de] px-3 py-1.5 text-center text-xs font-semibold text-[#174128]">Dashboard</span>
+          <Link href="/workspace" className="flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
+            Workspace
+          </Link>
+        </nav>
+        <div className="hidden gap-2 sm:flex">
           <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
             <Share2 className="h-4 w-4" /> Share
           </Button>
