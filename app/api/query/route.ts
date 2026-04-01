@@ -187,6 +187,16 @@ function toUserFriendlyMessage(error: unknown): string {
   return "Unknown error.";
 }
 
+function isStructuredOutputParseFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("no object generated") ||
+    message.includes("could not parse the response") ||
+    message.includes("could not parse response")
+  );
+}
+
 async function executeQueryFlow(
   input: z.infer<typeof QueryRequestSchema>,
   emit?: StreamEmitter,
@@ -204,81 +214,112 @@ async function executeQueryFlow(
   const schema = await getCachedSchema(connectionString);
   emit?.("stage", { label: "Preparing schema context" });
 
-  const agentTurn = await runConstrainedAnalystAgent({
-    question,
-    history,
-    schema,
-    provider,
-    model,
-    apiKey,
-    onTextDelta: (chunk) => {
-      emit?.("text_delta", { chunk });
-    },
-    onStage: (label) => {
-      emit?.("stage", { label });
-    },
-    executeQueryTool: async (toolQuestion) => {
-      try {
-        const sql = await generateSQL({
-          question: toolQuestion,
-          schema,
-          history,
-          provider,
-          model,
-          apiKey,
-        });
+  const runSqlQuestion = async (toolQuestion: string) => {
+    try {
+      const sql = await generateSQL({
+        question: toolQuestion,
+        schema,
+        history,
+        provider,
+        model,
+        apiKey,
+      });
 
-        logEvent({
-          type: "LLM_RESPONSE",
-          timestamp: new Date().toISOString(),
-          message: sql,
-          meta: { tool: "execute_query", question: toolQuestion, model },
-        });
+      logEvent({
+        type: "LLM_RESPONSE",
+        timestamp: new Date().toISOString(),
+        message: sql,
+        meta: { tool: "execute_query", question: toolQuestion, model },
+      });
 
-        emit?.("sql", { sql });
+      emit?.("sql", { sql });
 
-        const validation = validateAndSanitizeSql(sql);
-        if (!validation.valid) {
-          throw new Error(validation.reason ?? "Query blocked");
-        }
-
-        emit?.("stage", { label: "Executing SQL" });
-        const result = await executeQuery(sql, connectionString);
-
-        emit?.("query_stats", {
-          rowCount: result.rowCount,
-          executionTimeMs: result.executionTimeMs,
-        });
-
-        logEvent({
-          type: "SQL_QUERY",
-          timestamp: new Date().toISOString(),
-          message: sql,
-          meta: { connectionString, model, rowCount: result.rowCount },
-        });
-
-        return {
-          sql,
-          columns: result.columns,
-          rows: result.rows,
-          rowCount: result.rowCount,
-          executionTimeMs: result.executionTimeMs,
-        };
-      } catch (error) {
-        logEvent({
-          type: "ERROR",
-          timestamp: new Date().toISOString(),
-          message: error instanceof Error ? error.message : String(error),
-          meta: {
-            stack: error instanceof Error ? error.stack : undefined,
-            tool: "execute_query",
-            toolQuestion,
-          },
-        });
-        throw error;
+      const validation = validateAndSanitizeSql(sql);
+      if (!validation.valid) {
+        throw new Error(validation.reason ?? "Query blocked");
       }
-    },
-  });
+
+      emit?.("stage", { label: "Executing SQL" });
+      const result = await executeQuery(sql, connectionString);
+
+      emit?.("query_stats", {
+        rowCount: result.rowCount,
+        executionTimeMs: result.executionTimeMs,
+      });
+
+      logEvent({
+        type: "SQL_QUERY",
+        timestamp: new Date().toISOString(),
+        message: sql,
+        meta: { connectionString, model, rowCount: result.rowCount },
+      });
+
+      return {
+        sql,
+        columns: result.columns,
+        rows: result.rows,
+        rowCount: result.rowCount,
+        executionTimeMs: result.executionTimeMs,
+      };
+    } catch (error) {
+      logEvent({
+        type: "ERROR",
+        timestamp: new Date().toISOString(),
+        message: error instanceof Error ? error.message : String(error),
+        meta: {
+          stack: error instanceof Error ? error.stack : undefined,
+          tool: "execute_query",
+          toolQuestion,
+        },
+      });
+      throw error;
+    }
+  };
+
+  let agentTurn;
+  try {
+    agentTurn = await runConstrainedAnalystAgent({
+      question,
+      history,
+      schema,
+      provider,
+      model,
+      apiKey,
+      onTextDelta: (chunk) => {
+        emit?.("text_delta", { chunk });
+      },
+      onStage: (label) => {
+        emit?.("stage", { label });
+      },
+      executeQueryTool: async (toolQuestion) => runSqlQuestion(toolQuestion),
+    });
+  } catch (error) {
+    if (!isStructuredOutputParseFailure(error)) {
+      throw error;
+    }
+
+    emit?.("stage", { label: "Recovering from model format error" });
+    const fallbackResult = await runSqlQuestion(question);
+    emit?.("stage", { label: "Selecting chart" });
+
+    const finalResult = {
+      columns: fallbackResult.columns,
+      rows: fallbackResult.rows,
+      rowCount: fallbackResult.rowCount,
+      executionTimeMs: fallbackResult.executionTimeMs,
+    };
+
+    const chartConfig = resolveChartConfig(finalResult);
+    const explanation = `Found ${finalResult.rowCount.toLocaleString()} result${finalResult.rowCount === 1 ? "" : "s"} for: ${question}`;
+
+    return {
+      mode: "query",
+      explanation,
+      sql: fallbackResult.sql,
+      result: finalResult,
+      chartConfig,
+    };
+  }
 
   logEvent({
     type: "LLM_RESPONSE",
