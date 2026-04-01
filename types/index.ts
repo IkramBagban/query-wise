@@ -170,6 +170,23 @@ export interface SchemaResponse {
 }
 
 /**
+ * Request payload for on-demand schema analysis via LLM.
+ */
+export interface SchemaAnalysisRequest {
+  schema: SchemaInfo;
+  provider: "google" | "anthropic";
+  model: string;
+  apiKey: string;
+}
+
+/**
+ * Response payload for schema analysis via LLM.
+ */
+export interface SchemaAnalysisResponse {
+  analysis: string;
+}
+
+/**
  * Request payload for natural-language query execution.
  */
 export interface QueryRequest {

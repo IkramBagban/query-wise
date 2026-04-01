@@ -29,6 +29,13 @@ interface GenerateSQLParams {
   apiKey: string;
 }
 
+interface GenerateSchemaAnalysisParams {
+  schema: SchemaInfo;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+}
+
 interface ValidateModelAccessParams {
   provider: Provider;
   model: string;
@@ -164,7 +171,10 @@ function shouldFallbackToAnotherModel(error: unknown): boolean {
   );
 }
 
-function getModelCandidates(provider: Provider, preferredModel: string): string[] {
+function getModelCandidates(
+  provider: Provider,
+  preferredModel: string,
+): string[] {
   const providerModels = PROVIDER_MODELS[provider];
   const candidates = [preferredModel, ...providerModels];
   return [...new Set(candidates)];
@@ -203,7 +213,9 @@ async function withModelFallback<T>(params: {
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Model execution failed");
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Model execution failed");
 }
 
 function buildStructuredTableContext(schema: SchemaInfo): string {
@@ -299,10 +311,16 @@ function sanitizeChartHint(raw: unknown): ChartHint | null {
   const parsed = raw as ChartHint;
 
   const pickString = (value: unknown): string | undefined =>
-    typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+    typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : undefined;
   const pickStringArray = (value: unknown): string[] | undefined =>
     Array.isArray(value)
-      ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim())
+      ? value
+          .filter(
+            (v): v is string => typeof v === "string" && v.trim().length > 0,
+          )
+          .map((v) => v.trim())
       : undefined;
 
   const type = pickString(parsed.type);
@@ -349,7 +367,10 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
     .slice(-10)
     .map((message) => ({
       role: message.role,
-      content: message.role === "user" ? message.content : (message.sql ?? message.content),
+      content:
+        message.role === "user"
+          ? message.content
+          : (message.sql ?? message.content),
     }));
 
   const messages: ModelMessage[] = [
@@ -383,13 +404,17 @@ export async function runConstrainedAnalystAgent(
     .slice(-12)
     .map((message) => ({
       role: message.role,
-      content: message.role === "user" ? message.content : (message.sql ?? message.content),
+      content:
+        message.role === "user"
+          ? message.content
+          : (message.sql ?? message.content),
     }));
 
   const hasLatestQuestion =
     historyMessages.length > 0 &&
     historyMessages[historyMessages.length - 1]?.role === "user" &&
-    historyMessages[historyMessages.length - 1]?.content.trim() === params.question.trim();
+    historyMessages[historyMessages.length - 1]?.content.trim() ===
+      params.question.trim();
 
   const messages: ModelMessage[] = hasLatestQuestion
     ? historyMessages
@@ -441,12 +466,17 @@ export async function runConstrainedAnalystAgent(
 
         for await (const partial of result.partialOutputStream) {
           const nextExplanation =
-            partial && typeof partial === "object" && typeof partial.explanation === "string"
+            partial &&
+            typeof partial === "object" &&
+            typeof partial.explanation === "string"
               ? partial.explanation
               : "";
 
           if (!nextExplanation) continue;
-          const delta = getDeltaFromProgress(streamedExplanation, nextExplanation);
+          const delta = getDeltaFromProgress(
+            streamedExplanation,
+            nextExplanation,
+          );
           streamedExplanation = nextExplanation;
           if (delta.length > 0) {
             bufferedDeltas.push(delta);
@@ -485,11 +515,80 @@ export async function validateModelAccess(
     execute: async (candidateModel) =>
       generateText({
         model: getModel(params.provider, candidateModel, params.apiKey),
-        system:
-          "You are a health check assistant. Reply with exactly: OK",
+        system: "You are a health check assistant. Reply with exactly: OK",
         prompt: "Respond with OK.",
         maxOutputTokens: 10,
         temperature: 0,
       }),
   });
+}
+
+export async function generateSchemaAnalysis(
+  params: GenerateSchemaAnalysisParams,
+): Promise<string> {
+  const system = `
+You are a principal analytics engineer writing concise, human-readable schema summaries for business users.
+
+Your job is to explain:
+- what the database appears to represent,
+- what the main entities are,
+- how they relate to each other,
+- and what kinds of analysis the schema can support.
+
+Use only the information explicitly provided in the schema context.
+Do not invent business trends, KPI results, customer behavior patterns, seasonality, or performance insights.
+If the schema alone is insufficient to support a claim, describe what the schema enables rather than asserting an observed finding.
+Write for a smart non-technical stakeholder who is seeing this database for the first time.
+`.trim();
+
+  const prompt = [
+    "Analyze this PostgreSQL schema for a non-technical BI user.",
+    "",
+    "Goal:",
+    "- Produce a clear, polished, business-friendly schema summary.",
+    "- Help the reader quickly understand what this database is for and how it can be used.",
+    "",
+    "Output requirements:",
+    "- Use Markdown headings and bullet points only. No tables.",
+    "- Use exactly these headings in this order:",
+    "  1) ### Business Context",
+    "  2) ### Core Entities",
+    "  3) ### Key Relationships",
+    "  4) ### Analytical Opportunities",
+    "- Under each heading, write 2-4 short bullet points.",
+    "- Use plain business language that a non-technical stakeholder can understand.",
+    "- Prefer meaning and purpose over technical jargon.",
+    "- Keep the tone polished, concise, natural, and human-readable.",
+    "- Avoid raw column-name phrasing unless necessary.",
+    "- Do not mention SQL, schemas, joins, or data types unless directly helpful.",
+    "",
+    "Grounding rules:",
+    "- Base every statement only on the provided schema summary, relationships, sample values, and metadata.",
+    "- Do not claim observed business trends or performance outcomes unless they are explicitly supported by the provided context.",
+    "- Do not invent metrics, percentages, seasonality, customer behavior patterns, or revenue conclusions.",
+    "- If evidence is limited, say what the schema enables analysis of, not what the data proves.",
+    "- In 'Analytical Opportunities', mention only analyses directly supported by the tables, columns, relationships, and provided metadata.",
+    "- If uncertainty is important, include one short final note only in this format: '_Note: ..._'",
+    "",
+    "Schema summary:",
+    params.schema.summary,
+    "",
+    "Structured table details:",
+    buildStructuredTableContext(params.schema),
+  ].join("\n");
+
+  const { text } = await withModelFallback({
+    provider: params.provider,
+    model: params.model,
+    execute: async (candidateModel) =>
+      generateText({
+        model: getModel(params.provider, candidateModel, params.apiKey),
+        system,
+        prompt,
+        // maxOutputTokens: 480,
+        temperature: 0.15,
+      }),
+  });
+
+  return text.trim();
 }
