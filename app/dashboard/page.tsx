@@ -2,43 +2,23 @@
 
 import Link from "next/link";
 import { Share2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
+import { useAppState } from "@/components/providers/AppStateProvider";
 import { EmptyDashboard } from "@/components/dashboard/EmptyDashboard";
 import { ShareModal } from "@/components/dashboard/ShareModal";
 import { WidgetCard } from "@/components/dashboard/WidgetCard";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/useToast";
-import type { Dashboard, DashboardWidget } from "@/types";
-
-function fallbackDashboard(): Dashboard {
-  return {
-    id: `dash-${Date.now()}`,
-    name: "Primary Dashboard",
-    widgets: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-}
+import type { DashboardWidget } from "@/types";
 
 export default function DashboardPage() {
   const { pushToast } = useToast();
-  const [dashboard, setDashboard] = useState<Dashboard>(fallbackDashboard);
+  const { dashboard, setDashboard } = useAppState();
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [removeTarget, setRemoveTarget] = useState<DashboardWidget | null>(null);
-
-  useEffect(() => {
-    const raw = window.localStorage.getItem("qw_dashboard");
-    if (raw) {
-      setDashboard(JSON.parse(raw) as Dashboard);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("qw_dashboard", JSON.stringify(dashboard));
-  }, [dashboard]);
 
   const share = async () => {
     const response = await fetch("/api/share", {

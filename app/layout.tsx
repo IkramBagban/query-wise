@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Syne } from "next/font/google";
 import "./globals.css";
+import { AppStateProvider } from "@/components/providers/AppStateProvider";
 import { ToastProvider } from "@/components/ui/toast";
 
 const syne = Syne({
@@ -34,7 +35,9 @@ export default function RootLayout({
       className={`${syne.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
       <body className="min-h-screen">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <AppStateProvider>{children}</AppStateProvider>
+        </ToastProvider>
       </body>
     </html>
   );

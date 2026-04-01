@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Database, PanelLeft, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { useAppState } from "@/components/providers/AppStateProvider";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SchemaPanel } from "@/components/schema/SchemaPanel";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,6 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useConnection } from "@/hooks/useConnection";
 import { useSettings } from "@/hooks/useSettings";
 import {
   LLM_PROVIDER_OPTIONS,
@@ -20,7 +20,7 @@ import {
   type LlmProvider,
 } from "@/lib/llm-config";
 import { useToast } from "@/hooks/useToast";
-import type { ChatMessage, Dashboard, DashboardWidget, SchemaInfo, SchemaResponse } from "@/types";
+import type { ChatMessage, DashboardWidget } from "@/types";
 
 function createDashboardWidget(message: ChatMessage): DashboardWidget | null {
   if (!message.result || !message.sql || !message.chartConfig) return null;
@@ -37,30 +37,23 @@ function createDashboardWidget(message: ChatMessage): DashboardWidget | null {
   };
 }
 
-function readDashboard(): Dashboard {
-  if (typeof window === "undefined") {
-    return { id: "", name: "", widgets: [], createdAt: 0, updatedAt: 0 };
-  }
-  const raw = window.localStorage.getItem("qw_dashboard");
-  if (!raw) {
-    return {
-      id: `dash-${Date.now()}`,
-      name: "Primary Dashboard",
-      widgets: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-  }
-  return JSON.parse(raw) as Dashboard;
-}
-
 export default function WorkspacePage() {
   const { pushToast } = useToast();
-  const { connection, initialized, saveConnection, clearConnection, maskedConnection } = useConnection();
+  const {
+    connection,
+    connectionInitialized,
+    saveConnection,
+    clearConnection,
+    maskedConnection,
+    schema,
+    loadingSchema,
+    fetchSchema,
+    clearSchema,
+    addDashboardWidget,
+    dashboard,
+  } = useAppState();
   const { provider, setProvider, model, setModel, apiKey, setApiKey } = useSettings();
 
-  const [schema, setSchema] = useState<SchemaInfo | null>(null);
-  const [loadingSchema, setLoadingSchema] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -79,9 +72,9 @@ export default function WorkspacePage() {
   } | null>(null);
 
   useEffect(() => {
-    if (!initialized) return;
+    if (!connectionInitialized) return;
     setConnectionOpen(!connection);
-  }, [connection, initialized]);
+  }, [connection, connectionInitialized]);
 
   useEffect(() => {
     if (!resizingSchema) return;
@@ -104,31 +97,17 @@ export default function WorkspacePage() {
     };
   }, [resizingSchema]);
 
-  const fetchSchema = async (cs?: string) => {
-    setLoadingSchema(true);
-    try {
-      const response = await fetch("/api/schema", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString: cs }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? "Failed to load schema");
-      }
-      const body = (await response.json()) as SchemaResponse;
-      setSchema(body.schema);
-    } catch (error) {
-      pushToast({ title: "Schema error", description: error instanceof Error ? error.message : "Network error", variant: "error" });
-    } finally {
-      setLoadingSchema(false);
-    }
-  };
-
   useEffect(() => {
-    if (!connection) return;
-    void fetchSchema(connection.connectionString);
-  }, [connection]);
+    if (!connection || schema) return;
+
+    void fetchSchema(connection.connectionString).catch((error: unknown) => {
+      pushToast({
+        title: "Schema error",
+        description: error instanceof Error ? error.message : "Network error",
+        variant: "error",
+      });
+    });
+  }, [connection, fetchSchema, pushToast, schema]);
 
   const connectToDatabase = async (type: "demo" | "custom", cs?: string) => {
     setConnecting(true);
@@ -205,13 +184,12 @@ export default function WorkspacePage() {
   const onSaveWidget = async (message: ChatMessage) => {
     const widget = createDashboardWidget(message);
     if (!widget) return;
-    const dashboard = readDashboard();
-    const next: Dashboard = {
+    const next = {
       ...dashboard,
       widgets: [...dashboard.widgets, widget],
       updatedAt: Date.now(),
     };
-    window.localStorage.setItem("qw_dashboard", JSON.stringify(next));
+    addDashboardWidget(widget);
 
     await fetch("/api/dashboard", {
       method: "POST",
@@ -369,7 +347,7 @@ export default function WorkspacePage() {
                 variant="ghost"
                 onClick={() => {
                   clearConnection();
-                  setSchema(null);
+                  clearSchema();
                   pushToast({ title: "Disconnected", description: "Database connection cleared.", variant: "success" });
                 }}
                 className="border border-danger/20 bg-white text-danger hover:bg-danger/10"
@@ -499,7 +477,7 @@ export default function WorkspacePage() {
                   variant="ghost"
                   onClick={() => {
                     clearConnection();
-                    setSchema(null);
+                    clearSchema();
                     pushToast({ title: "Disconnected", description: "Database connection cleared.", variant: "success" });
                   }}
                   className="border border-danger/20 bg-white text-danger hover:bg-danger/10"

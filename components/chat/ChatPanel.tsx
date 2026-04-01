@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-
+import { useAppState } from "@/components/providers/AppStateProvider";
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
 import type { LlmProvider } from "@/lib/llm-config";
@@ -85,10 +84,13 @@ export function ChatPanel({
   apiKey,
   onSaveWidget,
 }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [pendingStage, setPendingStage] = useState<string | null>(null);
-  const [pendingContent, setPendingContent] = useState("");
+  const {
+    messages,
+    setMessages,
+    pendingQuery,
+    setPendingQuery,
+    updateMessageChartType,
+  } = useAppState();
 
   const handleSend = async (question: string) => {
     if (!isDatabaseConnected) {
@@ -124,9 +126,11 @@ export function ChatPanel({
       return;
     }
 
-    setIsLoading(true);
-    setPendingStage("Analyzing request");
-    setPendingContent("");
+    setPendingQuery({
+      isLoading: true,
+      stage: "Analyzing request",
+      content: "",
+    });
 
     const payload: QueryRequest = {
       question,
@@ -197,24 +201,32 @@ export function ChatPanel({
                         : ({ type: "stage", label: "" } as const);
 
           if (event.type === "stage") {
-            if (event.label.trim()) setPendingStage(event.label);
+            if (event.label.trim()) {
+              setPendingQuery((prev) => ({ ...prev, stage: event.label }));
+            }
             continue;
           }
 
           if (event.type === "text_delta") {
             if (event.chunk) {
-              setPendingContent((prev) => prev + event.chunk);
+              setPendingQuery((prev) => ({
+                ...prev,
+                content: prev.content + event.chunk,
+              }));
             }
             continue;
           }
 
           if (event.type === "sql") {
-            setPendingStage("SQL generated");
+            setPendingQuery((prev) => ({ ...prev, stage: "SQL generated" }));
             continue;
           }
 
           if (event.type === "query_stats") {
-            setPendingStage(`Fetched ${event.rowCount} rows`);
+            setPendingQuery((prev) => ({
+              ...prev,
+              stage: `Fetched ${event.rowCount} rows`,
+            }));
             continue;
           }
 
@@ -266,29 +278,25 @@ export function ChatPanel({
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } finally {
-      setIsLoading(false);
-      setPendingStage(null);
-      setPendingContent("");
+      setPendingQuery({
+        isLoading: false,
+        stage: null,
+        content: "",
+      });
     }
   };
 
   const handleChartTypeChange = (messageId: string, type: ChartType) => {
-    setMessages((prev) =>
-      prev.map((message) =>
-        message.id === messageId && message.chartConfig
-          ? { ...message, chartConfig: { ...message.chartConfig, type } }
-          : message,
-      ),
-    );
+    updateMessageChartType(messageId, type);
   };
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,#f8fdf6_0%,#f2faee_55%,#eef7eb_100%)]">
       <MessageList
         messages={messages}
-        isLoading={isLoading}
-        pendingStage={pendingStage}
-        pendingContent={pendingContent}
+        isLoading={pendingQuery.isLoading}
+        pendingStage={pendingQuery.stage}
+        pendingContent={pendingQuery.content}
         onOpenSettingsModal={onOpenSettingsModal}
         onChartTypeChange={handleChartTypeChange}
         onSaveWidget={onSaveWidget}
