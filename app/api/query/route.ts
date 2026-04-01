@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 import { resolveChartConfig } from "@/lib/charts";
 import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
 import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
-import { generateSQL, runConstrainedAnalystAgent } from "@/lib/llm";
+import { generateSQL, runConstrainedAnalystAgent } from "@/lib/llm/index";
 import { introspectSchema } from "@/lib/schema";
 import { requireAuth } from "@/lib/auth";
 import { logEvent } from "@/lib/logger";

@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
-import { validateModelAccess } from "@/lib/llm";
+import { validateModelAccess } from "@/lib/llm/index";
 
 const LlmTestRequestSchema = z.object({
   provider: z.enum(LLM_PROVIDER_IDS),

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireAuth } from "@/lib/auth";
-import { generateSchemaAnalysis } from "@/lib/llm";
+import { generateSchemaAnalysis } from "@/lib/llm/index";
 import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
 import type { SchemaAnalysisResponse } from "@/types";
 
