@@ -110,7 +110,7 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      panelClassName="h-[92vh] max-h-[92vh] max-w-[min(1400px,96vw)] overflow-hidden p-0"
+      panelClassName="h-[92vh] max-h-[92vh] max-w-[92vw] overflow-hidden p-0 sm:max-w-[1280px]"
     >
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
@@ -213,4 +213,3 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
     </Dialog>
   );
 }
-
