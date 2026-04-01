@@ -5,12 +5,14 @@ import { useState } from "react";
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
 import type { LlmProvider } from "@/lib/llm-config";
-import type { ChartType, ChatMessage, QueryRequest, QueryResponse } from "@/types";
+import type { ChartType, ChatMessage, QueryRequest, QueryResponse, SchemaInfo } from "@/types";
 
 interface ChatPanelProps {
   isDatabaseConnected: boolean;
   onOpenConnectionModal: () => void;
+  onOpenSettingsModal: () => void;
   connectionString?: string;
+  schema: SchemaInfo | null;
   provider: LlmProvider;
   model: string;
   providerOptions: { label: string; value: string }[];
@@ -32,6 +34,17 @@ type QuerySseEvent =
   | { type: "query_stats"; rowCount: number; executionTimeMs: number }
   | { type: "final"; payload: QueryResponse }
   | { type: "error"; message: string };
+
+function isApiKeyErrorMessage(message: string): boolean {
+  const value = message.toLowerCase();
+  return (
+    value.includes("missing llm api key") ||
+    value.includes("api_key_invalid") ||
+    value.includes("invalid api key") ||
+    value.includes("api key not valid") ||
+    value.includes("please pass a valid api key")
+  );
+}
 
 function parseSseBlock(block: string): { event: string; data: string } | null {
   const lines = block
@@ -60,7 +73,9 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
 export function ChatPanel({
   isDatabaseConnected,
   onOpenConnectionModal,
+  onOpenSettingsModal,
   connectionString,
+  schema,
   provider,
   model,
   providerOptions,
@@ -101,7 +116,7 @@ export function ChatPanel({
       const assistantMessage: ChatMessage = {
         id: createMessageId(),
         role: "assistant",
-        content: "Add your API key in Settings to run queries.",
+        content: "Missing API key. Open Settings and add a valid key to continue.",
         error: "Missing LLM API key",
         timestamp: Date.now(),
       };
@@ -238,11 +253,15 @@ export function ChatPanel({
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const content = isApiKeyErrorMessage(errorMessage)
+        ? "Invalid API key. Open Settings, update the key, and try again."
+        : "I couldn't complete that query.";
       const assistantMessage: ChatMessage = {
         id: createMessageId(),
         role: "assistant",
-        content: "I couldn't complete that query.",
-        error: error instanceof Error ? error.message : "Unknown error",
+        content,
+        error: errorMessage,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -270,6 +289,7 @@ export function ChatPanel({
         isLoading={isLoading}
         pendingStage={pendingStage}
         pendingContent={pendingContent}
+        onOpenSettingsModal={onOpenSettingsModal}
         onChartTypeChange={handleChartTypeChange}
         onSaveWidget={onSaveWidget}
       />

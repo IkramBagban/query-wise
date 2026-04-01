@@ -15,8 +15,19 @@ interface MessageBubbleProps {
   pending?: boolean;
   pendingStage?: string | null;
   pendingContent?: string;
+  onOpenSettingsModal?: () => void;
   onChartTypeChange: (messageId: string, type: ChartType) => void;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
+}
+
+function isApiKeyError(error?: string): boolean {
+  if (!error) return false;
+  const value = error.toLowerCase();
+  return (
+    value.includes("api key") ||
+    value.includes("invalid api key") ||
+    value.includes("missing llm api key")
+  );
 }
 
 function RichText({
@@ -93,6 +104,7 @@ export function MessageBubble({
   pending = false,
   pendingStage,
   pendingContent = "",
+  onOpenSettingsModal,
   onChartTypeChange,
   onSaveWidget,
 }: MessageBubbleProps) {
@@ -140,7 +152,20 @@ export function MessageBubble({
             onSaveWidget={onSaveWidget}
           />
         ) : null}
-        {message.error ? <p className="text-xs text-danger">{message.error}</p> : null}
+        {message.error ? (
+          <div className="space-y-2">
+            <p className="text-xs text-danger">{message.error}</p>
+            {isApiKeyError(message.error) && onOpenSettingsModal ? (
+              <button
+                type="button"
+                onClick={onOpenSettingsModal}
+                className="text-xs font-semibold text-[#1b6d33] underline underline-offset-2 hover:text-[#145326]"
+              >
+                Open Settings to update API key
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ interface MessageListProps {
   isLoading: boolean;
   pendingStage?: string | null;
   pendingContent?: string;
+  onOpenSettingsModal: () => void;
   onChartTypeChange: (messageId: string, type: ChartType) => void;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
 }
@@ -20,6 +21,7 @@ export function MessageList({
   isLoading,
   pendingStage,
   pendingContent = "",
+  onOpenSettingsModal,
   onChartTypeChange,
   onSaveWidget,
 }: MessageListProps) {
@@ -27,7 +29,7 @@ export function MessageList({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [isLoading, messages]);
+  }, [isLoading, messages, pendingStage, pendingContent]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
@@ -46,6 +48,7 @@ export function MessageList({
             <div key={message.id} className="animate-fade-in">
               <MessageBubble
                 message={message}
+                onOpenSettingsModal={onOpenSettingsModal}
                 onChartTypeChange={onChartTypeChange}
                 onSaveWidget={onSaveWidget}
               />

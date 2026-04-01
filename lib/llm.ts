@@ -136,7 +136,9 @@ function isAuthError(error: unknown): boolean {
 
   const message = getErrorMessage(error).toLowerCase();
   return (
+    message.includes("api_key_invalid") ||
     message.includes("invalid api key") ||
+    message.includes("valid api key") ||
     message.includes("authentication") ||
     message.includes("unauthorized")
   );

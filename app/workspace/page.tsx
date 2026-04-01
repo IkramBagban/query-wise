@@ -335,7 +335,9 @@ export default function WorkspacePage() {
           <ChatPanel
             isDatabaseConnected={Boolean(connection)}
             onOpenConnectionModal={() => setConnectionOpen(true)}
+            onOpenSettingsModal={() => setSettingsOpen(true)}
             connectionString={connection?.connectionString}
+            schema={schema}
             provider={provider}
             model={model}
             providerOptions={providerOptions}
