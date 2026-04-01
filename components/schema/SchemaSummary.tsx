@@ -1,10 +1,59 @@
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+import { useAppState } from "@/components/providers/AppStateProvider";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatSchemaTypeLabel } from "@/lib/schema-type-label";
-import type { SchemaInfo } from "@/types";
+import type { SchemaAnalysisResponse, SchemaInfo } from "@/types";
 
 interface SchemaSummaryProps {
   schema: SchemaInfo | null;
+  connectionString?: string;
+  provider: "google" | "anthropic";
+  model: string;
+  apiKey: string;
+}
+
+function RichText({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        h1: ({ children }) => <h1 className="mb-2 text-lg font-bold text-text-1">{children}</h1>,
+        h2: ({ children }) => <h2 className="mb-2 text-base font-bold text-text-1">{children}</h2>,
+        h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold text-text-1">{children}</h3>,
+        ul: ({ children }) => <ul className="mb-2 list-disc pl-5">{children as ReactNode}</ul>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal pl-5">{children as ReactNode}</ol>,
+        li: ({ children }) => <li className="mb-1">{children}</li>,
+        blockquote: ({ children }) => (
+          <blockquote className="my-2 border-l-2 border-[#174128]/25 pl-3 italic text-text-2">
+            {children}
+          </blockquote>
+        ),
+        code: ({ children }) => (
+          <code className="rounded bg-black/8 px-1 py-0.5 font-mono text-[0.92em]">{children}</code>
+        ),
+        pre: ({ children }) => (
+          <pre className="my-2 overflow-x-auto rounded-lg bg-black/8 p-3 font-mono text-xs">
+            {children}
+          </pre>
+        ),
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+            {children}
+          </a>
+        ),
+        hr: () => <hr className="my-2 border-current/20" />,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
 }
 
 function formatCellValue(value: unknown): string {
@@ -20,7 +69,60 @@ function truncateValue(value: string, max = 80): string {
   return `${value.slice(0, max)}...`;
 }
 
-export function SchemaSummary({ schema }: SchemaSummaryProps) {
+export function SchemaSummary({ schema, provider, model, apiKey }: SchemaSummaryProps) {
+  const { schemaAnalysis, setSchemaAnalysis } = useAppState();
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  useEffect(() => {
+    setAnalysisError(null);
+    setLoadingAnalysis(false);
+  }, [schema]);
+
+  const canAnalyze = Boolean(apiKey.trim()) && Boolean(schema);
+
+  const handleAnalyze = async () => {
+    if (!schema) return;
+    if (!apiKey.trim()) {
+      setAnalysisError("Add an LLM API key in Settings to generate schema analysis.");
+      return;
+    }
+
+    setLoadingAnalysis(true);
+    setAnalysisError(null);
+
+    try {
+      const response = await fetch("/api/schema/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schema,
+          provider,
+          model,
+          apiKey,
+        }),
+      });
+
+      const body = (await response.json().catch(() => null)) as
+        | SchemaAnalysisResponse
+        | { error?: string }
+        | null;
+
+      if (!response.ok || !body || !("analysis" in body)) {
+        const message = body && "error" in body ? body.error : "Failed to generate analysis";
+        throw new Error(message ?? "Failed to generate analysis");
+      }
+
+      setSchemaAnalysis(body.analysis);
+    } catch (error) {
+      setAnalysisError(
+        error instanceof Error ? error.message : "Failed to generate analysis",
+      );
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  };
+
   if (!schema) {
     return (
       <Card className="p-4">
@@ -48,6 +150,35 @@ export function SchemaSummary({ schema }: SchemaSummaryProps) {
 
   return (
     <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.15em] text-text-3">AI Schema Analysis</p>
+            <p className="mt-1 text-sm text-text-2">
+              Generate a business-oriented schema narrative using your selected model.
+            </p>
+          </div>
+          <Button size="sm" className="text-surface" loading={loadingAnalysis} disabled={!canAnalyze || loadingAnalysis} onClick={() => void handleAnalyze()}>
+            {schemaAnalysis ? "Regenerate" : "Generate Analysis"}
+          </Button>
+        </div>
+        {!apiKey.trim() ? (
+          <p className="mt-2 text-xs text-text-3">
+            Add an API key in Settings to enable schema analysis.
+          </p>
+        ) : null}
+        {analysisError ? (
+          <p className="mt-2 text-xs text-danger">{analysisError}</p>
+        ) : null}
+        {schemaAnalysis ? (
+          <div className="mt-3 rounded-md  bg-surface p-3">
+            <div className="text-sm leading-6 text-text-2">
+              <RichText content={schemaAnalysis} />
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
       <Card className="p-4">
         <p className="text-[11px] uppercase tracking-[0.15em] text-text-3">Schema Overview</p>
         <p className="mt-1 text-sm text-text-2">

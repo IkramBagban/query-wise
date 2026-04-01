@@ -4,3 +4,4 @@ export const CONNECTION_NAME_KEY = "db_name";
 export const DASHBOARD_KEY = "qw_dashboard";
 export const CONVERSATION_KEY = "qw_conversation";
 export const SCHEMA_CACHE_PREFIX = "qw_schema_cache:";
+export const SCHEMA_ANALYSIS_CACHE_PREFIX = "qw_schema_analysis_cache:";

@@ -19,6 +19,7 @@ import type { AppStateContextValue, PendingQueryState } from "@/components/provi
 import {
   createFallbackDashboard,
   getConnectionCacheKey,
+  getSchemaAnalysisStorageKey,
   getSchemaStorageKey,
   maskConnectionString,
 } from "@/components/providers/app-state.utils";
@@ -42,6 +43,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<DbConnection | null>(null);
   const [connectionInitialized, setConnectionInitialized] = useState(false);
   const [schema, setSchema] = useState<SchemaInfo | null>(null);
+  const [schemaAnalysis, setSchemaAnalysisState] = useState<string | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingQuery, setPendingQuery] = useState<PendingQueryState>({
@@ -62,6 +64,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setConnectionInitialized,
     setConnection,
     setSchema,
+    setSchemaAnalysis: setSchemaAnalysisState,
     messages,
     setMessages,
     dashboard,
@@ -100,6 +103,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setSchemaAnalysis = useCallback((analysis: string | null) => {
+    setSchemaAnalysisState(analysis);
+
+    if (typeof window === "undefined") return;
+    const connectionForKey = connection ?? { type: "demo" as const, name: "Demo database" };
+    const schemaAnalysisStorageKey = getSchemaAnalysisStorageKey(connectionForKey);
+    if (!schemaAnalysisStorageKey) return;
+
+    if (!analysis) {
+      window.sessionStorage.removeItem(schemaAnalysisStorageKey);
+      return;
+    }
+    window.sessionStorage.setItem(schemaAnalysisStorageKey, analysis);
+  }, [connection]);
+
   const saveConnection = useCallback((next: DbConnection | null) => {
     setConnection(next);
 
@@ -108,6 +126,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!next) {
       resetPersistedConnectionState({
         setSchema,
+        setSchemaAnalysis: setSchemaAnalysisState,
         setMessages,
         setPendingQuery,
         pendingQueryReset,
@@ -125,8 +144,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     if (isDifferentConnection) {
       const schemaStorageKey = getSchemaStorageKey(next);
+      const schemaAnalysisStorageKey = getSchemaAnalysisStorageKey(next);
       const rawSchema = schemaStorageKey ? window.sessionStorage.getItem(schemaStorageKey) : null;
+      const rawSchemaAnalysis = schemaAnalysisStorageKey
+        ? window.sessionStorage.getItem(schemaAnalysisStorageKey)
+        : null;
       setSchema(rawSchema ? (JSON.parse(rawSchema) as SchemaInfo) : null);
+      setSchemaAnalysisState(rawSchemaAnalysis ?? null);
       setMessages([]);
       setPendingQuery(pendingQueryReset);
       window.sessionStorage.removeItem(CONVERSATION_KEY);
@@ -159,9 +183,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       saveConnection,
       clearConnection: () => saveConnection(null),
       schema,
+      schemaAnalysis,
       loadingSchema,
       fetchSchema,
-      clearSchema: () => setSchema(null),
+      clearSchema: () => {
+        setSchema(null);
+        setSchemaAnalysis(null);
+      },
+      setSchemaAnalysis,
+      clearSchemaAnalysis: () => setSchemaAnalysis(null),
       messages,
       setMessages,
       clearMessages: () => setMessages([]),
@@ -177,12 +207,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       connection,
       connectionInitialized,
       schema,
+      schemaAnalysis,
       loadingSchema,
       messages,
       pendingQuery,
       dashboard,
       dashboardInitialized,
       fetchSchema,
+      setSchemaAnalysis,
       saveConnection,
     ],
   );

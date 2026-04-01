@@ -11,6 +11,7 @@ import {
 } from "@/components/providers/app-state.constants";
 import {
   createFallbackDashboard,
+  getSchemaAnalysisStorageKey,
   getSchemaStorageKey,
 } from "@/components/providers/app-state.utils";
 import type { PendingQueryState } from "@/components/providers/app-state.types";
@@ -21,6 +22,7 @@ type UsePersistentAppStateParams = {
   setConnectionInitialized: React.Dispatch<React.SetStateAction<boolean>>;
   setConnection: React.Dispatch<React.SetStateAction<DbConnection | null>>;
   setSchema: React.Dispatch<React.SetStateAction<SchemaInfo | null>>;
+  setSchemaAnalysis: React.Dispatch<React.SetStateAction<string | null>>;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   dashboard: Dashboard;
@@ -34,6 +36,7 @@ export function usePersistentAppState({
   setConnectionInitialized,
   setConnection,
   setSchema,
+  setSchemaAnalysis,
   messages,
   setMessages,
   dashboard,
@@ -57,6 +60,14 @@ export function usePersistentAppState({
             setSchema(JSON.parse(rawSchema) as SchemaInfo);
           }
         }
+
+        const schemaAnalysisStorageKey = getSchemaAnalysisStorageKey(parsed);
+        if (schemaAnalysisStorageKey) {
+          const rawAnalysis = window.sessionStorage.getItem(schemaAnalysisStorageKey);
+          if (rawAnalysis) {
+            setSchemaAnalysis(rawAnalysis);
+          }
+        }
       }
 
       const rawConversation = window.sessionStorage.getItem(CONVERSATION_KEY);
@@ -66,7 +77,7 @@ export function usePersistentAppState({
     } finally {
       setConnectionInitialized(true);
     }
-  }, [setConnection, setConnectionInitialized, setMessages, setSchema]);
+  }, [setConnection, setConnectionInitialized, setMessages, setSchema, setSchemaAnalysis]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -98,6 +109,7 @@ export function usePersistentAppState({
 
 type ResetPersistedConnectionParams = {
   setSchema: React.Dispatch<React.SetStateAction<SchemaInfo | null>>;
+  setSchemaAnalysis: React.Dispatch<React.SetStateAction<string | null>>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setPendingQuery: React.Dispatch<React.SetStateAction<PendingQueryState>>;
   pendingQueryReset: PendingQueryState;
@@ -105,6 +117,7 @@ type ResetPersistedConnectionParams = {
 
 export function resetPersistedConnectionState({
   setSchema,
+  setSchemaAnalysis,
   setMessages,
   setPendingQuery,
   pendingQueryReset,
@@ -116,6 +129,7 @@ export function resetPersistedConnectionState({
   window.localStorage.removeItem(CONNECTION_TYPE_KEY);
   window.localStorage.removeItem(CONNECTION_NAME_KEY);
   setSchema(null);
+  setSchemaAnalysis(null);
   setMessages([]);
   setPendingQuery(pendingQueryReset);
 }

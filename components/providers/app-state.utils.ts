@@ -1,4 +1,5 @@
 import {
+  SCHEMA_ANALYSIS_CACHE_PREFIX,
   SCHEMA_CACHE_PREFIX,
 } from "@/components/providers/app-state.constants";
 import type { Dashboard, DbConnection } from "@/types";
@@ -23,6 +24,11 @@ export function getConnectionCacheKey(connection: DbConnection | null) {
 export function getSchemaStorageKey(connection: DbConnection | null) {
   const cacheKey = getConnectionCacheKey(connection);
   return cacheKey ? `${SCHEMA_CACHE_PREFIX}${cacheKey}` : null;
+}
+
+export function getSchemaAnalysisStorageKey(connection: DbConnection | null) {
+  const cacheKey = getConnectionCacheKey(connection);
+  return cacheKey ? `${SCHEMA_ANALYSIS_CACHE_PREFIX}${cacheKey}` : null;
 }
 
 export function createFallbackDashboard(): Dashboard {

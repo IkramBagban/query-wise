@@ -13,9 +13,12 @@ export type AppStateContextValue = {
   saveConnection: (next: DbConnection | null) => void;
   clearConnection: () => void;
   schema: SchemaInfo | null;
+  schemaAnalysis: string | null;
   loadingSchema: boolean;
   fetchSchema: (connectionString?: string) => Promise<void>;
   clearSchema: () => void;
+  setSchemaAnalysis: (analysis: string | null) => void;
+  clearSchemaAnalysis: () => void;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   clearMessages: () => void;

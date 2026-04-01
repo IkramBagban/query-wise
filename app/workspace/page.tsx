@@ -298,7 +298,14 @@ export default function WorkspacePage() {
           className="relative z-10 hidden shrink-0 bg-[#f1f9ed] lg:block"
           style={{ width: `${schemaWidth}px` }}
         >
-          <SchemaPanel schema={schema} isLoading={loadingSchema} />
+          <SchemaPanel
+            schema={schema}
+            isLoading={loadingSchema}
+            connectionString={connection?.connectionString}
+            provider={provider}
+            model={model}
+            apiKey={apiKey}
+          />
         </div>
         <div
           role="separator"
@@ -337,7 +344,14 @@ export default function WorkspacePage() {
 
       <Sheet open={schemaOpen} onOpenChange={setSchemaOpen}>
         <div className="h-full overflow-hidden">
-          <SchemaPanel schema={schema} isLoading={loadingSchema} />
+          <SchemaPanel
+            schema={schema}
+            isLoading={loadingSchema}
+            connectionString={connection?.connectionString}
+            provider={provider}
+            model={model}
+            apiKey={apiKey}
+          />
         </div>
       </Sheet>
 
@@ -495,13 +509,6 @@ export default function WorkspacePage() {
             </div>
           </div>
 
-          <div className="space-y-2 rounded-lg border border-border p-3 text-xs text-text-2">
-            <h3 className="text-xs uppercase tracking-[0.12em] text-text-3">About</h3>
-            <p>Version: 0.1.0</p>
-            <a href="https://github.com" target="_blank" className="text-accent hover:underline" rel="noreferrer">
-              GitHub
-            </a>
-          </div>
         </div>
       </Sheet>
     </main>

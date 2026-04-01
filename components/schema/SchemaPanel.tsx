@@ -14,9 +14,20 @@ import type { SchemaInfo } from "@/types";
 interface SchemaPanelProps {
   schema: SchemaInfo | null;
   isLoading: boolean;
+  connectionString?: string;
+  provider: "google" | "anthropic";
+  model: string;
+  apiKey: string;
 }
 
-export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
+export function SchemaPanel({
+  schema,
+  isLoading,
+  connectionString,
+  provider,
+  model,
+  apiKey,
+}: SchemaPanelProps) {
   const [query, setQuery] = useState("");
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [erOpen, setErOpen] = useState(false);
@@ -92,10 +103,10 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
       <Dialog
         open={summaryOpen}
         onOpenChange={setSummaryOpen}
-        panelClassName="max-h-[88vh] max-w-[min(1120px,94vw)] overflow-hidden p-0"
+        panelClassName="max-h-[90vh] max-w-[92vw] overflow-hidden p-0 sm:max-w-[1100px]"
       >
-        <div className="flex h-full max-h-[88vh] flex-col">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex h-full max-h-[90vh] flex-col">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <div>
               <h2 className="text-lg font-semibold text-text-1">Schema Summary</h2>
               <p className="text-xs text-text-3">Structured overview of tables, columns, relationships, and sample values.</p>
@@ -105,8 +116,14 @@ export function SchemaPanel({ schema, isLoading }: SchemaPanelProps) {
             </Button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto p-4">
-            <SchemaSummary schema={schema} />
+          <div className="min-h-0 flex-1 overflow-auto px-6 pb-8 pt-5">
+            <SchemaSummary
+              schema={schema}
+              connectionString={connectionString}
+              provider={provider}
+              model={model}
+              apiKey={apiKey}
+            />
 
           </div>
         </div>
