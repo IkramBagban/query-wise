@@ -313,6 +313,9 @@ export function ChatPanel({
             onModelChange={onModelChange}
             onSubmit={handleSend}
           />
+          <p className="mt-2 px-1 text-[11px] text-text-3">
+            Chat history is temporary for this browser session and may reset when this tab is closed.
+          </p>
         </div>
       </div>
     </section>
