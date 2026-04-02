@@ -83,12 +83,12 @@ export function useAppState({
     if (typeof window === "undefined") return;
 
     try {
-      const rawDashboard = window.localStorage.getItem(DASHBOARD_KEY);
+      const rawDashboard = window.sessionStorage.getItem(DASHBOARD_KEY);
       if (rawDashboard) {
         setDashboard(JSON.parse(rawDashboard) as Dashboard);
       } else {
         const fallback = createFallbackDashboard();
-        window.localStorage.setItem(DASHBOARD_KEY, JSON.stringify(fallback));
+        window.sessionStorage.setItem(DASHBOARD_KEY, JSON.stringify(fallback));
         setDashboard(fallback);
       }
     } finally {
@@ -98,7 +98,7 @@ export function useAppState({
 
   useEffect(() => {
     if (!dashboardInitialized || typeof window === "undefined") return;
-    window.localStorage.setItem(DASHBOARD_KEY, JSON.stringify(dashboard));
+    window.sessionStorage.setItem(DASHBOARD_KEY, JSON.stringify(dashboard));
   }, [dashboard, dashboardInitialized]);
 
   useEffect(() => {
@@ -126,13 +126,14 @@ export function resetPersistedConnectionState({
 
   window.sessionStorage.removeItem(CONNECTION_KEY);
   window.sessionStorage.removeItem(CONVERSATION_KEY);
-  window.localStorage.removeItem(CONNECTION_TYPE_KEY);
-  window.localStorage.removeItem(CONNECTION_NAME_KEY);
+  window.sessionStorage.removeItem(CONNECTION_TYPE_KEY);
+  window.sessionStorage.removeItem(CONNECTION_NAME_KEY);
   setSchema(null);
   setSchemaAnalysis(null);
   setMessages([]);
   setPendingQuery(pendingQueryReset);
 }
+
 
 
 

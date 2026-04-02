@@ -139,8 +139,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const isDifferentConnection = currentKey !== nextKey;
 
     window.sessionStorage.setItem(CONNECTION_KEY, JSON.stringify(next));
-    window.localStorage.setItem(CONNECTION_TYPE_KEY, next.type);
-    window.localStorage.setItem(CONNECTION_NAME_KEY, next.name);
+    window.sessionStorage.setItem(CONNECTION_TYPE_KEY, next.type);
+    window.sessionStorage.setItem(CONNECTION_NAME_KEY, next.name);
 
     if (isDifferentConnection) {
       const schemaStorageKey = getSchemaStorageKey(next);
@@ -242,3 +242,4 @@ export function useAppState() {
   }
   return context;
 }
+

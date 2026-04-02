@@ -2,18 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-export function useLocalStorage<T>(key: string, fallback: T) {
+export function useSessionStorage<T>(key: string, fallback: T) {
   const [value, setValue] = useState<T>(fallback);
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(key);
+      const raw = window.sessionStorage.getItem(key);
       if (raw !== null) {
         setValue(JSON.parse(raw) as T);
       } else {
-        window.localStorage.setItem(key, JSON.stringify(fallback));
+        window.sessionStorage.setItem(key, JSON.stringify(fallback));
       }
     } catch {
       setValue(fallback);
@@ -26,7 +26,7 @@ export function useLocalStorage<T>(key: string, fallback: T) {
     setValue((prev) => {
       const resolved = next instanceof Function ? next(prev) : next;
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(key, JSON.stringify(resolved));
+        window.sessionStorage.setItem(key, JSON.stringify(resolved));
       }
       return resolved;
     });
@@ -34,3 +34,5 @@ export function useLocalStorage<T>(key: string, fallback: T) {
 
   return { value, setValue: updateValue, initialized };
 }
+
+

@@ -42,14 +42,14 @@ export function useConnection() {
 
     if (!next) {
       window.sessionStorage.removeItem(SESSION_KEY);
-      window.localStorage.removeItem(TYPE_KEY);
-      window.localStorage.removeItem(NAME_KEY);
+      window.sessionStorage.removeItem(TYPE_KEY);
+      window.sessionStorage.removeItem(NAME_KEY);
       return;
     }
 
     window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
-    window.localStorage.setItem(TYPE_KEY, next.type);
-    window.localStorage.setItem(NAME_KEY, next.name);
+    window.sessionStorage.setItem(TYPE_KEY, next.type);
+    window.sessionStorage.setItem(NAME_KEY, next.name);
   };
 
   return {
@@ -60,3 +60,4 @@ export function useConnection() {
     maskedConnection: maskConnectionString(connection?.connectionString),
   };
 }
+

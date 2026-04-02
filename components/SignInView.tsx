@@ -28,11 +28,11 @@ export function SignInView() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!window.localStorage.getItem("llm_provider")) {
-      window.localStorage.setItem("llm_provider", JSON.stringify(DEFAULT_LLM_PROVIDER));
+    if (!window.sessionStorage.getItem("llm_provider")) {
+      window.sessionStorage.setItem("llm_provider", JSON.stringify(DEFAULT_LLM_PROVIDER));
     }
-    if (!window.localStorage.getItem("llm_model")) {
-      window.localStorage.setItem("llm_model", JSON.stringify(DEFAULT_LLM_MODEL));
+    if (!window.sessionStorage.getItem("llm_model")) {
+      window.sessionStorage.setItem("llm_model", JSON.stringify(DEFAULT_LLM_MODEL));
     }
   }, []);
 
@@ -161,3 +161,4 @@ export function SignInView() {
     </main>
   );
 }
+

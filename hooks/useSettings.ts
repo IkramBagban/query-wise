@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useSessionStorage } from "@/hooks/useSessionStorage";
 import {
   DEFAULT_LLM_MODEL,
   DEFAULT_LLM_PROVIDER,
@@ -8,9 +8,9 @@ import {
 } from "@/lib/llm-config";
 
 export function useSettings() {
-  const provider = useLocalStorage<LlmProvider>("llm_provider", DEFAULT_LLM_PROVIDER);
-  const model = useLocalStorage<string>("llm_model", DEFAULT_LLM_MODEL);
-  const apiKey = useLocalStorage<string>("llm_api_key", "");
+  const provider = useSessionStorage<LlmProvider>("llm_provider", DEFAULT_LLM_PROVIDER);
+  const model = useSessionStorage<string>("llm_model", DEFAULT_LLM_MODEL);
+  const apiKey = useSessionStorage<string>("llm_api_key", "");
 
   return {
     provider: provider.value,
@@ -22,3 +22,4 @@ export function useSettings() {
     initialized: provider.initialized && model.initialized && apiKey.initialized,
   };
 }
+
