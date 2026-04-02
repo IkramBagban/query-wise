@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Database, PanelLeft, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { useAppState } from "@/components/providers/AppStateProvider";
+import { useAppState } from "@/store/app-state";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SchemaPanel } from "@/components/schema/SchemaPanel";
 import { Button } from "@/components/ui/button";
@@ -514,3 +514,5 @@ export default function WorkspacePage() {
     </main>
   );
 }
+
+

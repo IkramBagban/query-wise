@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Syne } from "next/font/google";
 import "./globals.css";
-import { AppStateProvider } from "@/components/providers/AppStateProvider";
+import { AppStateProvider } from "@/store/app-state";
 import { ToastProvider } from "@/components/ui/toast";
 
 const syne = Syne({
@@ -42,3 +42,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+

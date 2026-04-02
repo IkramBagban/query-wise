@@ -14,19 +14,19 @@ import {
   CONNECTION_NAME_KEY,
   CONNECTION_TYPE_KEY,
   CONVERSATION_KEY,
-} from "@/components/providers/app-state.constants";
-import type { AppStateContextValue, PendingQueryState } from "@/components/providers/app-state.types";
+} from "@/store/app-state/constants";
+import type { AppStateContextValue, PendingQueryState } from "@/store/app-state/types";
 import {
   createFallbackDashboard,
   getConnectionCacheKey,
   getSchemaAnalysisStorageKey,
   getSchemaStorageKey,
   maskConnectionString,
-} from "@/components/providers/app-state.utils";
+} from "@/store/app-state/utils";
 import {
   resetPersistedConnectionState,
-  usePersistentAppState,
-} from "@/components/providers/usePersistentAppState";
+  useAppState as useAppStateStore,
+} from "@/store/app-state/use-app-state";
 import type {
   ChartType,
   ChatMessage,
@@ -59,7 +59,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     content: "",
   };
 
-  usePersistentAppState({
+  useAppStateStore({
     connectionInitialized,
     setConnectionInitialized,
     setConnection,
@@ -175,6 +175,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    setPendingQuery({
+      isLoading: false,
+      stage: null,
+      content: "",
+    });
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(CONVERSATION_KEY);
+    }
+  }, []);
+
   const value = useMemo<AppStateContextValue>(
     () => ({
       connection,
@@ -194,7 +206,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       clearSchemaAnalysis: () => setSchemaAnalysis(null),
       messages,
       setMessages,
-      clearMessages: () => setMessages([]),
+      clearMessages,
       updateMessageChartType,
       pendingQuery,
       setPendingQuery,
@@ -216,6 +228,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       fetchSchema,
       setSchemaAnalysis,
       saveConnection,
+      clearMessages,
     ],
   );
 

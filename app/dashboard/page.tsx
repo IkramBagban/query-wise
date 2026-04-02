@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { useState } from "react";
 
-import { useAppState } from "@/components/providers/AppStateProvider";
+import { useAppState } from "@/store/app-state";
 import { EmptyDashboard } from "@/components/dashboard/EmptyDashboard";
 import { ShareModal } from "@/components/dashboard/ShareModal";
 import { WidgetCard } from "@/components/dashboard/WidgetCard";
@@ -133,3 +133,5 @@ export default function DashboardPage() {
     </main>
   );
 }
+
+

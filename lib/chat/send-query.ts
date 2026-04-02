@@ -1,4 +1,4 @@
-import type { PendingQueryState } from "@/components/providers/app-state.types";
+import type { PendingQueryState } from "@/store/app-state";
 import { consumeQuerySse } from "@/lib/chat/query-sse-client";
 import {
   createMessageId,
@@ -154,3 +154,5 @@ export async function sendQuery({
     });
   }
 }
+
+

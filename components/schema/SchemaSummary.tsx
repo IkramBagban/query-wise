@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { useAppState } from "@/components/providers/AppStateProvider";
+import { useAppState } from "@/store/app-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -346,3 +346,5 @@ export function SchemaSummary({ schema, provider, model, apiKey }: SchemaSummary
     </div>
   );
 }
+
+

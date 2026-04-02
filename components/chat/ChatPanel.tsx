@@ -1,10 +1,11 @@
 "use client";
 
-import { useAppState } from "@/components/providers/AppStateProvider";
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
+import { Button } from "@/components/ui/button";
 import type { LlmProvider } from "@/lib/llm-config";
 import { sendQuery } from "@/lib/chat/send-query";
+import { useAppState } from "@/store/app-state";
 import type { ChartType, ChatMessage } from "@/types";
 
 interface ChatPanelProps {
@@ -41,6 +42,7 @@ export function ChatPanel({
     setMessages,
     pendingQuery,
     setPendingQuery,
+    clearMessages,
     updateMessageChartType,
   } = useAppState();
 
@@ -62,6 +64,16 @@ export function ChatPanel({
     updateMessageChartType(messageId, type);
   };
 
+  const handleClearChat = () => {
+    if (pendingQuery.isLoading) return;
+    if (!messages.length) return;
+
+    const confirmed = window.confirm("Clear this chat conversation? This only removes messages.");
+    if (!confirmed) return;
+
+    clearMessages();
+  };
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,#f8fdf6_0%,#f2faee_55%,#eef7eb_100%)]">
       <MessageList
@@ -75,6 +87,17 @@ export function ChatPanel({
       />
       <div className="sticky bottom-0 z-20 bg-gradient-to-t from-[#eef6ea] via-[#eef6ea]/95 to-transparent pl-2 pr-3 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
         <div className="mx-auto w-full max-w-[980px]">
+          <div className="mb-2 flex items-center justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearChat}
+              disabled={pendingQuery.isLoading || messages.length === 0}
+              className="border-danger/25 bg-white/80 text-danger hover:bg-danger/10"
+            >
+              Clear chat
+            </Button>
+          </div>
           <QueryInput
             disabled={!isDatabaseConnected}
             databaseConnected={isDatabaseConnected}

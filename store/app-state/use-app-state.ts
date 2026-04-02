@@ -8,16 +8,16 @@ import {
   CONNECTION_TYPE_KEY,
   CONVERSATION_KEY,
   DASHBOARD_KEY,
-} from "@/components/providers/app-state.constants";
+} from "@/store/app-state/constants";
 import {
   createFallbackDashboard,
   getSchemaAnalysisStorageKey,
   getSchemaStorageKey,
-} from "@/components/providers/app-state.utils";
-import type { PendingQueryState } from "@/components/providers/app-state.types";
+} from "@/store/app-state/utils";
+import type { PendingQueryState } from "@/store/app-state/types";
 import type { ChatMessage, Dashboard, DbConnection, SchemaInfo } from "@/types";
 
-type UsePersistentAppStateParams = {
+type UseAppStateParams = {
   connectionInitialized: boolean;
   setConnectionInitialized: React.Dispatch<React.SetStateAction<boolean>>;
   setConnection: React.Dispatch<React.SetStateAction<DbConnection | null>>;
@@ -31,7 +31,7 @@ type UsePersistentAppStateParams = {
   setDashboard: React.Dispatch<React.SetStateAction<Dashboard>>;
 };
 
-export function usePersistentAppState({
+export function useAppState({
   connectionInitialized,
   setConnectionInitialized,
   setConnection,
@@ -43,7 +43,7 @@ export function usePersistentAppState({
   dashboardInitialized,
   setDashboardInitialized,
   setDashboard,
-}: UsePersistentAppStateParams) {
+}: UseAppStateParams) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -133,3 +133,6 @@ export function resetPersistedConnectionState({
   setMessages([]);
   setPendingQuery(pendingQueryReset);
 }
+
+
+

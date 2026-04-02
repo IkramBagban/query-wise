@@ -1,7 +1,7 @@
 import {
   SCHEMA_ANALYSIS_CACHE_PREFIX,
   SCHEMA_CACHE_PREFIX,
-} from "@/components/providers/app-state.constants";
+} from "@/store/app-state/constants";
 import type { Dashboard, DbConnection } from "@/types";
 
 export function maskConnectionString(connectionString?: string): string {
@@ -40,3 +40,5 @@ export function createFallbackDashboard(): Dashboard {
     updatedAt: Date.now(),
   };
 }
+
+
