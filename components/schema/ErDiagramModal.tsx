@@ -120,7 +120,7 @@ export function ErDiagramModal({ open, onOpenChange, schema }: ErDiagramModalPro
           </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-text-2 hover:bg-surface-2"
+            className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-text-2 hover:bg-surface-2 cursor-pointer"
           >
             Close
           </button>

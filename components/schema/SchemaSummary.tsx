@@ -163,7 +163,7 @@ export function SchemaSummary({ schema, provider, model, apiKey }: SchemaSummary
           </Button>
         </div>
         {!apiKey.trim() ? (
-          <p className="mt-2 text-xs text-text-3">
+          <p className="mt-2 text-xs text-danger">
             Add an API key in Settings to enable schema analysis.
           </p>
         ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BarChart3, DatabaseZap } from "lucide-react";
 
@@ -25,6 +25,8 @@ export function SignInView() {
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
   const [index, setIndex] = useState(0);
+  const [isSwitchingQuery, setIsSwitchingQuery] = useState(false);
+  const queryTransitionTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -37,10 +39,23 @@ export function SignInView() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setIndex((prev) => (prev + 1) % HERO_QUERIES.length);
-    }, 2600);
-    return () => window.clearInterval(timer);
+    const intervalId = window.setInterval(() => {
+      setIsSwitchingQuery(true);
+      if (queryTransitionTimerRef.current) {
+        window.clearTimeout(queryTransitionTimerRef.current);
+      }
+      queryTransitionTimerRef.current = window.setTimeout(() => {
+        setIndex((prev) => (prev + 1) % HERO_QUERIES.length);
+        setIsSwitchingQuery(false);
+      }, 180);
+    }, 2800);
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (queryTransitionTimerRef.current) {
+        window.clearTimeout(queryTransitionTimerRef.current);
+      }
+    };
   }, []);
 
   const rotating = useMemo(() => HERO_QUERIES[index], [index]);
@@ -113,7 +128,13 @@ export function SignInView() {
               </div>
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#2f7a3f]">Visual Answers</p>
               <div className="mt-2 h-10 overflow-hidden">
-                <p className="animate-slide-up text-sm font-semibold text-[#0c150f]">{rotating}</p>
+                <p
+                  className={`text-sm font-semibold text-[#0c150f] transition-all duration-300 ease-out ${
+                    isSwitchingQuery ? "-translate-y-1 opacity-0" : "translate-y-0 opacity-100"
+                  }`}
+                >
+                  {rotating}
+                </p>
               </div>
             </Card>
           </div>

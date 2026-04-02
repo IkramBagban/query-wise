@@ -57,7 +57,7 @@ export function Select({
       <button
         type="button"
         className={cn(
-          "h-9 w-full rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1",
+          "h-9 w-full cursor-pointer rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1",
           "inline-flex items-center justify-between gap-2 transition-colors",
           open ? "border-border-2" : "hover:border-border-2",
         )}
@@ -85,7 +85,7 @@ export function Select({
                 key={option.value}
                 type="button"
                 className={cn(
-                  "flex w-full items-start justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors",
+                  "flex w-full cursor-pointer items-start justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors",
                   isActive ? "bg-accent/20 text-text-1" : "text-text-2 hover:bg-surface-3 hover:text-text-1",
                 )}
                 onClick={() => {

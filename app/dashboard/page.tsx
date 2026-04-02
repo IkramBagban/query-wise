@@ -91,7 +91,7 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_10%_0%,rgba(116,204,99,0.2),transparent_28%),radial-gradient(circle_at_95%_0%,rgba(43,116,57,0.08),transparent_22%),#f4faf2] px-6 py-5">
       <header className="mb-5 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between gap-3 sm:justify-start">
-          <span className="font-syne text-2xl font-bold tracking-tight">
+          <span className="font-syne text-[1.375rem] font-bold tracking-tight sm:text-2xl">
             Query<span className="text-[#2ed52e]">Wise</span>
           </span>
           <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">
@@ -101,15 +101,22 @@ export default function DashboardPage() {
             </Link>
           </nav>
           <div className="flex gap-2 sm:hidden">
-            <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
-              <Share2 className="h-4 w-4" /> Share
+            <Button
+              className="h-10 w-10 rounded-xl bg-[#2ed52e] px-0 !text-white hover:brightness-105"
+              onClick={() => void share()}
+              aria-label="Share dashboard"
+            >
+              <Share2 className="h-4 w-4" />
+              <span className="sr-only">Share</span>
             </Button>
             <Button
               variant="ghost"
               onClick={() => setLogoutConfirmOpen(true)}
-              className="border border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5]"
+              className="h-10 w-10 rounded-xl border border-[#174128]/20 bg-white px-0 text-[#173f2a] hover:bg-[#ecf9e5]"
+              aria-label="Logout"
             >
-              <LogOut className="h-4 w-4" /> Logout
+              <LogOut className="h-4 w-4" />
+              <span className="sr-only">Logout</span>
             </Button>
           </div>
         </div>

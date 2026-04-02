@@ -291,7 +291,7 @@ export default function WorkspacePage() {
                 <PanelLeft className="h-5 w-5" strokeWidth={2.3} />
               </Button>
             </Tooltip>
-            <span className="truncate font-syne text-2xl font-bold tracking-tight">
+            <span className="truncate font-syne text-[1.375rem] font-bold tracking-tight sm:text-2xl">
               Query<span className="text-[#2ed52e]">Wise</span>
             </span>
             <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">

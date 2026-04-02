@@ -3,10 +3,12 @@
 import { QueryInput } from "@/components/chat/QueryInput";
 import { MessageList } from "@/components/chat/MessageList";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import type { LlmProvider } from "@/lib/llm-config";
 import { sendQuery } from "@/lib/chat/send-query";
 import { useAppState } from "@/store/app-state";
 import type { ChartType, ChatMessage } from "@/types";
+import { useState } from "react";
 
 interface ChatPanelProps {
   isDatabaseConnected: boolean;
@@ -37,6 +39,7 @@ export function ChatPanel({
   apiKey,
   onSaveWidget,
 }: ChatPanelProps) {
+  const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
   const {
     messages,
     setMessages,
@@ -67,11 +70,12 @@ export function ChatPanel({
   const handleClearChat = () => {
     if (pendingQuery.isLoading) return;
     if (!messages.length) return;
+    setClearChatConfirmOpen(true);
+  };
 
-    const confirmed = window.confirm("Clear this chat conversation? This only removes messages.");
-    if (!confirmed) return;
-
+  const confirmClearChat = () => {
     clearMessages();
+    setClearChatConfirmOpen(false);
   };
 
   return (
@@ -115,6 +119,22 @@ export function ChatPanel({
           </p>
         </div>
       </div>
+      <Dialog open={clearChatConfirmOpen} onOpenChange={setClearChatConfirmOpen} panelClassName="max-w-md">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-text-1">Clear chat?</h2>
+            <p className="text-sm text-text-2">This removes all messages from this conversation.</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setClearChatConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmClearChat}>
+              Clear chat
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </section>
   );
 }

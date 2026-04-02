@@ -159,9 +159,10 @@ export function MessageBubble({
               <button
                 type="button"
                 onClick={onOpenSettingsModal}
-                className="text-xs font-semibold text-[#1b6d33] underline underline-offset-2 hover:text-[#145326]"
+                className="cursor-pointer text-xs font-semibold text-[#1b6d33] underline underline-offset-2 hover:text-[#145326]"
               >
-                Open Settings to update API key
+                <span className="sm:hidden">Open Settings for API key</span>
+                <span className="hidden sm:inline">Open Settings to update API key</span>
               </button>
             ) : null}
           </div>

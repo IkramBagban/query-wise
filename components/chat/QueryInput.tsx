@@ -59,7 +59,7 @@ export function QueryInput({
           <button
             type="button"
             onClick={onRequestConnectDatabase}
-            className="rounded-lg border border-[#174128]/25 bg-white px-2.5 py-1 font-semibold text-[#1f5a35]"
+            className="rounded-lg border border-[#174128]/25 bg-white px-2.5 py-1 font-semibold text-[#1f5a35] cursor-pointer"
           >
             Connect DB
           </button>
