@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Database, PanelLeft, Settings } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LogOut, PanelLeft, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAppState } from "@/store/app-state";
@@ -38,6 +39,7 @@ function createDashboardWidget(message: ChatMessage): DashboardWidget | null {
 }
 
 export default function WorkspacePage() {
+  const router = useRouter();
   const { pushToast } = useToast();
   const {
     connection,
@@ -51,6 +53,9 @@ export default function WorkspacePage() {
     clearSchema,
     addDashboardWidget,
     dashboard,
+    clearSchemaAnalysis,
+    clearMessages,
+    setDashboard,
   } = useAppState();
   const { provider, setProvider, model, setModel, apiKey, setApiKey } = useSettings();
 
@@ -66,6 +71,8 @@ export default function WorkspacePage() {
   const [canConnectCustom, setCanConnectCustom] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [testingApiKey, setTestingApiKey] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [apiKeyTestResult, setApiKeyTestResult] = useState<{
     type: "success" | "error";
     message: string;
@@ -73,8 +80,9 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (!connectionInitialized) return;
+    if (loggingOut) return;
     setConnectionOpen(!connection);
-  }, [connection, connectionInitialized]);
+  }, [connection, connectionInitialized, loggingOut]);
 
   useEffect(() => {
     if (!resizingSchema) return;
@@ -239,6 +247,36 @@ export default function WorkspacePage() {
       setTestingApiKey(false);
     }
   };
+
+  const logout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Logout failed");
+      }
+
+      clearConnection();
+      clearSchema();
+      clearSchemaAnalysis();
+      clearMessages();
+      setDashboard((prev) => ({
+        ...prev,
+        widgets: [],
+        updatedAt: Date.now(),
+      }));
+      if (typeof window !== "undefined") {
+        window.sessionStorage.clear();
+      }
+
+      router.push("/signin");
+      router.refresh();
+    } catch {
+      pushToast({ title: "Logout failed", description: "Please try again.", variant: "error" });
+      setLoggingOut(false);
+    }
+  };
   return (
     <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_6%_0%,rgba(116,204,99,0.16),transparent_24%),radial-gradient(circle_at_100%_0%,rgba(43,116,57,0.08),transparent_20%),#f4faf2] text-text-1">
       <header className="z-20 shrink-0 border-b border-[#174128]/14 bg-white/85 px-3 py-3 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md sm:px-5">
@@ -265,13 +303,13 @@ export default function WorkspacePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Tooltip content="Database" side="bottom">
+            <Tooltip content="Logout" side="bottom">
               <Button
                 variant="icon"
-                onClick={() => setConnectionOpen(true)}
+                onClick={() => setLogoutConfirmOpen(true)}
                 className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
               >
-                <Database className="h-5 w-5" strokeWidth={2.3} />
+                <LogOut className="h-5 w-5" strokeWidth={2.3} />
               </Button>
             </Tooltip>
             <Tooltip content="Settings" side="bottom">
@@ -355,6 +393,36 @@ export default function WorkspacePage() {
         </div>
       </Sheet>
 
+      <Dialog
+        open={logoutConfirmOpen}
+        onOpenChange={(open) => {
+          if (!loggingOut) {
+            setLogoutConfirmOpen(open);
+          }
+        }}
+        panelClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-text-1">Log out?</h2>
+            <p className="text-sm text-text-2">
+              This will end your session and clear current in-browser workspace data.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setLogoutConfirmOpen(false)}
+              disabled={loggingOut}
+            >
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void logout()} loading={loggingOut}>
+              Log out
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <div className="space-y-4">
@@ -514,5 +582,8 @@ export default function WorkspacePage() {
     </main>
   );
 }
+
+
+
 
 

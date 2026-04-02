@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Share2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LogOut, Share2 } from "lucide-react";
 import { useState } from "react";
 
 import { useAppState } from "@/store/app-state";
@@ -14,11 +15,21 @@ import { useToast } from "@/hooks/useToast";
 import type { DashboardWidget } from "@/types";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { pushToast } = useToast();
-  const { dashboard, setDashboard } = useAppState();
+  const {
+    dashboard,
+    setDashboard,
+    clearConnection,
+    clearSchema,
+    clearSchemaAnalysis,
+    clearMessages,
+  } = useAppState();
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [removeTarget, setRemoveTarget] = useState<DashboardWidget | null>(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const share = async () => {
     const response = await fetch("/api/share", {
@@ -46,6 +57,36 @@ export default function DashboardPage() {
     setRemoveTarget(null);
   };
 
+  const logout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Logout failed");
+      }
+
+      clearConnection();
+      clearSchema();
+      clearSchemaAnalysis();
+      clearMessages();
+      setDashboard((prev) => ({
+        ...prev,
+        widgets: [],
+        updatedAt: Date.now(),
+      }));
+      if (typeof window !== "undefined") {
+        window.sessionStorage.clear();
+      }
+
+      router.push("/signin");
+      router.refresh();
+    } catch {
+      pushToast({ title: "Logout failed", description: "Please try again.", variant: "error" });
+      setLoggingOut(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_10%_0%,rgba(116,204,99,0.2),transparent_28%),radial-gradient(circle_at_95%_0%,rgba(43,116,57,0.08),transparent_22%),#f4faf2] px-6 py-5">
       <header className="mb-5 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -63,6 +104,13 @@ export default function DashboardPage() {
             <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
               <Share2 className="h-4 w-4" /> Share
             </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setLogoutConfirmOpen(true)}
+              className="border border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5]"
+            >
+              <LogOut className="h-4 w-4" /> Logout
+            </Button>
           </div>
         </div>
         <nav className="flex items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:hidden">
@@ -74,6 +122,13 @@ export default function DashboardPage() {
         <div className="hidden gap-2 sm:flex">
           <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
             <Share2 className="h-4 w-4" /> Share
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setLogoutConfirmOpen(true)}
+            className="border border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5]"
+          >
+            <LogOut className="h-4 w-4" /> Logout
           </Button>
         </div>
       </header>
@@ -107,6 +162,36 @@ export default function DashboardPage() {
 
       <ShareModal open={shareModalOpen} onOpenChange={setShareModalOpen} url={shareUrl} />
       <Dialog
+        open={logoutConfirmOpen}
+        onOpenChange={(open) => {
+          if (!loggingOut) {
+            setLogoutConfirmOpen(open);
+          }
+        }}
+        panelClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-text-1">Log out?</h2>
+            <p className="text-sm text-text-2">
+              This will end your session and clear current in-browser workspace data.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setLogoutConfirmOpen(false)}
+              disabled={loggingOut}
+            >
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void logout()} loading={loggingOut}>
+              Log out
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+      <Dialog
         open={Boolean(removeTarget)}
         onOpenChange={(open) => {
           if (!open) setRemoveTarget(null);
@@ -133,5 +218,3 @@ export default function DashboardPage() {
     </main>
   );
 }
-
-
