@@ -44,9 +44,9 @@ npm run dev
 Open:
 - [http://localhost:3000](http://localhost:3000)
 
-Sign in with your configured demo credentials:
-- username: `DEMO_USERNAME`
-- password: `DEMO_PASSWORD`
+Sign in with demo credentials:
+- username: `demo`
+- password: `demo1234`
 
 ## 5) Use the product
 1. Open Workspace.
