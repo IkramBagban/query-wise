@@ -122,6 +122,23 @@ select {
   color: inherit;
 }
 
+button,
+a[href],
+summary,
+label[for],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+}
+
 body::before {
   content: "";
   position: fixed;
