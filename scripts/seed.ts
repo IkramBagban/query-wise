@@ -191,6 +191,9 @@ const BATCH_SIZE = 100;
 const CUSTOMER_COUNT = 500;
 const PRODUCT_COUNT = 120;
 const ORDER_COUNT = 10000;
+const MIN_REVIEW_COUNT = 2500;
+const DEFAULT_DEMO_SEED = 20260402;
+const DEFAULT_REFERENCE_DATE_ISO = "2026-04-01T00:00:00.000Z";
 
 function logStep(msg: string): void {
   // concise logs for long-running seed operations
@@ -201,9 +204,17 @@ function toMoney(value: number): number {
   return Number(value.toFixed(2));
 }
 
+function randomUnit(): number {
+  return faker.number.float({ min: 0, max: 1, fractionDigits: 6 });
+}
+
+function chance(probability: number): boolean {
+  return randomUnit() < probability;
+}
+
 function weightedPick<T>(items: T[], weights: number[]): T {
   const total = weights.reduce((sum, w) => sum + w, 0);
-  let roll = Math.random() * total;
+  let roll = randomUnit() * total;
   for (let i = 0; i < items.length; i += 1) {
     roll -= weights[i];
     if (roll <= 0) {
@@ -214,14 +225,14 @@ function weightedPick<T>(items: T[], weights: number[]): T {
 }
 
 function randomDateWithinLastMonths(monthsBack: number): Date {
-  const now = new Date();
+  const now = REFERENCE_NOW;
   const start = new Date(now);
   start.setMonth(start.getMonth() - monthsBack);
   return faker.date.between({ from: start, to: now });
 }
 
 function pickState(): string {
-  if (Math.random() < 0.6) {
+  if (chance(0.6)) {
     return faker.helpers.arrayElement(HEAVY_STATES);
   }
   return faker.helpers.arrayElement(US_STATES);
@@ -234,7 +245,7 @@ function monthWeight(month: number): number {
 }
 
 function randomDateInWeightedMonth(): Date {
-  const now = new Date();
+  const now = REFERENCE_NOW;
   const months: { year: number; month: number }[] = [];
   for (let i = 0; i < 12; i += 1) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -250,6 +261,18 @@ function randomDateInWeightedMonth(): Date {
   const end = new Date(selected.year, selected.month, 0, 23, 59, 59, 999);
   const boundedEnd = end > now ? now : end;
   return faker.date.between({ from: start, to: boundedEnd });
+}
+
+const RAW_DEMO_SEED = process.env.DEMO_SEED;
+const DEMO_SEED = RAW_DEMO_SEED ? Number(RAW_DEMO_SEED) : DEFAULT_DEMO_SEED;
+if (!Number.isInteger(DEMO_SEED)) {
+  throw new Error(`DEMO_SEED must be an integer, got "${RAW_DEMO_SEED}"`);
+}
+
+const RAW_REFERENCE_DATE = process.env.DEMO_REFERENCE_DATE ?? DEFAULT_REFERENCE_DATE_ISO;
+const REFERENCE_NOW = new Date(RAW_REFERENCE_DATE);
+if (Number.isNaN(REFERENCE_NOW.getTime())) {
+  throw new Error(`DEMO_REFERENCE_DATE must be a valid date, got "${RAW_REFERENCE_DATE}"`);
 }
 
 async function batchInsert(
@@ -359,6 +382,23 @@ async function createTables(client: PoolClient): Promise<void> {
       body TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     );
+
+    CREATE INDEX idx_customers_segment ON customers(segment);
+    CREATE INDEX idx_customers_created_at ON customers(created_at);
+
+    CREATE INDEX idx_products_category_id ON products(category_id);
+
+    CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+    CREATE INDEX idx_orders_status_created_at ON orders(status, created_at DESC);
+    CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+
+    CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+    CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+
+    CREATE INDEX idx_reviews_customer_id ON reviews(customer_id);
+    CREATE INDEX idx_reviews_product_id ON reviews(product_id);
+    CREATE INDEX idx_reviews_order_id ON reviews(order_id);
+    CREATE INDEX idx_reviews_created_at ON reviews(created_at DESC);
   `);
 }
 
@@ -443,7 +483,7 @@ async function seedProducts(client: PoolClient, categoryIds: number[]): Promise<
       cost,
       sku: `${category.slug.toUpperCase()}-${faker.string.alphanumeric(8).toUpperCase()}`,
       stockQuantity: faker.number.int({ min: 5, max: 500 }),
-      isActive: Math.random() > 0.08,
+      isActive: !chance(0.08),
     });
   }
 
@@ -528,7 +568,7 @@ async function seedOrdersAndItems(
       }
 
       subtotal = toMoney(subtotal);
-      const hasDiscount = Math.random() < 0.2;
+      const hasDiscount = chance(0.2);
       const discountAmount = hasDiscount
         ? toMoney(subtotal * faker.number.float({ min: 0.05, max: 0.25, fractionDigits: 3 }))
         : 0;
@@ -630,7 +670,7 @@ async function seedReviews(
   // 70% of customers will write reviews, 30% never will
   // This guarantees ~150 customers with zero reviews
   const reviewerSet = new Set(
-    customerIds.filter(() => Math.random() < 0.70)
+    customerIds.filter(() => chance(0.70))
   );
 
   // Get all delivered orders
@@ -640,6 +680,22 @@ async function seedReviews(
   const deliveredIds = deliveredOrdersResult.rows.map((r) => Number(r.id));
 
   const reviewRows: Array<Array<string | number | Date>> = [];
+  const reviewedOrderIds = new Set<number>();
+  let forcedReviews = 0;
+
+  function buildReviewRow(orderId: number, meta: { customerId: number; productId: number; createdAt: Date }) {
+    const rating = weightedRating();
+    const createdAt = faker.date.soon({ days: 30, refDate: meta.createdAt });
+    return [
+      meta.customerId,
+      meta.productId,
+      orderId,
+      rating,
+      faker.lorem.sentence({ min: 3, max: 8 }),
+      faker.lorem.sentences({ min: 1, max: 3 }),
+      createdAt,
+    ] as const;
+  }
 
   for (const orderId of deliveredIds) {
     const meta = orderMeta.get(orderId);
@@ -651,19 +707,24 @@ async function seedReviews(
     // About 55% of eligible orders from reviewers get a review so
     // the dataset consistently clears the minimum review count checks.
     // (reviewers don't review every purchase)
-    if (Math.random() > 0.55) continue;
+    if (!chance(0.55)) continue;
 
-    const rating = weightedRating();
-    const createdAt = faker.date.soon({ days: 30, refDate: meta.createdAt });
-    reviewRows.push([
-      meta.customerId,
-      meta.productId,
-      orderId,
-      rating,
-      faker.lorem.sentence({ min: 3, max: 8 }),
-      faker.lorem.sentences({ min: 1, max: 3 }),
-      createdAt,
-    ]);
+    reviewRows.push([...buildReviewRow(orderId, meta)]);
+    reviewedOrderIds.add(orderId);
+  }
+
+  if (reviewRows.length < MIN_REVIEW_COUNT) {
+    for (const orderId of deliveredIds) {
+      if (reviewRows.length >= MIN_REVIEW_COUNT) break;
+      if (reviewedOrderIds.has(orderId)) continue;
+
+      const meta = orderMeta.get(orderId);
+      if (!meta) continue;
+
+      reviewRows.push([...buildReviewRow(orderId, meta)]);
+      reviewedOrderIds.add(orderId);
+      forcedReviews += 1;
+    }
   }
 
   for (let i = 0; i < reviewRows.length; i += BATCH_SIZE) {
@@ -678,6 +739,7 @@ async function seedReviews(
 
   logStep(`Inserted ${reviewRows.length} reviews from ${reviewerSet.size} reviewers`);
   logStep(`Non-reviewers: ${customerIds.length - reviewerSet.size} customers`);
+  logStep(`Top-up reviews added to satisfy minimum: ${forcedReviews}`);
 }
 
 async function verifyCounts(client: PoolClient): Promise<void> {
@@ -687,7 +749,7 @@ async function verifyCounts(client: PoolClient): Promise<void> {
     { table: "products", min: 120 },
     { table: "orders", min: 10000 },
     { table: "order_items", min: 25000 },
-    { table: "reviews", min: 2500 },
+    { table: "reviews", min: MIN_REVIEW_COUNT },
   ];
 
   for (const check of checks) { 
@@ -702,6 +764,9 @@ async function verifyCounts(client: PoolClient): Promise<void> {
 
 async function main(): Promise<void> {
   logStep("Starting seed");
+  faker.seed(DEMO_SEED);
+  logStep(`Using deterministic seed: ${DEMO_SEED}`);
+  logStep(`Using reference date: ${REFERENCE_NOW.toISOString()}`);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

@@ -313,7 +313,8 @@ export default function WorkspacePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Tooltip content="Logout" side="bottom">
+            {/* Auth disabled - Logout button hidden */}
+            {/* <Tooltip content="Logout" side="bottom">
               <Button
                 variant="icon"
                 onClick={() => setLogoutConfirmOpen(true)}
@@ -321,7 +322,7 @@ export default function WorkspacePage() {
               >
                 <LogOut className="h-5 w-5" strokeWidth={2.3} />
               </Button>
-            </Tooltip>
+            </Tooltip> */}
             <Tooltip content="Settings" side="bottom">
               <Button
                 variant="icon"
@@ -403,7 +404,8 @@ export default function WorkspacePage() {
         </div>
       </Sheet>
 
-      <Dialog
+      {/* Auth disabled - Logout dialog hidden */}
+      {/* <Dialog
         open={logoutConfirmOpen}
         onOpenChange={(open) => {
           if (!loggingOut) {
@@ -432,7 +434,7 @@ export default function WorkspacePage() {
             </Button>
           </div>
         </div>
-      </Dialog>
+      </Dialog> */}
 
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <div className="space-y-4">

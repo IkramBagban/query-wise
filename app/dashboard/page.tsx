@@ -109,7 +109,8 @@ export default function DashboardPage() {
               <Share2 className="h-4 w-4" />
               <span className="sr-only">Share</span>
             </Button>
-            <Button
+            {/* Auth disabled - Logout button hidden */}
+            {/* <Button
               variant="ghost"
               onClick={() => setLogoutConfirmOpen(true)}
               className="h-10 w-10 rounded-xl border border-[#174128]/20 bg-white px-0 text-[#173f2a] hover:bg-[#ecf9e5]"
@@ -117,7 +118,7 @@ export default function DashboardPage() {
             >
               <LogOut className="h-4 w-4" />
               <span className="sr-only">Logout</span>
-            </Button>
+            </Button> */}
           </div>
         </div>
         <nav className="flex items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:hidden">
@@ -130,13 +131,14 @@ export default function DashboardPage() {
           <Button className="bg-[#2ed52e] !text-white hover:brightness-105" onClick={() => void share()}>
             <Share2 className="h-4 w-4" /> Share
           </Button>
-          <Button
+          {/* Auth disabled - Logout button hidden */}
+          {/* <Button
             variant="ghost"
             onClick={() => setLogoutConfirmOpen(true)}
             className="border border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5]"
           >
             <LogOut className="h-4 w-4" /> Logout
-          </Button>
+          </Button> */}
         </div>
       </header>
 
@@ -168,7 +170,8 @@ export default function DashboardPage() {
       )}
 
       <ShareModal open={shareModalOpen} onOpenChange={setShareModalOpen} url={shareUrl} />
-      <Dialog
+      {/* Auth disabled - Logout dialog hidden */}
+      {/* <Dialog
         open={logoutConfirmOpen}
         onOpenChange={(open) => {
           if (!loggingOut) {
@@ -197,7 +200,7 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
-      </Dialog>
+      </Dialog> */}
       <Dialog
         open={Boolean(removeTarget)}
         onOpenChange={(open) => {
