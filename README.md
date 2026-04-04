@@ -7,6 +7,9 @@ Connect a database (demo or custom), ask questions in natural language, and get:
 - auto-selected charts,
 - and dashboard widgets that can be shared by link.
 
+## Demo Video
+Watch the full walkthrough: [QueryWise Demo](https://drive.google.com/file/d/1w-UEfbPXw0Xy9DFsrJ_dpld1Ib2lnjL9/view?usp=sharing)
+
 ## 1) Clone and install
 ```bash
 git clone https://github.com/ikramBagban/query-wise.git
