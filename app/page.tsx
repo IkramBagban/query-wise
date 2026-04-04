@@ -1,10 +1,12 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export default async function RootPage() {
-  const cookieStore = await cookies();
-  const isAuthenticated = cookieStore.get("qw_session")?.value === "authenticated";
-
-  redirect(isAuthenticated ? "/dashboard" : "/signin");
+  // Auth disabled - redirect directly to dashboard
+  redirect("/dashboard");
+  
+  // Auth enabled version (commented out):
+  // const cookieStore = await cookies();
+  // const isAuthenticated = cookieStore.get("qw_session")?.value === "authenticated";
+  // redirect(isAuthenticated ? "/dashboard" : "/signin");
 }
 
