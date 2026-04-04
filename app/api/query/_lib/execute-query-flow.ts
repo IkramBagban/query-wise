@@ -2,13 +2,96 @@ import { resolveChartConfig } from "@/lib/charts";
 import { executeQuery, validateAndSanitizeSql } from "@/lib/db";
 import { generateSQL, runConstrainedAnalystAgent } from "@/lib/llm/index";
 import { logEvent } from "@/lib/logger";
-import type { QueryResponse } from "@/types";
+import type { ExecuteQueryToolResult, Provider } from "@/lib/llm/index";
+import type { ChatMessage, QueryResponse, SchemaInfo } from "@/types";
 
 import {
   isStructuredOutputParseFailure,
 } from "./error-mapping";
 import { getCachedSchema } from "./schema-cache";
 import type { QueryRequestInput, StreamEmitter } from "./contracts";
+
+interface RunSqlQuestionParams {
+  toolQuestion: string;
+  schema: SchemaInfo;
+  history: ChatMessage[];
+  provider: Provider;
+  model: string;
+  apiKey: string;
+  connectionString?: string;
+  emit?: StreamEmitter;
+}
+
+async function runSqlQuestion({
+  toolQuestion,
+  schema,
+  history,
+  provider,
+  model,
+  apiKey,
+  connectionString,
+  emit,
+}: RunSqlQuestionParams): Promise<ExecuteQueryToolResult> {
+  try {
+    const sql = await generateSQL({
+      question: toolQuestion,
+      schema,
+      history,
+      provider,
+      model,
+      apiKey,
+    });
+
+    logEvent({
+      type: "LLM_RESPONSE",
+      timestamp: new Date().toISOString(),
+      message: sql,
+      meta: { tool: "execute_query", question: toolQuestion, model },
+    });
+
+    emit?.("sql", { sql });
+
+    const validation = validateAndSanitizeSql(sql);
+    if (!validation.valid) {
+      throw new Error(validation.reason ?? "Query blocked");
+    }
+
+    emit?.("stage", { label: "Executing SQL" });
+    const result = await executeQuery(sql, connectionString);
+
+    emit?.("query_stats", {
+      rowCount: result.rowCount,
+      executionTimeMs: result.executionTimeMs,
+    });
+
+    logEvent({
+      type: "SQL_QUERY",
+      timestamp: new Date().toISOString(),
+      message: sql,
+      meta: { connectionString, model, rowCount: result.rowCount },
+    });
+
+    return {
+      sql,
+      columns: result.columns,
+      rows: result.rows,
+      rowCount: result.rowCount,
+      executionTimeMs: result.executionTimeMs,
+    };
+  } catch (error) {
+    logEvent({
+      type: "ERROR",
+      timestamp: new Date().toISOString(),
+      message: error instanceof Error ? error.message : String(error),
+      meta: {
+        stack: error instanceof Error ? error.stack : undefined,
+        tool: "execute_query",
+        toolQuestion,
+      },
+    });
+    throw error;
+  }
+}
 
 export async function executeQueryFlow(
   input: QueryRequestInput,
@@ -27,68 +110,6 @@ export async function executeQueryFlow(
   const schema = await getCachedSchema(connectionString);
   emit?.("stage", { label: "Preparing schema context" });
 
-  const runSqlQuestion = async (toolQuestion: string) => {
-    try {
-      const sql = await generateSQL({
-        question: toolQuestion,
-        schema,
-        history,
-        provider,
-        model,
-        apiKey,
-      });
-
-      logEvent({
-        type: "LLM_RESPONSE",
-        timestamp: new Date().toISOString(),
-        message: sql,
-        meta: { tool: "execute_query", question: toolQuestion, model },
-      });
-
-      emit?.("sql", { sql });
-
-      const validation = validateAndSanitizeSql(sql);
-      if (!validation.valid) {
-        throw new Error(validation.reason ?? "Query blocked");
-      }
-
-      emit?.("stage", { label: "Executing SQL" });
-      const result = await executeQuery(sql, connectionString);
-
-      emit?.("query_stats", {
-        rowCount: result.rowCount,
-        executionTimeMs: result.executionTimeMs,
-      });
-
-      logEvent({
-        type: "SQL_QUERY",
-        timestamp: new Date().toISOString(),
-        message: sql,
-        meta: { connectionString, model, rowCount: result.rowCount },
-      });
-
-      return {
-        sql,
-        columns: result.columns,
-        rows: result.rows,
-        rowCount: result.rowCount,
-        executionTimeMs: result.executionTimeMs,
-      };
-    } catch (error) {
-      logEvent({
-        type: "ERROR",
-        timestamp: new Date().toISOString(),
-        message: error instanceof Error ? error.message : String(error),
-        meta: {
-          stack: error instanceof Error ? error.stack : undefined,
-          tool: "execute_query",
-          toolQuestion,
-        },
-      });
-      throw error;
-    }
-  };
-
   let agentTurn;
   try {
     agentTurn = await runConstrainedAnalystAgent({
@@ -104,7 +125,17 @@ export async function executeQueryFlow(
       onStage: (label) => {
         emit?.("stage", { label });
       },
-      executeQueryTool: async (toolQuestion) => runSqlQuestion(toolQuestion),
+      executeQueryTool: async (toolQuestion) =>
+        runSqlQuestion({
+          toolQuestion,
+          schema,
+          history,
+          provider,
+          model,
+          apiKey,
+          connectionString,
+          emit,
+        }),
     });
   } catch (error) {
     if (!isStructuredOutputParseFailure(error)) {
@@ -112,7 +143,16 @@ export async function executeQueryFlow(
     }
 
     emit?.("stage", { label: "Recovering from model format error" });
-    const fallbackResult = await runSqlQuestion(question);
+    const fallbackResult = await runSqlQuestion({
+      toolQuestion: question,
+      schema,
+      history,
+      provider,
+      model,
+      apiKey,
+      connectionString,
+      emit,
+    });
     emit?.("stage", { label: "Selecting chart" });
 
     const finalResult = {
@@ -179,6 +219,20 @@ export async function executeQueryFlow(
         rowCount: finalResult.rowCount,
       },
     });
+
+    // Track query execution in Vercel Analytics (server-side)
+    try {
+      const { track } = await import("@vercel/analytics/server");
+      track("query_executed", {
+        provider,
+        model,
+        chartType: chartConfig.type,
+        rowCount: finalResult.rowCount,
+        executionTimeMs: finalResult.executionTimeMs,
+      });
+    } catch {
+      // Analytics tracking is optional, don't fail the request
+    }
 
     return response;
   }

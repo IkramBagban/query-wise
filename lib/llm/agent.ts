@@ -44,6 +44,17 @@ const AgentOutputSchema = z.object({
 
 type AgentOutput = z.infer<typeof AgentOutputSchema>;
 
+interface RunAgentTurnParams {
+  forcedTool: boolean;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+  systemPrompt: string;
+  messages: ModelMessage[];
+  executeQueryTool: RunConstrainedAgentParams["executeQueryTool"];
+  onTextDelta?: RunConstrainedAgentParams["onTextDelta"];
+  onStage?: RunConstrainedAgentParams["onStage"];
+}
 
 
 
@@ -107,6 +118,87 @@ function getDeltaFromProgress(previous: string, current: string): string {
   return current.slice(i);
 }
 
+async function runAgentTurn({
+  forcedTool,
+  provider,
+  model,
+  apiKey,
+  systemPrompt,
+  messages,
+  executeQueryTool,
+  onTextDelta,
+  onStage,
+}: RunAgentTurnParams): Promise<{ output: AgentOutput; toolResult: ExecuteQueryToolResult | null }> {
+  let toolResult: ExecuteQueryToolResult | null = null;
+
+  const output = await withModelFallback({
+    provider,
+    model,
+    execute: async (candidateModel) => {
+      const result = streamText({
+        model: getModel(provider, candidateModel, apiKey),
+        system: systemPrompt,
+        output: Output.object({ schema: AgentOutputSchema }),
+        messages,
+        tools: {
+          execute_query: tool({
+            description:
+              "Executes a database analysis question against the connected PostgreSQL schema and returns SQL + result rows.",
+            inputSchema: z.object({
+              question: z.string().trim().min(1).max(700),
+            }),
+            strict: true,
+            execute: async ({ question }) => {
+              onStage?.("Generating SQL");
+              const toolOutput = await executeQueryTool(question);
+              toolResult = toolOutput;
+              return toolOutput;
+            },
+          }),
+        },
+        activeTools: ["execute_query"],
+        toolChoice: forcedTool ? "required" : "auto",
+        stopWhen: stepCountIs(8),
+        maxOutputTokens: 2000,
+        temperature: 0.1,
+        experimental_onToolCallStart: () => {
+          onStage?.("Calling execute_query");
+        },
+        experimental_onToolCallFinish: () => {
+          onStage?.("Tool finished");
+        },
+      });
+
+      let streamedExplanation = "";
+      const bufferedDeltas: string[] = [];
+
+      for await (const partial of result.partialOutputStream) {
+        const nextExplanation =
+          partial &&
+          typeof partial === "object" &&
+          typeof partial.explanation === "string"
+            ? partial.explanation
+            : "";
+
+        if (!nextExplanation) continue;
+        const delta = getDeltaFromProgress(streamedExplanation, nextExplanation);
+        streamedExplanation = nextExplanation;
+        if (delta.length > 0) {
+          bufferedDeltas.push(delta);
+        }
+      }
+
+      const turnOutput = await result.output;
+      for (const delta of bufferedDeltas) {
+        onTextDelta?.(delta);
+      }
+      return turnOutput;
+    },
+  });
+
+  return { output, toolResult };
+}
+
 export async function runConstrainedAnalystAgent(
   params: RunConstrainedAgentParams,
 ): Promise<ConstrainedAgentResponse> {
@@ -132,82 +224,29 @@ export async function runConstrainedAnalystAgent(
     ? historyMessages
     : [...historyMessages, { role: "user", content: params.question }];
 
-  let toolResult: ExecuteQueryToolResult | null = null;
+  const baseTurnParams = {
+    provider: params.provider,
+    model: params.model,
+    apiKey: params.apiKey,
+    systemPrompt,
+    messages,
+    executeQueryTool: params.executeQueryTool,
+    onTextDelta: params.onTextDelta,
+    onStage: params.onStage,
+  } satisfies Omit<RunAgentTurnParams, "forcedTool">;
 
-  const runTurn = async (forcedTool: boolean): Promise<AgentOutput> => {
-    return withModelFallback({
-      provider: params.provider,
-      model: params.model,
-      execute: async (candidateModel) => {
-        const result = streamText({
-          model: getModel(params.provider, candidateModel, params.apiKey),
-          system: systemPrompt,
-          output: Output.object({ schema: AgentOutputSchema }),
-          messages, 
-          tools: {
-            execute_query: tool({
-              description:
-                "Executes a database analysis question against the connected PostgreSQL schema and returns SQL + result rows.",
-              inputSchema: z.object({
-                question: z.string().trim().min(1).max(700),
-              }),
-              strict: true,
-              execute: async ({ question }) => {
-                params.onStage?.("Generating SQL");
-                const output = await params.executeQueryTool(question);
-                toolResult = output;
-                return output;
-              },
-            }),
-          },
-          activeTools: ["execute_query"],
-          toolChoice: forcedTool ? "required" : "auto",
-          stopWhen: stepCountIs (8),
-          maxOutputTokens: 2000,
-          temperature: 0.1,
-          experimental_onToolCallStart: () => {
-            params.onStage?.("Calling execute_query");
-          },
-          experimental_onToolCallFinish: () => {
-            params.onStage?.("Tool finished");
-          },
-        });
-
-        let streamedExplanation = "";
-        const bufferedDeltas: string[] = [];
-
-        for await (const partial of result.partialOutputStream) {
-          const nextExplanation =
-            partial &&
-            typeof partial === "object" &&
-            typeof partial.explanation === "string"
-              ? partial.explanation
-              : "";
-
-          if (!nextExplanation) continue;
-          const delta = getDeltaFromProgress(
-            streamedExplanation,
-            nextExplanation,
-          );
-          streamedExplanation = nextExplanation;
-          if (delta.length > 0) {
-            bufferedDeltas.push(delta);
-          }
-        }
-
-        const output = await result.output;
-        for (const delta of bufferedDeltas) {
-          params.onTextDelta?.(delta);
-        }
-        return output;
-      },
-    });
-  };
-
-  let output = await runTurn(false);
+  let { output, toolResult } = await runAgentTurn({
+    ...baseTurnParams,
+    forcedTool: false,
+  });
 
   if (output.mode === "query" && !toolResult) {
-    output = await runTurn(true);
+    const retryTurn = await runAgentTurn({
+      ...baseTurnParams,
+      forcedTool: true,
+    });
+    output = retryTurn.output;
+    toolResult = retryTurn.toolResult;
   }
 
   return {

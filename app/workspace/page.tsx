@@ -205,6 +205,16 @@ export default function WorkspacePage() {
       body: JSON.stringify({ dashboard: next }),
     }).catch(() => undefined);
 
+    // Track widget creation in Vercel Analytics (client-side)
+    try {
+      const { track } = await import("@vercel/analytics");
+      track("widget_saved", {
+        chartType: message.chartConfig?.type || "unknown",
+      });
+    } catch {
+      // Analytics tracking is optional
+    }
+
     pushToast({ title: "Widget saved", description: "Added to dashboard.", variant: "success" });
   };
 

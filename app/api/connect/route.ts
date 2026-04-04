@@ -78,6 +78,16 @@ export async function POST(req: NextRequest): Promise<Response> {
         ? "QueryWise Demo (Ecommerce)"
         : deriveDatabaseName(payload.connectionString);
 
+    // Track database connection in Vercel Analytics
+    try {
+      const { track } = await import("@vercel/analytics/server");
+      track("database_connected", {
+        type: payload.type,
+      });
+    } catch {
+      // Analytics tracking is optional
+    }
+
     const response: ConnectResponse = { success: true, name };
     return Response.json(response);
   } catch (error) {
