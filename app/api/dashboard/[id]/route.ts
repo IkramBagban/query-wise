@@ -7,8 +7,9 @@ export async function GET(
   _req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Auth disabled - uncomment to re-enable authentication
+  // const authError = await requireAuth();
+  // if (authError) return authError;
 
   try {
     const { id } = await context.params;

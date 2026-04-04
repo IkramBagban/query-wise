@@ -52,8 +52,9 @@ const DashboardSaveRequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Auth disabled - uncomment to re-enable authentication
+  // const authError = await requireAuth();
+  // if (authError) return authError;
 
   const body = await req.json().catch(() => null);
   const parsed = DashboardSaveRequestSchema.safeParse(body);

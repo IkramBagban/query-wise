@@ -13,10 +13,11 @@ function isPostgresUrl(value: string): boolean {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const authError = await requireAuth();
-  if (authError) {
-    return authError;
-  }
+  // Auth disabled - uncomment to re-enable authentication
+  // const authError = await requireAuth();
+  // if (authError) {
+  //   return authError;
+  // }
 
   let body: unknown;
   try {
