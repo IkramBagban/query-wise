@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Check, ChevronDown, Code2, Expand, Save } from "lucide-react";
+import { BarChart3, Check, ChevronDown, Code2, Copy, Download, Expand, Save } from "lucide-react";
 
 import { ChartRenderer } from "@/components/charts/ChartRenderer";
 import { TableView } from "@/components/charts/TableView";
@@ -9,6 +9,8 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { Dialog } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/tooltip";
 import { toChartTypeOptions } from "@/lib/chartTypeOptions";
+import { copyToClipboard, exportToCSV, exportToJSON, generateFilename } from "@/lib/export";
+import { useToast } from "@/hooks/useToast";
 import type { ChartType, ChatMessage } from "@/types";
 
 type ResultTab = "chart" | "sql";
@@ -33,7 +35,10 @@ export function MessageResultCard({
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [chartMenuOpen, setChartMenuOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const chartMenuRef = useRef<HTMLDivElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const { pushToast } = useToast();
 
   const chartTypes = useMemo(() => {
     if (!message.result) {
@@ -61,14 +66,47 @@ export function MessageResultCard({
     }
   };
 
+  const handleExportCSV = () => {
+    if (!message.result) return;
+    const filename = generateFilename(message.content, "csv");
+    exportToCSV(message.result, filename);
+    pushToast({ title: "Exported to CSV", variant: "success" });
+    setExportMenuOpen(false);
+  };
+
+  const handleExportJSON = () => {
+    if (!message.result) return;
+    const filename = generateFilename(message.content, "json");
+    exportToJSON(message.result, filename);
+    pushToast({ title: "Exported to JSON", variant: "success" });
+    setExportMenuOpen(false);
+  };
+
+  const handleCopyToClipboard = async () => {
+    if (!message.result) return;
+    try {
+      await copyToClipboard(message.result);
+      pushToast({ title: "Copied to clipboard", variant: "success" });
+      setExportMenuOpen(false);
+    } catch (error) {
+      pushToast({ title: "Failed to copy", variant: "error" });
+    }
+  };
+
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
       if (!chartMenuRef.current?.contains(event.target as Node)) {
         setChartMenuOpen(false);
       }
+      if (!exportMenuRef.current?.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setChartMenuOpen(false);
+      if (event.key === "Escape") {
+        setChartMenuOpen(false);
+        setExportMenuOpen(false);
+      }
     };
     window.addEventListener("mousedown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
@@ -135,20 +173,64 @@ export function MessageResultCard({
               </button>
             </Tooltip>
           ) : null}
-          {message.result && message.chartConfig ? (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSave()}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-[#174128]/18 bg-white px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.14em]"
-            >
-              {saving ? (
-                <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#174128]/40 border-t-[#174128]" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              <span>{saving ? "Saving" : "Save"}</span>
-            </button>
+          {message.result ? (
+            <>
+              <div ref={exportMenuRef} className="relative">
+                <Tooltip content="Export data" side="bottom">
+                  <button
+                    type="button"
+                    aria-label="Export data"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#174128]/18 bg-white transition"
+                    onClick={() => setExportMenuOpen((prev) => !prev)}
+                  >
+                    <Download className="h-3.5 w-3.5 text-black" />
+                  </button>
+                </Tooltip>
+                {exportMenuOpen ? (
+                  <div className="absolute right-0 top-10 z-50 w-40 overflow-hidden rounded-md border border-border-2 bg-surface-2 p-1 shadow-2xl">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-xs text-text-2 hover:bg-accent/20 hover:text-text-1"
+                      onClick={handleExportCSV}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Export CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-xs text-text-2 hover:bg-accent/20 hover:text-text-1"
+                      onClick={handleExportJSON}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Export JSON</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-xs text-text-2 hover:bg-accent/20 hover:text-text-1"
+                      onClick={() => void handleCopyToClipboard()}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy to Clipboard</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              {message.chartConfig ? (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void handleSave()}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-[#174128]/18 bg-white px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.14em]"
+                >
+                  {saving ? (
+                    <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#174128]/40 border-t-[#174128]" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  <span>{saving ? "Saving" : "Save"}</span>
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
