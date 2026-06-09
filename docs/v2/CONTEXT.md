@@ -218,4 +218,3 @@ Right sidebar contains Schema, SQL Preview, and DB Summary tabs for the active c
 - billing implementation
 - granular row-level permissions inside connected customer databases
 - real-time collaborative dashboard editing
-

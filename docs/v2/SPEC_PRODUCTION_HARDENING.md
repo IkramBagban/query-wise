@@ -104,4 +104,3 @@ Verify behavior for:
 - Load tests have documented thresholds and results.
 - Production readiness checklist documents remaining risks honestly.
 - `npm run build` passes.
-

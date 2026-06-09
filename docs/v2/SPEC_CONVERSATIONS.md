@@ -129,4 +129,3 @@ POST   /api/query
 - pagination ordering
 - result-preview size limit
 - no credential/API-key persistence
-

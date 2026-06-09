@@ -147,4 +147,3 @@ POST   /api/connections/[connectionId]/schema/refresh
 - schema sync success/failure preservation
 - unsafe host policy
 - adapter registry unknown-provider failure
-

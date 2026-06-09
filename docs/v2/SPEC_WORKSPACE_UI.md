@@ -165,4 +165,3 @@ Detailed schema exploration belongs on the connection detail page and quick sche
 - responsive sidebar/drawer behavior
 - loading/error/empty states
 - accessibility checks for tabs, dialogs, and navigation
-

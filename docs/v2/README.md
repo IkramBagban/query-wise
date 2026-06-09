@@ -73,4 +73,3 @@ Every agent must:
 - run `npm run build` after its changes
 - report changed files, API/schema changes, tests run, and unresolved risks
 - make an atomic commit only when explicitly asked
-
