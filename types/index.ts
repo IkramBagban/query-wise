@@ -225,6 +225,19 @@ export interface ShareResponse {
 }
 
 /**
+ * Single entry in the persistent query history.
+ */
+export interface QueryHistoryEntry {
+  id: string;
+  question: string;
+  sql: string;
+  timestamp: number;
+  rowCount: number;
+  executionTimeMs: number;
+  chartType: ChartType | null;
+}
+
+/**
  * Common API error payload.
  */
 export interface ApiError {

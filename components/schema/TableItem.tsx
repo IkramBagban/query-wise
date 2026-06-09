@@ -15,32 +15,28 @@ export function TableItem({ table }: TableItemProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div
-      className={`overflow-hidden rounded-xl border bg-white shadow-[0_6px_18px_rgba(10,50,24,0.06)] transition-colors ${
-        open ? "border-[#2d7b42]/24" : "border-[#174128]/15"
-      }`}
-    >
+    <div className="overflow-hidden border-b border-[#e6ece8] bg-white">
       <button
-        className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors ${
-          open ? "bg-[#f6fbf2]" : "hover:bg-[#f4fbee]"
+        className={`flex w-full items-center justify-between gap-3 px-1 py-3 text-left transition-colors ${
+          open ? "bg-[#f6faf7]" : "hover:bg-[#f6faf7]"
         }`}
         onClick={() => setOpen((prev) => !prev)}
       >
-        <span className="flex items-center gap-2 text-sm font-medium text-text-1">
-          <Database className="h-3.5 w-3.5 text-accent" />
+        <span className="flex items-center gap-3 text-[13px] font-medium text-[#263c32]">
+          <Database className="size-4 text-[#64786d]" />
           {table.name}
         </span>
         <span className="flex items-center gap-2">
           {typeof table.rowCount === "number" ? (
-            <Badge variant="info" showDot={false}>
+            <Badge variant="neutral" showDot={false}>
               {table.rowCount.toLocaleString()}
             </Badge>
           ) : null}
-          <ChevronDown className={`h-4 w-4 text-text-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          <ChevronDown className={`size-4 -rotate-90 text-[#718178] transition-transform ${open ? "rotate-0" : ""}`} />
         </span>
       </button>
       {open ? (
-        <div className="space-y-1 border-t border-[#174128]/14 bg-[#fcfffb] p-2">
+        <div className="flex flex-col gap-1 border-t border-[#e6ece8] bg-[#fbfdfc] p-2">
           {table.columns.map((column) => (
             <ColumnItem key={column.name} column={column} />
           ))}

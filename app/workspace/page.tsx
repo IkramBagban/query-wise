@@ -1,27 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, PanelLeft, Settings } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Menu, PanelRight, Share2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppState } from "@/store/app-state";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SchemaPanel } from "@/components/schema/SchemaPanel";
+import { WorkspaceContextPanel } from "@/components/workspace/WorkspaceContextPanel";
+import { WorkspaceLeftSidebar } from "@/components/workspace/WorkspaceLeftSidebar";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
-import { Tooltip } from "@/components/ui/tooltip";
+import { useQueryHistory } from "@/hooks/useQueryHistory";
 import { useSettings } from "@/hooks/useSettings";
+import { QueryHistoryPanel } from "@/components/history/QueryHistoryPanel";
 import {
   LLM_PROVIDER_OPTIONS,
   SUPPORTED_MODELS_BY_PROVIDER,
   type LlmProvider,
 } from "@/lib/llm-config";
 import { useToast } from "@/hooks/useToast";
-import type { ChatMessage, DashboardWidget } from "@/types";
+import type { ChatMessage, DashboardWidget, QueryHistoryEntry } from "@/types";
 
 function createDashboardWidget(message: ChatMessage): DashboardWidget | null {
   if (!message.result || !message.sql || !message.chartConfig) return null;
@@ -48,6 +50,7 @@ export default function WorkspacePage() {
     clearConnection,
     maskedConnection,
     schema,
+    schemaAnalysis,
     loadingSchema,
     fetchSchema,
     clearSchema,
@@ -56,12 +59,16 @@ export default function WorkspacePage() {
     clearSchemaAnalysis,
     clearMessages,
     setDashboard,
+    messages,
   } = useAppState();
   const { provider, setProvider, model, setModel, apiKey, setApiKey } = useSettings();
+  const { history, addEntry, removeEntry, clearHistory } = useQueryHistory();
 
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [schemaOpen, setSchemaOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [rerunQuestion, setRerunQuestion] = useState<string | null>(null);
   const [schemaWidth, setSchemaWidth] = useState(320);
   const [resizingSchema, setResizingSchema] = useState(false);
 
@@ -116,6 +123,34 @@ export default function WorkspacePage() {
       });
     });
   }, [connection, fetchSchema, pushToast, schema]);
+
+  // Auto-record completed queries to history
+  const lastRecordedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const lastAssistant = [...messages].reverse().find(
+      (m) => m.role === "assistant" && m.sql && m.result,
+    );
+    if (!lastAssistant || lastAssistant.id === lastRecordedIdRef.current) return;
+    lastRecordedIdRef.current = lastAssistant.id;
+
+    const assistantIdx = messages.indexOf(lastAssistant);
+    const userMsg = [...messages.slice(0, assistantIdx)].reverse().find((m) => m.role === "user");
+
+    addEntry({
+      id: lastAssistant.id,
+      question: userMsg?.content ?? "",
+      sql: lastAssistant.sql!,
+      timestamp: lastAssistant.timestamp,
+      rowCount: lastAssistant.result!.rowCount,
+      executionTimeMs: lastAssistant.result!.executionTimeMs,
+      chartType: lastAssistant.chartConfig?.type ?? null,
+    });
+  }, [messages, addEntry]);
+
+  const handleRerun = useCallback((entry: QueryHistoryEntry) => {
+    setRerunQuestion(entry.question);
+    setHistoryOpen(false);
+  }, []);
 
   const connectToDatabase = async (type: "demo" | "custom", cs?: string) => {
     setConnecting(true);
@@ -288,92 +323,53 @@ export default function WorkspacePage() {
     }
   };
   return (
-    <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_6%_0%,rgba(116,204,99,0.16),transparent_24%),radial-gradient(circle_at_100%_0%,rgba(43,116,57,0.08),transparent_20%),#f4faf2] text-text-1">
-      <header className="z-20 shrink-0 border-b border-[#174128]/14 bg-white/85 px-3 py-3 shadow-[0_10px_24px_rgba(14,41,24,0.08)] backdrop-blur-md sm:px-5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Tooltip content="Schema" side="bottom">
-              <Button
-                variant="icon"
-                onClick={() => setSchemaOpen(true)}
-                className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a] lg:hidden"
-              >
-                <PanelLeft className="h-5 w-5" strokeWidth={2.3} />
-              </Button>
-            </Tooltip>
-            <span className="truncate font-syne text-[1.375rem] font-bold tracking-tight sm:text-2xl">
-              Query<span className="text-[#2ed52e]">Wise</span>
-            </span>
-            <nav className="ml-1 hidden items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:flex">
-              <Link href="/dashboard" className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
-                Dashboard
-              </Link>
-              <span className="rounded-full bg-[#e7f6de] px-3 py-1.5 text-xs font-semibold text-[#174128]">Workspace</span>
-            </nav>
-          </div>
+    <main className="flex h-screen min-h-screen overflow-hidden bg-white text-text-1">
+      <WorkspaceLeftSidebar
+        dashboard={dashboard}
+        history={history}
+        onNewChat={clearMessages}
+        onOpenConnections={() => setConnectionOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
+        onRerunHistory={handleRerun}
+      />
 
-          <div className="flex items-center gap-2">
-            {/* Auth disabled - Logout button hidden */}
-            {/* <Tooltip content="Logout" side="bottom">
-              <Button
-                variant="icon"
-                onClick={() => setLogoutConfirmOpen(true)}
-                className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
-              >
-                <LogOut className="h-5 w-5" strokeWidth={2.3} />
-              </Button>
-            </Tooltip> */}
-            <Tooltip content="Settings" side="bottom">
-              <Button
-                variant="icon"
-                onClick={() => setSettingsOpen(true)}
-                className="h-12 w-12 rounded-xl border-[#174128]/20 bg-white text-[#173f2a] hover:bg-[#ecf9e5] hover:text-[#173f2a]"
-              >
-                <Settings className="h-5 w-5" strokeWidth={2.3} />
-              </Button>
-            </Tooltip>
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#fbfdfc]">
+        <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-[#e5ebe7] bg-white px-4 lg:px-6">
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="flex size-10 items-center justify-center rounded-lg border border-[#dce5df] text-[#405249] lg:hidden"
+            aria-label="Open navigation"
+          >
+            <Menu className="size-4" />
+          </button>
+          <div className="hidden min-w-0 lg:block">
+            <p className="truncate text-sm font-semibold text-[#17291f]">
+              {connection?.name ?? "QueryWise workspace"}
+            </p>
+            <p className="text-[11px] text-[#718178]">
+              {connection ? "Connected and ready to analyze" : "Connect a database to begin"}
+            </p>
           </div>
-        </div>
-        <nav className="mt-3 flex items-center gap-1 rounded-full border border-[#174128]/16 bg-white p-1 md:hidden">
-          <Link href="/dashboard" className="flex-1 rounded-full px-3 py-1.5 text-center text-xs font-semibold text-[#2d4f39] hover:bg-[#ecf9e5]">
-            Dashboard
-          </Link>
-          <span className="flex-1 rounded-full bg-[#e7f6de] px-3 py-1.5 text-center text-xs font-semibold text-[#174128]">Workspace</span>
-        </nav>
-      </header>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="hidden h-10 items-center gap-2 rounded-lg border border-[#dce5df] bg-white px-4 text-xs font-semibold text-[#263c32] transition hover:bg-[#f4f8f5] sm:flex"
+            >
+              <Share2 className="size-4" />
+              Share
+            </button>
+            <button
+              onClick={() => setSchemaOpen(true)}
+              className="flex size-10 items-center justify-center rounded-lg border border-[#dce5df] text-[#405249] xl:hidden"
+              aria-label="Open database context"
+            >
+              <PanelRight className="size-4" />
+            </button>
+          </div>
+        </header>
 
-      <section className="min-h-0 flex-1 overflow-hidden lg:flex">
-        <div
-          className="relative z-10 hidden shrink-0 bg-[#f1f9ed] lg:block"
-          style={{ width: `${schemaWidth}px` }}
-        >
-          <SchemaPanel
-            schema={schema}
-            isLoading={loadingSchema}
-            connectionString={connection?.connectionString}
-            provider={provider}
-            model={model}
-            apiKey={apiKey}
-          />
-        </div>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize schema sidebar"
-          className="group relative hidden w-3 shrink-0 cursor-col-resize lg:block"
-          onMouseDown={(event) => {
-            event.preventDefault();
-            setResizingSchema(true);
-          }}
-        >
-          <div
-            className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
-              resizingSchema ? "w-[2px] bg-[#2d7b42]/45" : "w-px bg-[#174128]/16 group-hover:bg-[#2d7b42]/35"
-            }`}
-          />
-        </div>
-        
-        <div className="relative flex h-full min-w-0 flex-1 overflow-hidden bg-transparent">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <ChatPanel
             isDatabaseConnected={Boolean(connection)}
             onOpenConnectionModal={() => setConnectionOpen(true)}
@@ -387,9 +383,23 @@ export default function WorkspacePage() {
             onModelChange={setModel}
             apiKey={apiKey}
             onSaveWidget={onSaveWidget}
+            externalQuestion={rerunQuestion}
+            onExternalQuestionConsumed={() => setRerunQuestion(null)}
           />
         </div>
       </section>
+
+      <WorkspaceContextPanel
+        connection={connection}
+        schema={schema}
+        schemaAnalysis={schemaAnalysis}
+        loadingSchema={loadingSchema}
+        messages={messages}
+        onRefreshSchema={() => {
+          if (!connection) return;
+          void fetchSchema(connection.connectionString);
+        }}
+      />
 
       <Sheet open={schemaOpen} onOpenChange={setSchemaOpen}>
         <div className="h-full overflow-hidden">
@@ -523,6 +533,15 @@ export default function WorkspacePage() {
           )}
         </div>
       </Dialog>
+
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <QueryHistoryPanel
+          history={history}
+          onRerun={handleRerun}
+          onRemove={removeEntry}
+          onClearAll={clearHistory}
+        />
+      </Sheet>
 
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <div className="space-y-5">
