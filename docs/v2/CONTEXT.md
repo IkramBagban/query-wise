@@ -46,34 +46,54 @@ Do not scatter raw ownership checks across UI components.
 - Never return encrypted or decrypted credentials in API DTOs.
 - Use stable resource IDs, not connection URLs, as pool/cache keys.
 
-### Database Provider Boundary
+### Data Source Provider Boundary
 
-Product features depend on a provider-neutral contract:
+Product features use the domain term `data source` and depend on a
+provider-neutral, capability-based contract. PostgreSQL is the only V2
+implementation. V2 supports SQL databases only, but PostgreSQL-specific syntax
+and behavior are not assumed by core product modules:
 
 ```ts
-export type DatabaseProviderId = "postgresql";
+export type DataSourceProviderId = "postgresql";
 
-export interface DatabaseAdapter {
-  readonly id: DatabaseProviderId;
-  testConnection(secret: DatabaseConnectionSecret): Promise<ConnectionTestResult>;
-  introspectSchema(secret: DatabaseConnectionSecret): Promise<SchemaInfo>;
-  executeQuery(
-    secret: DatabaseConnectionSecret,
-    sql: string,
-    options?: QueryExecutionOptions,
+export interface DataSourceAdapter {
+  readonly providerId: DataSourceProviderId;
+  readonly capabilities: ReadonlySet<DataSourceCapability>;
+  testConnection(secret: DataSourceSecret): Promise<ConnectionTestResult>;
+  introspectMetadata(
+    secret: DataSourceSecret,
+    options: MetadataIntrospectionOptions,
+  ): Promise<CanonicalDataSourceMetadata>;
+  validateQuery(
+    query: ProviderQuery,
+    policy: QuerySafetyPolicy,
+  ): Promise<QueryValidationResult>;
+  executeReadQuery(
+    secret: DataSourceSecret,
+    query: ProviderQuery,
+    options: QueryExecutionOptions,
   ): Promise<QueryResult>;
-  validateSql(sql: string): SqlValidationResult;
-  disposeConnection(connectionId: string): Promise<void>;
+  dispose(connectionId: string): Promise<void>;
 }
 ```
 
 The registry resolves adapters:
 
 ```ts
-getDatabaseAdapter(provider: DatabaseProviderId): DatabaseAdapter
+getDataSourceAdapter(provider: DataSourceProviderId): DataSourceAdapter
 ```
 
-PostgreSQL-specific catalog queries, quoting, pools, and read-only execution stay inside the PostgreSQL adapter.
+`ProviderQuery` carries SQL text plus an explicit SQL dialect. Future MySQL,
+SQL Server, analytical SQL, and other SQL providers can add dialect strategies
+without changing product-level workflows.
+
+PostgreSQL-specific catalog queries, SQL generation strategy, quoting, pools,
+and read-only execution stay inside the PostgreSQL adapter. Schema UI and LLM
+context selection consume canonical relational metadata, not raw PostgreSQL
+catalog records. Unsupported SQL-provider operations fail through typed
+capability errors rather than scattered provider checks.
+
+See `coordination/INTEGRATION_CONTRACTS.md`.
 
 ### Application Persistence
 

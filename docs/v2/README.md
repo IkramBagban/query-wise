@@ -2,6 +2,10 @@
 
 This directory is the execution plan for QueryWise V2. It is designed for multiple coding agents working concurrently without overlapping ownership.
 
+All agents must also follow `coordination/README.md`. Each agent records its
+exploration, design, implementation, verification, and commits in a dedicated
+file under `coordination/agents/`.
+
 ## Product Goal
 
 V2 turns QueryWise from a session-scoped demo into a user-owned, persistent BI workspace:
@@ -12,7 +16,8 @@ V2 turns QueryWise from a session-scoped demo into a user-owned, persistent BI w
 - multiple dashboards
 - dashboard sharing by link, email, and optional password
 - a new three-column workspace with persistent left navigation and a contextual right sidebar
-- database-provider boundaries that allow a future MySQL adapter without rewriting product features
+- capability-based SQL data-source boundaries that allow future SQL database
+  adapters without rewriting product features
 
 ## Required Decisions
 
@@ -20,7 +25,8 @@ These decisions are fixed for V2 unless the user explicitly changes them:
 
 1. Ownership is user-level. Clerk Organizations are out of scope until a later version.
 2. V2 implements PostgreSQL only.
-3. Database-provider code must use an adapter interface so MySQL can be added later.
+3. Data-source provider code must use a capability-based SQL adapter interface
+   so PostgreSQL, MySQL, SQL Server, and other SQL providers can be added later.
 4. QueryWise has its own PostgreSQL application database for product data.
 5. Customer database credentials are encrypted server-side and never returned to the browser.
 6. Client requests reference `connectionId`; they never send a connection URL to query/schema routes.

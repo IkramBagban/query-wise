@@ -2,7 +2,8 @@
 
 ## Mission
 
-Implement multiple saved PostgreSQL connections per user, while establishing a provider-adapter boundary for future MySQL support.
+Implement multiple saved PostgreSQL connections per user, while establishing a
+capability-based SQL data-source adapter boundary for future SQL providers.
 
 ## Dependencies
 
@@ -26,9 +27,15 @@ Do not implement generic MySQL behavior in V2.
 
 ## Required Deliverables
 
-### 1. Database Adapter Contract
+### 1. Data Source Adapter Contract
 
 Implement the shared adapter interface from `CONTEXT.md`.
+
+Core connection, conversation, dashboard, and UI modules may rely on the
+shared SQL/relational contract, but must not assume PostgreSQL syntax, catalogs,
+types, quoting, or connection behavior. They consume canonical relational
+metadata and provider capabilities. PostgreSQL-specific query payload behavior
+and metadata mapping remain inside its adapter and query-generation strategy.
 
 PostgreSQL-specific concerns stay inside:
 
@@ -49,6 +56,16 @@ This includes:
 ### 2. Adapter Registry
 
 Product code resolves adapters by provider ID. Feature code must not import PostgreSQL implementation modules directly.
+
+Adding a future provider should primarily require:
+
+- registering its provider ID and capabilities
+- implementing its adapter and query-generation strategy
+- mapping native metadata to canonical metadata
+- adding provider-specific connection form fields
+
+It must not require rewriting resource ownership, conversations, dashboards,
+sharing, or generic connection lifecycle logic.
 
 ### 3. Multiple Saved Connections
 
