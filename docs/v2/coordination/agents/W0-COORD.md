@@ -95,7 +95,7 @@
 - [x] Focused tests complete
 - [x] Build complete
 - [x] Final diff reviewed
-- [ ] Atomic commit(s) created
+- [x] Atomic commit(s) created
 
 ## Verification Evidence
 
@@ -107,7 +107,8 @@
 
 ## Commits
 
-- Pending atomic W0 coordination-doc commit.
+- `415218e` - `docs(v2): define coordination execution model`
+- Final log-evidence commit: pending at time of this entry.
 
 ## Integration Notes And Follow-Ups
 
