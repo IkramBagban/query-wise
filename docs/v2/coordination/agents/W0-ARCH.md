@@ -63,7 +63,7 @@
 - [x] Focused tests complete
 - [x] Build complete
 - [x] Final diff reviewed
-- [ ] Atomic commit(s) created
+- [x] Atomic commit(s) created
 
 ## Verification Evidence
 
@@ -72,11 +72,11 @@
 | `rg`/`Get-Content` repository exploration | passed | specs, coordination, implementation, Next.js docs |
 | architecture coverage review | passed | required topics and accepted ADRs present |
 | `npm run build` | passed | Next.js 16.2.1 production build; existing multiple-lockfile workspace-root warning |
-| owned-path diff/status review | passed | only architecture files and W0-ARCH log prepared |
+| owned-path diff/status review | passed | only architecture files and W0-ARCH log committed |
 
 ## Commits
 
-- Pending
+- `06489a6` - `docs(v2): define wave 0 production architecture`
 
 ## Integration Notes And Follow-Ups
 
