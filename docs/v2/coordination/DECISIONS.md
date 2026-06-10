@@ -39,6 +39,39 @@ Automatic live refresh is out of scope for V2.
 Each agent writes to its own work log. Shared status, decisions, and contracts
 are coordinator-owned to prevent parallel merge conflicts.
 
+### D-007: Application Persistence Stack
+
+The QueryWise application database uses PostgreSQL with Drizzle ORM and
+forward-only migrations. Customer SQL data sources remain isolated behind SQL
+adapter boundaries and are never accessed through the application DAL.
+
+### D-008: Durable Jobs And Distributed Limits
+
+Durable background work uses a leased PostgreSQL job queue in the application
+database. Distributed rate limits and concurrency leases use a managed
+Redis-compatible service. Feature code consumes shared boundaries rather than
+provider SDKs directly.
+
+### D-009: Customer Samples Are Opt-In
+
+Raw sample rows and representative values from customer connections are not
+sent to an LLM by default. Per-connection opt-in, sensitive-column filtering,
+redaction, and documented byte/row limits are required. Synthetic demo data may
+use bounded samples.
+
+### D-010: Durable Query-Run State Machine
+
+Query execution is modeled as forward-only durable states with idempotent
+submission. Application database transactions never remain open while waiting
+for an LLM or customer database.
+
+### D-011: Bounded Production Defaults
+
+V2 adopts the measurable limits and SLO targets in
+`docs/v2/architecture/PERFORMANCE_BUDGETS.md` and the wire/data bounds in
+`docs/v2/contracts/PAGINATION_AND_BOUNDS.md`. Changes require measured evidence
+and a recorded contract decision.
+
 ## Proposed Decisions
 
 Agents must record proposals in their own work logs for coordinator review.
