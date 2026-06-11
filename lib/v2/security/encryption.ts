@@ -1,15 +1,26 @@
 import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { EncryptedPayload } from "@/types/v2";
+import { AppError } from "@/lib/v2/dal/core";
 
 const KEY_ENV = "QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1";
 const AAD = Buffer.from("querywise:v2:credential:v1", "utf8");
 
 function encryptionKey(): Buffer {
   const encoded = process.env[KEY_ENV];
-  if (!encoded) throw new Error(`${KEY_ENV} is not configured.`);
+  if (!encoded) {
+    throw new AppError(
+      "DATA_SOURCE_UNAVAILABLE",
+      "Connection credential encryption is not configured.",
+    );
+  }
   const key = Buffer.from(encoded, "base64");
-  if (key.length !== 32) throw new Error(`${KEY_ENV} must decode to exactly 32 bytes.`);
+  if (key.length !== 32) {
+    throw new AppError(
+      "DATA_SOURCE_UNAVAILABLE",
+      "Connection credential encryption is configured incorrectly.",
+    );
+  }
   return key;
 }
 

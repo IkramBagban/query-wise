@@ -34,12 +34,15 @@ export function parsePostgresUrl(input: string): ParsedPostgresUrl {
   }
 
   const sslMode = url.searchParams.get("sslmode")?.toLowerCase();
-  if (sslMode !== "verify-full") {
-    throw new AppError("VALIDATION_FAILED", "The connection URL must set sslmode=verify-full.");
+  if (sslMode !== "require" && sslMode !== "verify-full") {
+    throw new AppError("VALIDATION_FAILED", "The connection URL must set sslmode=require or sslmode=verify-full.");
   }
+  // QueryWise always pins the resolved public endpoint and verifies the
+  // original hostname, so normalize provider-standard URLs to the strict mode.
+  url.searchParams.set("sslmode", "verify-full");
 
   return {
-    connectionString,
+    connectionString: url.toString(),
     host: url.hostname,
     hostDisplay: url.hostname,
     port,
