@@ -4,8 +4,11 @@ import { parse, toSql } from "pgsql-ast-parser";
 import type { ProviderQuery, QuerySafetyPolicy, QueryValidationResult } from "@/types/v2";
 
 const DENIED_FUNCTIONS = new Set([
-  "dblink", "dblink_exec", "lo_export", "lo_import", "pg_advisory_lock",
-  "pg_sleep", "pg_terminate_backend", "set_config",
+  "dblink", "dblink_connect", "dblink_connect_u", "dblink_disconnect", "dblink_exec",
+  "lo_export", "lo_import", "pg_advisory_lock", "pg_advisory_lock_shared",
+  "pg_cancel_backend", "pg_file_rename", "pg_file_unlink", "pg_file_write",
+  "pg_logdir_ls", "pg_ls_dir", "pg_read_binary_file", "pg_read_file", "pg_sleep",
+  "pg_stat_file", "pg_terminate_backend", "set_config",
 ]);
 
 function walk(value: unknown, visit: (node: Record<string, unknown>) => void): void {
