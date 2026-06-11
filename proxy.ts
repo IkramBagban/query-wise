@@ -2,6 +2,7 @@ import {
   clerkMiddleware,
   createRouteMatcher,
 } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 const isApiRoute = createRouteMatcher(["/api(.*)"]);
 const isPublicPage = createRouteMatcher([
@@ -15,6 +16,12 @@ const isPublicPage = createRouteMatcher([
 
 export default clerkMiddleware(
   async (auth, request) => {
+    if (request.nextUrl.pathname === "/workspace") {
+      return NextResponse.redirect(new URL("/chats", request.url));
+    }
+    if (request.nextUrl.pathname === "/dashboard") {
+      return NextResponse.redirect(new URL("/dashboards", request.url));
+    }
     if (!isApiRoute(request) && !isPublicPage(request)) {
       await auth.protect();
     }

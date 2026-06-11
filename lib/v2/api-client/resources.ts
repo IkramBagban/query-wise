@@ -27,6 +27,8 @@ export const connectionsApi = {
   get: (id: string) => apiRequest<ConnectionDto>(`/api/connections/${id}`),
   create: (input: CreateConnectionInput) =>
     apiRequest<ConnectionDto>("/api/connections", { method: "POST", body: input }),
+  createDemo: () =>
+    apiRequest<ConnectionDto>("/api/connections/demo", { method: "POST" }),
   update: (id: string, input: { name?: string; connectionString?: string }) =>
     apiRequest<ConnectionDto>(`/api/connections/${id}`, { method: "PATCH", body: input }),
   remove: (id: string) => apiRequest<void>(`/api/connections/${id}`, { method: "DELETE" }),

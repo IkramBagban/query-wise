@@ -80,6 +80,29 @@ export async function createConnection(input: { name: string; providerId: "postg
   return dto(record);
 }
 
+export async function createDemoConnection(): Promise<ConnectionDto> {
+  const configuredUrl = process.env.DEMO_DATABASE_URL;
+  if (!configuredUrl) {
+    throw new AppError("DATA_SOURCE_UNAVAILABLE", "The demo database is not configured.");
+  }
+  const url = new URL(configuredUrl);
+  url.searchParams.set("sslmode", "verify-full");
+  const { userId } = await requireUser();
+  const existing = await getAppDb().databaseConnection.findFirst({
+    where: {
+      ownerUserId: userId,
+      name: "QueryWise Demo (Ecommerce)",
+      deletedAt: null,
+    },
+  });
+  if (existing) return dto(existing);
+  return createConnection({
+    name: "QueryWise Demo (Ecommerce)",
+    providerId: "postgresql",
+    connectionString: url.toString(),
+  });
+}
+
 export async function updateConnection(connectionId: ResourceId, input: { name?: string; connectionString?: string }): Promise<ConnectionDto> {
   const current = await requireOwnedConnection(connectionId);
   const adapter = getDataSourceAdapter(current.providerId);
