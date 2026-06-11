@@ -11,7 +11,7 @@ function key(connectionId: ResourceId, credentialVersion: number): string {
   return `${connectionId}:${credentialVersion}`;
 }
 
-export async function getPostgresPool(connectionId: ResourceId, credentialVersion: number, connectionString: string): Promise<Pool> {
+export async function getPostgresPool(connectionId: ResourceId, credentialVersion: number, connectionString: string, address: string, servername: string): Promise<Pool> {
   const poolKey = key(connectionId, credentialVersion);
   const existing = pools.get(poolKey);
   if (existing) {
@@ -21,11 +21,12 @@ export async function getPostgresPool(connectionId: ResourceId, credentialVersio
   await disposePostgresPools(connectionId);
   const pool = new Pool({
     connectionString,
+    host: address,
     max: 3,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 8_000,
     allowExitOnIdle: true,
-    ssl: { rejectUnauthorized: true },
+    ssl: { rejectUnauthorized: true, servername },
   });
   pools.set(poolKey, { pool, connectionId, credentialVersion, lastUsedAt: Date.now() });
   return pool;

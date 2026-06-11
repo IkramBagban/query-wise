@@ -3,7 +3,7 @@ import "server-only";
 import { Client } from "pg";
 import type { BoundedQueryResult, ConnectionTestResult, DataSourceCapability, SqlDataSourceAdapter } from "@/types/v2";
 import { AppError } from "@/lib/v2/dal/core";
-import { enforcePublicEndpoint } from "./network-policy";
+import { resolvePublicEndpoint } from "./network-policy";
 import { parsePostgresUrl } from "./url";
 import { getPostgresPool, disposePostgresPools } from "./pool";
 import { validatePostgresQuery } from "./validation";
@@ -22,9 +22,9 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
   capabilities,
   async testConnection(secret): Promise<ConnectionTestResult> {
     const parsed = parsePostgresUrl(secret.connectionString);
-    await enforcePublicEndpoint(parsed.host);
+    const endpoint = await resolvePublicEndpoint(parsed.host);
     const startedAt = Date.now();
-    const client = new Client({ connectionString: secret.connectionString, ssl: { rejectUnauthorized: true }, connectionTimeoutMillis: 8_000 });
+    const client = new Client({ connectionString: secret.connectionString, host: endpoint.address, ssl: { rejectUnauthorized: true, servername: parsed.host }, connectionTimeoutMillis: 8_000 });
     try {
       await client.connect();
       const result = await client.query<{ server_version: string }>("SHOW server_version");
@@ -40,7 +40,7 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
   validateQuery: async (query, policy) => validatePostgresQuery(query, policy),
   async executeReadQuery(connectionId, credentialVersion, secret, query, options): Promise<BoundedQueryResult> {
     const parsed = parsePostgresUrl(secret.connectionString);
-    await enforcePublicEndpoint(parsed.host);
+    const endpoint = await resolvePublicEndpoint(parsed.host);
     const validation = validatePostgresQuery(query, {
       schemaVersion: 1, readOnly: true, singleStatement: true, blockComments: true,
       blockSystemCatalogs: true, maxExecutionMs: options.timeoutMs, maxReturnedRows: options.maxRows,
@@ -48,7 +48,7 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
     if (!validation.valid || !validation.normalizedQuery) {
       throw new AppError("QUERY_VALIDATION_BLOCKED", "The SQL query violates the read-only safety policy.");
     }
-    const pool = await getPostgresPool(connectionId, credentialVersion, secret.connectionString);
+    const pool = await getPostgresPool(connectionId, credentialVersion, secret.connectionString, endpoint.address, parsed.host);
     const client = await pool.connect();
     const startedAt = Date.now();
     try {

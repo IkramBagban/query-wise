@@ -18,6 +18,7 @@ function blockedIpv4(address: string): boolean {
 
 function blockedIpv6(address: string): boolean {
   const normalized = address.toLowerCase();
+  if (normalized.startsWith("::ffff:")) return isBlockedAddress(normalized.slice(7));
   return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") ||
     normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) ||
     normalized.startsWith("ff") || normalized.startsWith("2001:db8:");
@@ -28,7 +29,7 @@ export function isBlockedAddress(address: string): boolean {
   return family === 4 ? blockedIpv4(address) : family === 6 ? blockedIpv6(address) : true;
 }
 
-export async function enforcePublicEndpoint(host: string): Promise<void> {
+export async function resolvePublicEndpoint(host: string): Promise<LookupAddress> {
   if (host.toLowerCase() === "localhost") {
     throw new AppError("DATA_SOURCE_TARGET_BLOCKED", "The data source target is not publicly routable.");
   }
@@ -41,4 +42,9 @@ export async function enforcePublicEndpoint(host: string): Promise<void> {
   if (!addresses.length || addresses.some(({ address }) => isBlockedAddress(address))) {
     throw new AppError("DATA_SOURCE_TARGET_BLOCKED", "The data source target is not publicly routable.");
   }
+  return addresses[0];
+}
+
+export async function enforcePublicEndpoint(host: string): Promise<void> {
+  await resolvePublicEndpoint(host);
 }

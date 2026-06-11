@@ -5,7 +5,7 @@ import type { CanonicalDataSourceMetadata, MetadataEntity, MetadataIntrospection
 import { canonicalType } from "./json";
 import { mapPostgresError } from "../errors";
 import { parsePostgresUrl } from "./url";
-import { enforcePublicEndpoint } from "./network-policy";
+import { resolvePublicEndpoint } from "./network-policy";
 
 type EntityRow = { namespace: string; name: string; kind: "table" | "view" | "materialized-view"; estimated_count: string | null };
 type ColumnRow = { namespace: string; entity_name: string; name: string; ordinal: number; native_type: string; nullable: boolean; primary_key: boolean; generated: boolean };
@@ -14,8 +14,8 @@ const entityId = (namespace: string, name: string) => `${namespace}.${name}`;
 
 export async function introspectPostgresMetadata(connectionString: string, options: MetadataIntrospectionOptions): Promise<CanonicalDataSourceMetadata> {
   const parsed = parsePostgresUrl(connectionString);
-  await enforcePublicEndpoint(parsed.host);
-  const client = new Client({ connectionString, ssl: { rejectUnauthorized: true }, connectionTimeoutMillis: 8_000 });
+  const endpoint = await resolvePublicEndpoint(parsed.host);
+  const client = new Client({ connectionString, host: endpoint.address, ssl: { rejectUnauthorized: true, servername: parsed.host }, connectionTimeoutMillis: 8_000 });
   const measuredAt = new Date().toISOString();
   try {
     await client.connect();
