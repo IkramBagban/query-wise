@@ -153,15 +153,20 @@ export async function completeQueryRun(input: {
   const current = await getOwnedQueryRun(input.queryRunId);
   if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
   return withAppDbTransaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`query-run:${current.id}`}))`;
+    const fresh = requireFound(await tx.queryRun.findFirst({
+      where: { id: current.id, ownerUserId: current.ownerUserId },
+    }));
+    if (TERMINAL_QUERY_RUN_STATUSES.has(fresh.status)) return fresh;
     const response = await appendMessage(tx, {
-      conversationId: current.conversationId,
+      conversationId: fresh.conversationId,
       role: "assistant",
       content: input.assistantContent,
-      queryRunId: current.id,
+      queryRunId: fresh.id,
       metadata: input.metadata,
     });
     const run = await tx.queryRun.update({
-      where: { id: current.id },
+      where: { id: fresh.id },
       data: {
         status: "succeeded",
         statusVersion: { increment: 1 },
@@ -176,7 +181,7 @@ export async function completeQueryRun(input: {
       },
     });
     await tx.conversation.update({
-      where: { id: current.conversationId },
+      where: { id: fresh.conversationId },
       data: { lastActivityAt: new Date() },
     });
     return run;
@@ -188,15 +193,20 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
   if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
   const safeMessage = message.slice(0, 1000);
   return withAppDbTransaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`query-run:${current.id}`}))`;
+    const fresh = requireFound(await tx.queryRun.findFirst({
+      where: { id: current.id, ownerUserId: current.ownerUserId },
+    }));
+    if (TERMINAL_QUERY_RUN_STATUSES.has(fresh.status)) return fresh;
     const response = await appendMessage(tx, {
-      conversationId: current.conversationId,
+      conversationId: fresh.conversationId,
       role: "assistant",
       content: safeMessage,
-      queryRunId: current.id,
+      queryRunId: fresh.id,
       metadata: { schemaVersion: 1, errorCode: code },
     });
     const run = await tx.queryRun.update({
-      where: { id: current.id },
+      where: { id: fresh.id },
       data: {
         status: "failed",
         statusVersion: { increment: 1 },
@@ -207,7 +217,7 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
       },
     });
     await tx.conversation.update({
-      where: { id: current.conversationId },
+      where: { id: fresh.conversationId },
       data: { lastActivityAt: new Date() },
     });
     return run;
@@ -215,5 +225,21 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
 }
 
 export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
-  return transitionQueryRun(queryRunId, "cancelled");
+  const current = await getOwnedQueryRun(queryRunId);
+  if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
+  return withAppDbTransaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`query-run:${current.id}`}))`;
+    const fresh = requireFound(await tx.queryRun.findFirst({
+      where: { id: current.id, ownerUserId: current.ownerUserId },
+    }));
+    if (TERMINAL_QUERY_RUN_STATUSES.has(fresh.status)) return fresh;
+    return tx.queryRun.update({
+      where: { id: fresh.id },
+      data: {
+        status: "cancelled",
+        statusVersion: { increment: 1 },
+        finishedAt: new Date(),
+      },
+    });
+  });
 }

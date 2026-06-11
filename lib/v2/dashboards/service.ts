@@ -205,8 +205,15 @@ export async function deleteDashboard(dashboardId: string): Promise<void> {
 export async function createWidget(dashboardId: string, input: unknown) {
   const parsed = WidgetCreateSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
   return getAppDb().$transaction(async (tx) => {
+    if (parsed.data.queryRunId) {
+      const run = await tx.queryRun.findFirst({
+        where: { id: parsed.data.queryRunId, ownerUserId: dashboard.ownerUserId },
+        select: { id: true },
+      });
+      if (!run) throw resourceNotFound();
+    }
     const count = await tx.dashboardWidget.count({ where: { dashboardId } });
     if (count >= MAX_WIDGETS) {
       throw new AppError("RESULT_LIMIT_EXCEEDED", "A dashboard can contain at most 50 widgets.");
@@ -237,8 +244,15 @@ export async function updateWidget(
 ) {
   const parsed = WidgetUpdateSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
   return getAppDb().$transaction(async (tx) => {
+    if (parsed.data.queryRunId) {
+      const run = await tx.queryRun.findFirst({
+        where: { id: parsed.data.queryRunId, ownerUserId: dashboard.ownerUserId },
+        select: { id: true },
+      });
+      if (!run) throw resourceNotFound();
+    }
     const existing = await tx.dashboardWidget.findFirst({
       where: { id: widgetId, dashboardId },
     });
