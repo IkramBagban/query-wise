@@ -26,3 +26,16 @@ FOLLOW /docs/ASSIGNMENT.md strictly and given spec.
 - Quote any git paths containing brackets or parentheses so the shell does not treat them as globs or subshells.
 - When running rebase, avoid opening editors: export `GIT_EDITOR=:` and `GIT_SEQUENCE_EDITOR=:` (or pass `--no-edit`).
 - Never amend commits unless there is explicit written approval in the task thread.
+
+### Engineering Notes Update Rule
+
+- If an AI agent changes important non-UI behavior (backend logic, query generation, safety, chart selection logic, data flow, auth, caching, API contracts, persistence, etc.), it must update `docs/ENGINEERING_SYSTEM_DESIGN_NOTES.md` in the same task with:
+  - what changed,
+  - why the decision was made,
+  - key tradeoffs or risks,
+  - and how to test it.
+
+
+AND WRITE CLEAN, MAINTAINABLE, MODULAR CODE AND FOLLOW DRY PRINCIPLE
+
+also build the application after every change to make sure there is no errors left. 
