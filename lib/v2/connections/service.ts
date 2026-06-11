@@ -1,0 +1,124 @@
+import "server-only";
+
+import { Prisma, type DatabaseConnection } from "@prisma/client";
+import type { ConnectionDto, ResourceId } from "@/types/v2";
+import { CONTRACT_VERSION } from "@/types/v2";
+import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
+import { requireUser } from "@/lib/v2/auth";
+import { requireOwnedConnection } from "@/lib/v2/dal/authorization";
+import { AppError, decodeCursor, encodeCursor, normalizePageLimit } from "@/lib/v2/dal/core";
+import { createResourceId } from "@/lib/v2/domain/ids";
+import { encryptSecret } from "@/lib/v2/security/encryption";
+import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
+import { parsePostgresUrl } from "@/lib/v2/data-sources/postgresql/url";
+import { refreshConnectionSchema } from "@/lib/v2/schema";
+import { getConnectionSecret } from "./credentials";
+
+function dto(record: DatabaseConnection): ConnectionDto {
+  const adapter = getDataSourceAdapter(record.providerId);
+  return {
+    contractVersion: CONTRACT_VERSION, id: record.id, providerId: adapter.providerId, dialectId: adapter.dialectId,
+    name: record.name, hostDisplay: record.hostDisplay, port: record.port, databaseName: record.databaseName,
+    status: record.status === "deleted" ? "deleting" : record.status,
+    lastTestedAt: record.lastTestedAt?.toISOString() ?? null, lastSchemaSyncAt: record.lastSchemaSyncAt?.toISOString() ?? null,
+    schemaSyncStatus: record.schemaSyncStatus, capabilities: [...adapter.capabilities],
+  };
+}
+
+export async function listConnections(input: { cursor?: string; limit?: number }) {
+  const { userId } = await requireUser();
+  const limit = normalizePageLimit(input.limit);
+  const sort = input.cursor ? decodeCursor(input.cursor, "connections", userId) : null;
+  const cursorDate = sort?.[0] ? new Date(String(sort[0])) : null;
+  const cursorId = sort?.[1] ? String(sort[1]) : null;
+  const records = await getAppDb().databaseConnection.findMany({
+    where: {
+      ownerUserId: userId, deletedAt: null,
+      ...(cursorDate && cursorId ? { OR: [{ updatedAt: { lt: cursorDate } }, { updatedAt: cursorDate, id: { lt: cursorId } }] } : {}),
+    },
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
+  });
+  const hasMore = records.length > limit;
+  const items = records.slice(0, limit);
+  const last = items.at(-1);
+  return {
+    contractVersion: CONTRACT_VERSION, items: items.map(dto),
+    pageInfo: { hasMore, limit, nextCursor: hasMore && last ? encodeCursor("connections", userId, [last.updatedAt.toISOString(), last.id]) : null },
+  };
+}
+
+export async function getConnection(connectionId: ResourceId): Promise<ConnectionDto> {
+  return dto(await requireOwnedConnection(connectionId));
+}
+
+export async function createConnection(input: { name: string; providerId: "postgresql"; connectionString: string }): Promise<ConnectionDto> {
+  const { userId } = await requireUser();
+  const adapter = getDataSourceAdapter(input.providerId);
+  requireCapability(adapter, "connection-test");
+  const parsed = parsePostgresUrl(input.connectionString);
+  const encryptedSecret = await encryptSecret(parsed.connectionString);
+  const id = createResourceId();
+  let record = await getAppDb().databaseConnection.create({
+    data: {
+      id, ownerUserId: userId, providerId: adapter.providerId, dialectId: adapter.dialectId, name: input.name,
+      hostDisplay: parsed.hostDisplay, port: parsed.port, databaseName: parsed.databaseName,
+      encryptedSecret: encryptedSecret as unknown as Prisma.InputJsonValue,
+    },
+  });
+  const result = await adapter.testConnection({ connectionString: parsed.connectionString });
+  record = await getAppDb().databaseConnection.update({
+    where: { id }, data: {
+      status: result.success ? "connected" : "error", lastTestedAt: new Date(),
+      lastTestErrorCode: result.errorCode, schemaSyncStatus: result.success ? "queued" : "never",
+    },
+  });
+  if (result.success) {
+    await refreshConnectionSchema(id).catch(() => undefined);
+    record = await requireOwnedConnection(id);
+  }
+  return dto(record);
+}
+
+export async function updateConnection(connectionId: ResourceId, input: { name?: string; connectionString?: string }): Promise<ConnectionDto> {
+  const current = await requireOwnedConnection(connectionId);
+  const adapter = getDataSourceAdapter(current.providerId);
+  let credentialData: Prisma.DatabaseConnectionUpdateInput = {};
+  if (input.connectionString) {
+    const parsed = parsePostgresUrl(input.connectionString);
+    credentialData = {
+      hostDisplay: parsed.hostDisplay, port: parsed.port, databaseName: parsed.databaseName,
+      encryptedSecret: await encryptSecret(parsed.connectionString) as unknown as Prisma.InputJsonValue,
+      credentialVersion: { increment: 1 }, status: "pending", lastTestErrorCode: null, schemaSyncStatus: "queued",
+    };
+    await adapter.dispose(connectionId);
+  }
+  const record = await getAppDb().databaseConnection.update({
+    where: { id: connectionId }, data: { ...credentialData, ...(input.name ? { name: input.name } : {}) },
+  });
+  return dto(record);
+}
+
+export async function testSavedConnection(connectionId: ResourceId) {
+  const record = await requireOwnedConnection(connectionId);
+  const adapter = getDataSourceAdapter(record.providerId);
+  requireCapability(adapter, "connection-test");
+  const { secret } = await getConnectionSecret(connectionId);
+  const result = await adapter.testConnection(secret);
+  await getAppDb().databaseConnection.update({
+    where: { id: connectionId },
+    data: { status: result.success ? "connected" : "error", lastTestedAt: new Date(), lastTestErrorCode: result.errorCode },
+  });
+  return { contractVersion: CONTRACT_VERSION, ...result };
+}
+
+export async function deleteConnection(connectionId: ResourceId): Promise<void> {
+  const record = await requireOwnedConnection(connectionId);
+  const activeConversations = await getAppDb().conversation.count({ where: { connectionId, deletedAt: null } });
+  if (activeConversations > 0) throw new AppError("CONFLICT", "Archive or delete active conversations before deleting this connection.");
+  await getDataSourceAdapter(record.providerId).dispose(connectionId);
+  await withAppDbTransaction(async (tx) => {
+    await tx.schemaSnapshot.updateMany({ where: { connectionId, status: { in: ["queued", "syncing"] } }, data: { status: "superseded" } });
+    await tx.databaseConnection.update({ where: { id: connectionId }, data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.JsonNull } });
+  });
+}
