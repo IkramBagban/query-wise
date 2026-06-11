@@ -1,7 +1,8 @@
 import "server-only";
 import { getConnectionSecret } from "@/lib/v2/connections";
+import { AppError } from "@/lib/v2/dal/core";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
-import { getLatestConnectionSchema } from "@/lib/v2/schema";
+import { getLatestConnectionSchema, refreshConnectionSchema } from "@/lib/v2/schema";
 import type { ChatMessage, SchemaInfo } from "@/types";
 import type {
   BoundedQueryResult,
@@ -57,7 +58,16 @@ function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string |
 
 const defaultDependencies: QueryRuntimeDependencies = {
   async loadGenerationSchema(context) {
-    const snapshot = await getLatestConnectionSchema(context.connectionId);
+    let snapshot;
+    try {
+      snapshot = await getLatestConnectionSchema(context.connectionId);
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== "SCHEMA_SNAPSHOT_UNAVAILABLE") {
+        throw error;
+      }
+      await refreshConnectionSchema(context.connectionId);
+      snapshot = await getLatestConnectionSchema(context.connectionId);
+    }
     return toLegacySchema(snapshot.metadata as unknown as CanonicalDataSourceMetadata, snapshot.summary);
   },
   async executeValidatedReadQuery(context, query) {

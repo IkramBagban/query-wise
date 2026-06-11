@@ -2,6 +2,7 @@ import { z } from "zod";
 import { acceptQuerySubmission, queryRunDto } from "@/lib/v2/query-runs";
 import { apiError, executeDurableQueryRun, jsonData, querySseResponse } from "@/lib/v2/query";
 import { AppError } from "@/lib/v2/dal/core";
+import { SUPPORTED_MODELS_BY_PROVIDER } from "@/lib/llm-config";
 
 export const runtime = "nodejs";
 
@@ -10,9 +11,20 @@ const SubmitQuerySchema = z.object({
   question: z.string().trim().min(1).max(500),
   provider: z.enum(["google", "anthropic"]),
   model: z.string().trim().min(1).max(120),
-  apiKey: z.string().trim().min(1),
+  apiKey: z.string().trim().min(1).refine(
+    (value) => !/^[A-Z][A-Z0-9_]*=/.test(value),
+    "Provide only the API key value, not an environment variable assignment.",
+  ),
   idempotencyKey: z.string().uuid(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (!SUPPORTED_MODELS_BY_PROVIDER[value.provider].includes(value.model)) {
+    context.addIssue({
+      code: "custom",
+      path: ["model"],
+      message: `Unsupported ${value.provider} model.`,
+    });
+  }
+});
 
 export async function POST(request: Request) {
   try {
