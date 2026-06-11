@@ -1,3 +1,4 @@
+import "server-only";
 import { randomBytes } from "node:crypto";
 import type { ResourceId } from "@/types/v2";
 

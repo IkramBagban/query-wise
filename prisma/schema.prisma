@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("QUERYWISE_APP_DATABASE_URL")
+}
+
+enum ConnectionStatus {
+  pending
+  connected
+  error
+  disabled
+  deleting
+  deleted
+
+  @@map("v2_connection_status")
+}
+
+enum SchemaSyncStatus {
+  never
+  queued
+  running
+  ready
+  error
+
+  @@map("v2_schema_sync_status")
+}
+
+enum SnapshotStatus {
+  queued
+  syncing
+  succeeded
+  failed
+  superseded
+
+  @@map("v2_snapshot_status")
+}
+
+enum ConversationStatus {
+  active
+  archived
+
+  @@map("v2_conversation_status")
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+
+  @@map("v2_message_role")
+}
+
+enum QueryRunStatus {
+  accepted
+  preparing
+  generating
+  validating
+  executing
+  persisting
+  succeeded
+  failed
+  cancelled
+  expired
+
+  @@map("v2_query_run_status")
+}
+
+enum JobStatus {
+  queued
+  running
+  succeeded
+  dead
+  cancelled
+
+  @@map("v2_job_status")
+}
+
+model User {
+  id          String    @id @db.Uuid
+  clerkUserId String    @unique(map: "v2_users_clerk_user_id_key") @map("clerk_user_id")
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("v2_users")
+}
+
+model DatabaseConnection {
+  id                String           @id @db.Uuid
+  ownerUserId       String           @map("owner_user_id")
+  providerId        String           @default("postgresql") @map("provider_id")
+  dialectId         String           @default("postgresql") @map("dialect_id")
+  name              String
+  hostDisplay       String           @map("host_display")
+  port              Int?
+  databaseName      String           @map("database_name")
+  encryptedSecret   Json?            @map("encrypted_secret")
+  credentialVersion Int              @default(1) @map("credential_version")
+  status            ConnectionStatus @default(pending)
+  lastTestedAt      DateTime?        @map("last_tested_at") @db.Timestamptz(6)
+  lastTestErrorCode String?          @map("last_test_error_code")
+  lastSchemaSyncAt  DateTime?        @map("last_schema_sync_at") @db.Timestamptz(6)
+  schemaSyncStatus  SchemaSyncStatus @default(never) @map("schema_sync_status")
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([id, ownerUserId], map: "v2_connections_id_owner_key")
+  @@index([ownerUserId, updatedAt(sort: Desc), id(sort: Desc)], map: "v2_connections_owner_updated_idx")
+  @@map("v2_database_connections")
+}
+
+model SchemaSnapshot {
+  id              String         @id @db.Uuid
+  ownerUserId     String         @map("owner_user_id")
+  connectionId    String         @map("connection_id") @db.Uuid
+  snapshotVersion Int            @map("snapshot_version")
+  partitionIndex  Int            @default(0) @map("partition_index")
+  partitionCount  Int            @default(1) @map("partition_count")
+  status          SnapshotStatus @default(queued)
+  schemaHash      String?        @map("schema_hash")
+  metadata        Json?
+  summary         String?
+  errorCode       String?        @map("error_code")
+  completedAt     DateTime?      @map("completed_at") @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([connectionId, snapshotVersion, partitionIndex], map: "v2_snapshots_connection_version_partition_key")
+  @@index([ownerUserId, connectionId, snapshotVersion(sort: Desc)], map: "v2_snapshots_owner_connection_idx")
+  @@map("v2_database_schema_snapshots")
+}
+
+model Conversation {
+  id             String             @id @db.Uuid
+  ownerUserId    String             @map("owner_user_id")
+  connectionId   String             @map("connection_id") @db.Uuid
+  title          String
+  status         ConversationStatus @default(active)
+  lastActivityAt DateTime           @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz(6)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([id, ownerUserId, connectionId], map: "v2_conversations_id_owner_connection_key")
+  @@index([ownerUserId, lastActivityAt(sort: Desc), id(sort: Desc)], map: "v2_conversations_owner_activity_idx")
+  @@map("v2_conversations")
+}
+
+model Message {
+  id             String      @id @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  sequence       Int
+  role           MessageRole
+  content        String
+  queryRunId     String?     @map("query_run_id") @db.Uuid
+  metadata       Json        @default("{\"schemaVersion\":1}")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([conversationId, sequence], map: "v2_messages_conversation_sequence_key")
+  @@unique([id, conversationId], map: "v2_messages_id_conversation_key")
+  @@index([conversationId, sequence, id], map: "v2_messages_conversation_page_idx")
+  @@map("v2_messages")
+}
+
+model QueryRun {
+  id                  String         @id @db.Uuid
+  ownerUserId         String         @map("owner_user_id")
+  conversationId      String         @map("conversation_id") @db.Uuid
+  connectionId        String         @map("connection_id") @db.Uuid
+  triggeringMessageId String         @map("triggering_message_id") @db.Uuid
+  responseMessageId   String?        @map("response_message_id") @db.Uuid
+  idempotencyKey      String         @map("idempotency_key")
+  requestFingerprint  String         @map("request_fingerprint")
+  status              QueryRunStatus @default(accepted)
+  statusVersion       Int            @default(1) @map("status_version")
+  providerId          String         @default("postgresql") @map("provider_id")
+  dialectId           String         @default("postgresql") @map("dialect_id")
+  generatedQuery      Json?          @map("generated_query")
+  resultPreview       Json?          @map("result_preview")
+  returnedRowCount    Int?           @map("returned_row_count")
+  totalRowCount       BigInt?        @map("total_row_count")
+  truncated           Boolean?
+  executionTimeMs     Int?           @map("execution_time_ms")
+  generatedAt         DateTime?      @map("generated_at") @db.Timestamptz(6)
+  startedAt           DateTime?      @map("started_at") @db.Timestamptz(6)
+  finishedAt          DateTime?      @map("finished_at") @db.Timestamptz(6)
+  errorCode           String?        @map("error_code")
+  errorMessage        String?        @map("error_message")
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([id, conversationId], map: "v2_query_runs_id_conversation_key")
+  @@unique([ownerUserId, conversationId, idempotencyKey], map: "v2_query_runs_owner_conversation_idempotency_key")
+  @@index([ownerUserId, updatedAt(sort: Desc), id(sort: Desc)], map: "v2_query_runs_owner_updated_idx")
+  @@index([status, updatedAt], map: "v2_query_runs_recovery_idx")
+  @@map("v2_query_runs")
+}
+
+model Dashboard {
+  id          String    @id @db.Uuid
+  ownerUserId String    @map("owner_user_id")
+  name        String
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerUserId, updatedAt(sort: Desc), id(sort: Desc)], map: "v2_dashboards_owner_updated_idx")
+  @@map("v2_dashboards")
+}
+
+model DashboardWidget {
+  id              String   @id @db.Uuid
+  dashboardId     String   @map("dashboard_id") @db.Uuid
+  queryRunId      String?  @map("query_run_id") @db.Uuid
+  title           String
+  chartConfig     Json     @map("chart_config")
+  layout          Json
+  snapshot        Json
+  queryDefinition Json?    @map("query_definition")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([dashboardId, createdAt, id], map: "v2_widgets_dashboard_idx")
+  @@map("v2_dashboard_widgets")
+}
+
+model DashboardAccessGrant {
+  id              String   @id @db.Uuid
+  dashboardId     String   @map("dashboard_id") @db.Uuid
+  recipientUserId String   @map("recipient_user_id")
+  permission      String   @default("view")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([dashboardId, recipientUserId], map: "v2_grants_dashboard_recipient_key")
+  @@index([recipientUserId, dashboardId], map: "v2_grants_recipient_dashboard_idx")
+  @@map("v2_dashboard_access_grants")
+}
+
+model DashboardShareLink {
+  id           String    @id @db.Uuid
+  dashboardId  String    @map("dashboard_id") @db.Uuid
+  tokenHash    String    @unique(map: "v2_share_links_token_hash_key") @map("token_hash")
+  passwordHash String?   @map("password_hash")
+  version      Int       @default(1)
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([dashboardId, createdAt(sort: Desc), id(sort: Desc)], map: "v2_share_links_dashboard_idx")
+  @@map("v2_dashboard_share_links")
+}
+
+model AuditLog {
+  id           String   @id @db.Uuid
+  actorUserId  String?  @map("actor_user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  outcome      String
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([actorUserId, createdAt(sort: Desc), id(sort: Desc)], map: "v2_audit_actor_created_idx")
+  @@map("v2_audit_logs")
+}
+
+model DurableJob {
+  id             String    @id @db.Uuid
+  type           String
+  payloadVersion Int       @map("payload_version")
+  payload        Json
+  idempotencyKey String    @map("idempotency_key")
+  status         JobStatus @default(queued)
+  priority       Int       @default(0)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5) @map("max_attempts")
+  availableAt    DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  leaseOwner     String?   @map("lease_owner")
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  lastErrorCode  String?   @map("last_error_code")
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, availableAt, priority(sort: Desc), id], map: "v2_jobs_claim_idx")
+  @@index([status, leaseExpiresAt], map: "v2_jobs_lease_idx")
+  @@map("v2_durable_jobs")
+}

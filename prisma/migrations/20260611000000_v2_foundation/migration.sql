@@ -20,29 +20,34 @@ CREATE TABLE v2_database_connections (
   status v2_connection_status NOT NULL DEFAULT 'pending', last_tested_at timestamptz, last_test_error_code text,
   last_schema_sync_at timestamptz, schema_sync_status v2_schema_sync_status NOT NULL DEFAULT 'never', deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, owner_user_id),
   CHECK (status <> 'deleted' OR encrypted_secret IS NULL)
 );
 CREATE INDEX v2_connections_owner_updated_idx ON v2_database_connections (owner_user_id, updated_at DESC, id DESC);
 CREATE TABLE v2_database_schema_snapshots (
-  id uuid PRIMARY KEY, owner_user_id text NOT NULL, connection_id uuid NOT NULL REFERENCES v2_database_connections(id) ON DELETE CASCADE,
+  id uuid PRIMARY KEY, owner_user_id text NOT NULL, connection_id uuid NOT NULL,
   snapshot_version integer NOT NULL, partition_index integer NOT NULL DEFAULT 0, partition_count integer NOT NULL DEFAULT 1,
   status v2_snapshot_status NOT NULL DEFAULT 'queued', schema_hash text, metadata jsonb, summary text, error_code text, completed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (snapshot_version > 0 AND partition_count > 0 AND partition_index >= 0 AND partition_index < partition_count),
-  UNIQUE (connection_id, snapshot_version, partition_index)
+  UNIQUE (connection_id, snapshot_version, partition_index),
+  FOREIGN KEY (connection_id, owner_user_id) REFERENCES v2_database_connections(id, owner_user_id) ON DELETE CASCADE
 );
 CREATE INDEX v2_snapshots_owner_connection_idx ON v2_database_schema_snapshots (owner_user_id, connection_id, snapshot_version DESC);
 CREATE TABLE v2_conversations (
-  id uuid PRIMARY KEY, owner_user_id text NOT NULL, connection_id uuid NOT NULL REFERENCES v2_database_connections(id) ON DELETE RESTRICT,
+  id uuid PRIMARY KEY, owner_user_id text NOT NULL, connection_id uuid NOT NULL,
   title text NOT NULL CHECK (char_length(title) BETWEEN 1 AND 120), status v2_conversation_status NOT NULL DEFAULT 'active',
-  last_activity_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+  last_activity_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (id, owner_user_id, connection_id),
+  FOREIGN KEY (connection_id, owner_user_id) REFERENCES v2_database_connections(id, owner_user_id) ON DELETE RESTRICT
 );
 CREATE INDEX v2_conversations_owner_activity_idx ON v2_conversations (owner_user_id, last_activity_at DESC, id DESC);
 CREATE TABLE v2_messages (
   id uuid PRIMARY KEY, conversation_id uuid NOT NULL REFERENCES v2_conversations(id) ON DELETE CASCADE, sequence integer NOT NULL,
   role v2_message_role NOT NULL, content text NOT NULL CHECK (char_length(content) BETWEEN 1 AND 8000), query_run_id uuid,
   metadata jsonb NOT NULL DEFAULT '{"schemaVersion":1}'::jsonb, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (conversation_id, sequence)
+  UNIQUE (conversation_id, sequence),
+  UNIQUE (id, conversation_id)
 );
 CREATE INDEX v2_messages_conversation_page_idx ON v2_messages (conversation_id, sequence, id);
 CREATE TABLE v2_query_runs (
@@ -53,12 +58,14 @@ CREATE TABLE v2_query_runs (
   generated_query jsonb, result_preview jsonb CHECK (result_preview IS NULL OR pg_column_size(result_preview) <= 262144),
   returned_row_count integer, total_row_count bigint, truncated boolean, execution_time_ms integer, generated_at timestamptz, started_at timestamptz,
   finished_at timestamptz, error_code text, error_message text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (owner_user_id, conversation_id, idempotency_key)
+  UNIQUE (id, conversation_id),
+  UNIQUE (owner_user_id, conversation_id, idempotency_key),
+  FOREIGN KEY (conversation_id, owner_user_id, connection_id) REFERENCES v2_conversations(id, owner_user_id, connection_id) ON DELETE CASCADE
 );
 CREATE INDEX v2_query_runs_owner_updated_idx ON v2_query_runs (owner_user_id, updated_at DESC, id DESC);
 CREATE INDEX v2_query_runs_recovery_idx ON v2_query_runs (status, updated_at);
-ALTER TABLE v2_query_runs ADD CONSTRAINT v2_query_runs_triggering_message_fk FOREIGN KEY (triggering_message_id) REFERENCES v2_messages(id) ON DELETE RESTRICT;
-ALTER TABLE v2_query_runs ADD CONSTRAINT v2_query_runs_response_message_fk FOREIGN KEY (response_message_id) REFERENCES v2_messages(id) ON DELETE SET NULL;
+ALTER TABLE v2_query_runs ADD CONSTRAINT v2_query_runs_triggering_message_fk FOREIGN KEY (triggering_message_id, conversation_id) REFERENCES v2_messages(id, conversation_id) ON DELETE RESTRICT;
+ALTER TABLE v2_query_runs ADD CONSTRAINT v2_query_runs_response_message_fk FOREIGN KEY (response_message_id, conversation_id) REFERENCES v2_messages(id, conversation_id) ON DELETE SET NULL (response_message_id);
 ALTER TABLE v2_messages ADD CONSTRAINT v2_messages_query_run_fk FOREIGN KEY (query_run_id) REFERENCES v2_query_runs(id) ON DELETE SET NULL;
 CREATE TABLE v2_dashboards (
   id uuid PRIMARY KEY, owner_user_id text NOT NULL, name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120), deleted_at timestamptz,
@@ -74,7 +81,8 @@ CREATE INDEX v2_widgets_dashboard_idx ON v2_dashboard_widgets (dashboard_id, cre
 CREATE TABLE v2_dashboard_access_grants (
   id uuid PRIMARY KEY, dashboard_id uuid NOT NULL REFERENCES v2_dashboards(id) ON DELETE CASCADE, recipient_user_id text NOT NULL,
   permission text NOT NULL DEFAULT 'view', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (dashboard_id, recipient_user_id)
+  UNIQUE (dashboard_id, recipient_user_id),
+  CHECK (permission = 'view')
 );
 CREATE TABLE v2_dashboard_share_links (
   id uuid PRIMARY KEY, dashboard_id uuid NOT NULL REFERENCES v2_dashboards(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, password_hash text,
@@ -91,7 +99,8 @@ CREATE TABLE v2_durable_jobs (
   idempotency_key text NOT NULL, status v2_job_status NOT NULL DEFAULT 'queued', priority integer NOT NULL DEFAULT 0, attempts integer NOT NULL DEFAULT 0,
   max_attempts integer NOT NULL DEFAULT 5, available_at timestamptz NOT NULL DEFAULT now(), lease_owner text, lease_expires_at timestamptz,
   last_error_code text, started_at timestamptz, completed_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts), UNIQUE (type, idempotency_key)
+  CHECK (attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts)
 );
+CREATE UNIQUE INDEX v2_jobs_type_idempotency_active_uidx ON v2_durable_jobs (type, idempotency_key) WHERE status IN ('queued', 'running', 'succeeded');
 CREATE INDEX v2_jobs_claim_idx ON v2_durable_jobs (status, available_at, priority DESC, id);
 CREATE INDEX v2_jobs_lease_idx ON v2_durable_jobs (status, lease_expires_at);

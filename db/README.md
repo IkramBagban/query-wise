@@ -1,9 +1,8 @@
 # V2 Application Database
 
 The V2 application database is separate from every connected customer
-database. Apply forward-only migrations from `db/migrations/` using one
-controlled deployment runner. Do not run migrations during application
-startup.
+database. Apply forward-only migrations from `prisma/migrations/` using one
+controlled deployment runner. Do not run migrations during application startup.
 
 ## Required Environment
 

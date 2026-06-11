@@ -51,13 +51,17 @@ export interface QueryRunRecord extends OwnedResource {
 export type QueryRunDto = Omit<QueryRunRecord, "ownerUserId" | "requestFingerprint"> & { contractVersion: ContractVersion };
 export type ChartType = "bar" | "line" | "pie" | "scatter" | "area" | "table";
 export interface ChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; title?: string }
+export interface PublicChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; title?: string }
 export interface WidgetLayout { schemaVersion: 1; x: number; y: number; w: number; h: number }
 export interface DashboardRecord extends OwnedResource, SoftDeletableResource { name: string }
 export interface DashboardWidgetRecord extends DurableResource { dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null }
 export interface DashboardAccessGrantRecord extends DurableResource { dashboardId: ResourceId; recipientUserId: ClerkUserId; permission: "view" }
 export interface DashboardShareLinkRecord extends DurableResource { dashboardId: ResourceId; tokenHash: string; passwordHash: string | null; version: number; expiresAt: IsoDateTime | null; revokedAt: IsoDateTime | null }
-export interface DashboardDto { contractVersion: ContractVersion; id: ResourceId; name: string; widgets: DashboardWidgetRecord[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
-export interface PublicDashboardWidgetDto { id: ResourceId; title: string; chartConfig: ChartConfig; layout: WidgetLayout; result: BoundedResultPreview }
+export interface DashboardOwnerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null }
+export interface DashboardViewerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview }
+export interface DashboardOwnerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "owner"; widgets: DashboardOwnerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
+export interface DashboardViewerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "viewer"; widgets: DashboardViewerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
+export interface PublicDashboardWidgetDto { id: ResourceId; title: string; chartConfig: PublicChartConfig; layout: WidgetLayout; result: BoundedResultPreview }
 export interface PublicDashboardDto { contractVersion: ContractVersion; dashboard: { name: string; updatedAt: IsoDateTime; widgets: PublicDashboardWidgetDto[] }; share: { expiresAt: IsoDateTime | null } }
 export interface AuditLogRecord extends DurableResource { actorUserId: ClerkUserId | null; action: string; resourceType: string; resourceId: string | null; outcome: string; metadata: Record<string, JsonValue> }
 export interface DurableJobRecord extends DurableResource { type: string; payloadVersion: number; payload: Record<string, JsonValue>; idempotencyKey: string; status: JobStatus; priority: number; attempts: number; maxAttempts: number; availableAt: IsoDateTime; leaseOwner: string | null; leaseExpiresAt: IsoDateTime | null; lastErrorCode: string | null; startedAt: IsoDateTime | null; completedAt: IsoDateTime | null }

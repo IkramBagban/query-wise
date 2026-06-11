@@ -1,3 +1,4 @@
+import "server-only";
 import type { ConnectionDto, DataSourceCapability, DataSourceConnectionRecord } from "@/types/v2";
 import { CONTRACT_VERSION } from "@/types/v2";
 
