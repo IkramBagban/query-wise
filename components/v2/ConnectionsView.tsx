@@ -46,7 +46,7 @@ export function NewConnectionView() {
   async function submit(event: FormEvent) {
     event.preventDefault(); setSaving(true); setError(null);
     try {
-      const connection = await connectionsApi.create({ name, providerId: "postgresql", credential: { connectionString } });
+      const connection = await connectionsApi.create({ name, providerId: "postgresql", connectionString });
       router.push(`/connections/${connection.id}`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create connection"); } finally { setSaving(false); }
   }

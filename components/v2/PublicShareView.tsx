@@ -12,10 +12,10 @@ import { useApiResource } from "@/hooks/v2";
 import { publicSharesApi, V2ApiError } from "@/lib/v2/api-client";
 
 export function PublicShareView({ token }: { token: string }) {
-  const [credential, setCredential] = useState<string>(); const [password, setPassword] = useState(""); const [unlockError, setUnlockError] = useState<string | null>(null); const [unlocking, setUnlocking] = useState(false);
-  const resource = useApiResource(() => publicSharesApi.get(token, credential), [token, credential]);
+  const [password, setPassword] = useState(""); const [unlockError, setUnlockError] = useState<string | null>(null); const [unlocking, setUnlocking] = useState(false);
+  const resource = useApiResource(() => publicSharesApi.get(token), [token]);
   const passwordRequired = resource.error instanceof V2ApiError && resource.error.code === "SHARE_PASSWORD_REQUIRED";
-  async function unlock(event: FormEvent) { event.preventDefault(); setUnlocking(true); setUnlockError(null); try { const result = await publicSharesApi.unlock(token, password); setCredential(result.unlockCredential); } catch (reason) { setUnlockError(reason instanceof Error ? reason.message : "Unable to unlock share"); } finally { setUnlocking(false); } }
+  async function unlock(event: FormEvent) { event.preventDefault(); setUnlocking(true); setUnlockError(null); try { await publicSharesApi.unlock(token, password); setPassword(""); await resource.refresh(); } catch (reason) { setUnlockError(reason instanceof Error ? reason.message : "Unable to unlock share"); } finally { setUnlocking(false); } }
   if (resource.loading) return <div className="mx-auto max-w-6xl p-6"><LoadingState label="Loading shared dashboard" /></div>;
   if (passwordRequired) return <main className="flex min-h-screen items-center justify-center p-5"><Card className="w-full max-w-md p-6"><LockKeyhole className="h-7 w-7 text-accent-2" /><h1 className="mt-4 font-syne text-2xl font-semibold">Password required</h1><p className="mt-1 text-sm text-text-3">Enter the password provided by the dashboard owner.</p><form onSubmit={unlock} className="mt-5 space-y-3"><Input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} label="Share password" />{unlockError ? <p className="text-sm text-danger">{unlockError}</p> : null}<Button className="w-full" type="submit" loading={unlocking}>Unlock dashboard</Button></form></Card></main>;
   if (resource.error || !resource.data) return <div className="mx-auto max-w-4xl p-6"><ErrorState title="Shared dashboard unavailable" error={resource.error ?? new Error("Share not found")} onRetry={() => void resource.refresh()} /></div>;

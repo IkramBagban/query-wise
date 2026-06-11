@@ -92,7 +92,7 @@ export const BoundedSnapshotSchema = z
 export const ProviderQuerySchema = z
   .object({
     kind: z.literal("sql"),
-    dialect: z.literal("postgresql"),
+    dialectId: z.literal("postgresql"),
     text: z.string().min(1).max(102_400),
   })
   .strict();
@@ -132,4 +132,3 @@ export const WidgetLayoutBatchSchema = z
       context.addIssue({ code: "custom", message: "Widget IDs must be unique." });
     }
   });
-
