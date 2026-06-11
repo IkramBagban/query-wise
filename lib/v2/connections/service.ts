@@ -114,11 +114,16 @@ export async function testSavedConnection(connectionId: ResourceId) {
 
 export async function deleteConnection(connectionId: ResourceId): Promise<void> {
   const record = await requireOwnedConnection(connectionId);
-  const activeConversations = await getAppDb().conversation.count({ where: { connectionId, deletedAt: null } });
-  if (activeConversations > 0) throw new AppError("CONFLICT", "Archive or delete active conversations before deleting this connection.");
-  await getDataSourceAdapter(record.providerId).dispose(connectionId);
   await withAppDbTransaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`connection:${connectionId}`}))`;
+    const activeConversations = await tx.conversation.count({ where: { connectionId, deletedAt: null } });
+    if (activeConversations > 0) throw new AppError("CONFLICT", "Archive or delete active conversations before deleting this connection.");
     await tx.schemaSnapshot.updateMany({ where: { connectionId, status: { in: ["queued", "syncing"] } }, data: { status: "superseded" } });
-    await tx.databaseConnection.update({ where: { id: connectionId }, data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.JsonNull } });
+    const deleted = await tx.databaseConnection.updateMany({
+      where: { id: connectionId, ownerUserId: record.ownerUserId, deletedAt: null },
+      data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.JsonNull },
+    });
+    if (deleted.count !== 1) throw new AppError("CONFLICT", "The connection changed while it was being deleted.");
   });
+  await getDataSourceAdapter(record.providerId).dispose(connectionId);
 }

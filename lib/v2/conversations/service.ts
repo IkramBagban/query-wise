@@ -56,16 +56,22 @@ export function fallbackConversationTitle(question: string): string {
 
 export async function createConversation(connectionId: string, title?: string): Promise<ConversationDto> {
   const { userId } = await requireUser();
-  await requireOwnedConnection(connectionId);
-  const record = await getAppDb().conversation.create({
-    data: {
-      id: randomUUID(),
-      ownerUserId: userId,
-      connectionId,
-      title: title?.trim() || "New conversation",
-    },
+  return withAppDbTransaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`connection:${connectionId}`}))`;
+    requireFound(await tx.databaseConnection.findFirst({
+      where: { id: connectionId, ownerUserId: userId, deletedAt: null },
+      select: { id: true },
+    }));
+    const record = await tx.conversation.create({
+      data: {
+        id: randomUUID(),
+        ownerUserId: userId,
+        connectionId,
+        title: title?.trim() || "New conversation",
+      },
+    });
+    return conversationDto(record);
   });
-  return conversationDto(record);
 }
 
 export async function listConversations(input: {
