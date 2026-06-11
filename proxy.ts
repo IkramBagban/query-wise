@@ -9,6 +9,7 @@ const isPublicPage = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/share(.*)",
+  "/shared(.*)",
   "/public/shares(.*)",
 ]);
 
