@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Syne } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { AppStateProvider } from "@/store/app-state";
 import { ToastProvider } from "@/components/ui/toast";
@@ -37,14 +38,15 @@ export default function RootLayout({
       className={`${syne.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
       <body className="min-h-screen">
-        <ToastProvider>
-          <AppStateProvider>{children}</AppStateProvider>
-        </ToastProvider>
+        <ClerkProvider>
+          <ToastProvider>
+            <AppStateProvider>{children}</AppStateProvider>
+          </ToastProvider>
+        </ClerkProvider>
         <Analytics />
         <SpeedInsights />
       </body>
     </html>
   );
 }
-
 
