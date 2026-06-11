@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ZodError, type ZodType } from "zod";
 import { AppError } from "@/lib/v2/dal/core";
 import { CONTRACT_VERSION } from "@/types/v2";
+import { devLogError } from "@/lib/v2/observability";
 
 const headers = { "Cache-Control": "private, no-store" };
 const statusByCode: Record<string, number> = {
@@ -39,6 +40,10 @@ export async function handle(operation: () => Promise<Response>): Promise<Respon
       return json({ contractVersion: CONTRACT_VERSION, error: { code: "VALIDATION_FAILED", message: "The request is invalid.", retryable: false, requestId, fieldErrors } }, 400);
     }
     const appError = error instanceof AppError ? error : new AppError("INTERNAL_ERROR", "An internal operation failed.", true, error);
+    devLogError("api.connections.error", "Connection API request failed.", error, {
+      requestId,
+      errorCode: appError.code,
+    });
     return json({
       contractVersion: CONTRACT_VERSION,
       error: { code: appError.code, message: appError.message, retryable: appError.retryable, requestId },

@@ -13,6 +13,7 @@ import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { parsePostgresUrl } from "@/lib/v2/data-sources/postgresql/url";
 import { refreshConnectionSchema } from "@/lib/v2/schema";
 import { getConnectionSecret } from "./credentials";
+import { devLog, devLogError } from "@/lib/v2/observability";
 
 function dto(record: DatabaseConnection): ConnectionDto {
   const adapter = getDataSourceAdapter(record.providerId);
@@ -57,6 +58,11 @@ export async function createConnection(input: { name: string; providerId: "postg
   const adapter = getDataSourceAdapter(input.providerId);
   requireCapability(adapter, "connection-test");
   const parsed = parsePostgresUrl(input.connectionString);
+  devLog("info", "connection.create.started", "Connection creation started.", {
+    providerId: input.providerId,
+    host: parsed.hostDisplay,
+    databaseName: parsed.databaseName,
+  });
   const encryptedSecret = await encryptSecret(parsed.connectionString);
   const id = createResourceId();
   let record = await getAppDb().databaseConnection.create({
@@ -67,6 +73,12 @@ export async function createConnection(input: { name: string; providerId: "postg
     },
   });
   const result = await adapter.testConnection({ connectionString: parsed.connectionString });
+  devLog(result.success ? "info" : "warn", "connection.test.completed", "Connection test completed.", {
+    connectionId: id,
+    success: result.success,
+    latencyMs: result.latencyMs,
+    errorCode: result.errorCode,
+  });
   record = await getAppDb().databaseConnection.update({
     where: { id }, data: {
       status: result.success ? "connected" : "error", lastTestedAt: new Date(),
@@ -74,9 +86,18 @@ export async function createConnection(input: { name: string; providerId: "postg
     },
   });
   if (result.success) {
-    await refreshConnectionSchema(id).catch(() => undefined);
+    await refreshConnectionSchema(id).catch((error) => {
+      devLogError("connection.initial-schema.failed", "Initial schema refresh failed.", error, {
+        connectionId: id,
+      });
+    });
     record = await requireOwnedConnection(id);
   }
+  devLog("info", "connection.create.completed", "Connection creation completed.", {
+    connectionId: id,
+    status: record.status,
+    schemaSyncStatus: record.schemaSyncStatus,
+  });
   return dto(record);
 }
 

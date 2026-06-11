@@ -15,6 +15,7 @@ import type { BoundedQueryResult, ChartConfig, ProviderQuery } from "@/types/v2"
 import { createResultPreview } from "./preview";
 import { getQueryRuntimeDependencies } from "./runtime";
 import { statusEvent, type QueryStreamEmitter } from "./sse";
+import { devLog, devLogError } from "@/lib/v2/observability";
 
 function safeFailure(error: unknown): { code: string; message: string } {
   if (error instanceof AppError) return { code: error.code, message: error.message };
@@ -44,6 +45,13 @@ export async function executeDurableQueryRun(input: {
 }) {
   const { emit } = input;
   let run = await getOwnedQueryRun(input.queryRunId);
+  devLog("info", "query.run.started", "Durable query run started.", {
+    queryRunId: run.id,
+    conversationId: run.conversationId,
+    connectionId: run.connectionId,
+    provider: input.provider,
+    model: input.model,
+  });
   if (run.status === "succeeded" || run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
     emit?.(run.status === "succeeded" ? "completed" : "failed", { status: run.status, statusVersion: run.statusVersion });
     return run;
@@ -144,9 +152,20 @@ export async function executeDurableQueryRun(input: {
       });
     }
     emit?.("completed", { status: run.status, statusVersion: run.statusVersion });
+    devLog("info", "query.run.succeeded", "Durable query run completed.", {
+      queryRunId: run.id,
+      status: run.status,
+      returnedRowCount: run.returnedRowCount,
+      executionTimeMs: run.executionTimeMs,
+    });
     return run;
   } catch (error) {
     const failure = safeFailure(error);
+    devLogError("query.run.failed", "Durable query run failed.", error, {
+      queryRunId: run.id,
+      status: run.status,
+      errorCode: failure.code,
+    });
     run = await failQueryRun(run.id, failure.code, failure.message);
     emit?.("failed", { status: run.status, statusVersion: run.statusVersion, error: failure });
     return run;

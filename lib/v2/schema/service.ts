@@ -9,6 +9,7 @@ import { requireOwnedConnection } from "@/lib/v2/dal/authorization";
 import { createResourceId } from "@/lib/v2/domain/ids";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { getConnectionSecret } from "@/lib/v2/connections/credentials";
+import { devLog, devLogError } from "@/lib/v2/observability";
 
 const DEFAULT_OPTIONS = {
   enableSampling: false, maxNamespaces: 100, maxEntities: 2_000, maxColumnsPerEntity: 500,
@@ -16,6 +17,7 @@ const DEFAULT_OPTIONS = {
 };
 
 export async function refreshConnectionSchema(connectionId: ResourceId) {
+  devLog("info", "schema.refresh.started", "Schema refresh started.", { connectionId });
   const { record, secret } = await getConnectionSecret(connectionId);
   const adapter = getDataSourceAdapter(record.providerId);
   requireCapability(adapter, "metadata-introspection");
@@ -50,9 +52,20 @@ export async function refreshConnectionSchema(connectionId: ResourceId) {
         });
       }
     });
+    devLog("info", "schema.refresh.succeeded", "Schema refresh completed.", {
+      connectionId,
+      snapshotVersion,
+      entityCount: metadata.entities.length,
+      relationshipCount: metadata.relationships.length,
+    });
     return { contractVersion: CONTRACT_VERSION, connectionId, snapshotVersion, status: "ready" as const, summary };
   } catch (error) {
     const code = error instanceof AppError ? error.code : "INTERNAL_ERROR";
+    devLogError("schema.refresh.failed", "Schema refresh failed.", error, {
+      connectionId,
+      snapshotVersion,
+      errorCode: code,
+    });
     await withAppDbTransaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`schema-refresh:${connectionId}`}))`;
       await tx.schemaSnapshot.update({ where: { id: snapshotId }, data: { status: "failed", errorCode: code, completedAt: new Date() } });

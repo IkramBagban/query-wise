@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AppError } from "@/lib/v2/dal/core";
 import type { ApiErrorCode } from "@/types/v2";
 import type { ZodError } from "zod";
+import { devLogError } from "@/lib/v2/observability";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   AUTHENTICATION_REQUIRED: 401,
@@ -44,9 +45,10 @@ export function apiErrorResponse(error: unknown): Response {
       ? error
       : new AppError("INTERNAL_ERROR", "An unexpected error occurred.", true, error);
 
-  if (!(error instanceof AppError)) {
-    console.error(`[v2-api:${requestId}]`, error);
-  }
+  devLogError("api.dashboard.error", "Dashboard or sharing API request failed.", error, {
+    requestId,
+    errorCode: appError.code,
+  });
 
   return Response.json(
     {
@@ -69,4 +71,3 @@ export async function parseJson(request: Request): Promise<unknown> {
     throw validationError(undefined);
   }
 }
-

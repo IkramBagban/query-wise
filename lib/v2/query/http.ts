@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AppError } from "@/lib/v2/dal/core";
 import type { ApiErrorCode, ApiErrorResponse } from "@/types/v2";
+import { devLogError } from "@/lib/v2/observability";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   AUTHENTICATION_REQUIRED: 401,
@@ -34,13 +35,18 @@ export function apiError(error: unknown): Response {
     error instanceof AppError
       ? error
       : new AppError("INTERNAL_ERROR", "An unexpected error occurred.", true, error);
+  const requestId = randomUUID();
+  devLogError("api.query.error", "Query API request failed.", error, {
+    requestId,
+    errorCode: appError.code,
+  });
   const body: ApiErrorResponse = {
     contractVersion: "querywise.v2",
     error: {
       code: appError.code,
       message: appError.message,
       retryable: appError.retryable,
-      requestId: randomUUID(),
+      requestId,
     },
   };
   return Response.json(body, {
