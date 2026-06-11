@@ -22,7 +22,7 @@ import {
   verifySharePassword,
   verifyUnlockCredential,
 } from "./crypto";
-import { clearPasswordAttempts, consumePasswordAttempt } from "./rate-limit";
+import { clearPasswordAttempts, consumePasswordAttempts } from "./rate-limit";
 
 const CreateShareSchema = z.discriminatedUnion("type", [
   z
@@ -309,10 +309,11 @@ export async function unlockShare(
   const share = await activeShare(token);
   if (!share.passwordHash) return share;
   const attemptKey = `${share.id}:${attemptScope}`;
-  consumePasswordAttempt(attemptKey);
+  const attemptKeys = [attemptKey, `${share.id}:global`];
+  await consumePasswordAttempts(attemptKeys);
   if (!(await verifySharePassword(parsed.data, share.passwordHash))) {
     throw new AppError("SHARE_PASSWORD_INVALID", "The share password is invalid.");
   }
-  clearPasswordAttempts(attemptKey);
+  await clearPasswordAttempts(attemptKeys);
   return share;
 }

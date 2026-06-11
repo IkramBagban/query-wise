@@ -257,6 +257,18 @@ model DashboardShareLink {
   @@map("v2_dashboard_share_links")
 }
 
+model SharePasswordAttempt {
+  id           String   @id @db.Uuid
+  keyHash      String   @unique(map: "v2_share_password_attempts_key_hash_key") @map("key_hash")
+  attemptCount Int      @default(0) @map("attempt_count")
+  resetsAt     DateTime @map("resets_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([resetsAt], map: "v2_share_password_attempts_resets_idx")
+  @@map("v2_share_password_attempts")
+}
+
 model AuditLog {
   id           String   @id @db.Uuid
   actorUserId  String?  @map("actor_user_id")

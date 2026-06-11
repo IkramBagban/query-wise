@@ -1,34 +1,44 @@
 import "server-only";
 
+import { createHash, randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
+import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
 import { AppError } from "@/lib/v2/dal/core";
 
-// Initial single-process limiter. Keep this interface stable when replacing the
-// backing Map with a distributed, atomic rate-limit store.
-const WINDOW_MS = 10 * 60 * 1000;
+const WINDOW_MINUTES = 10;
 const MAX_ATTEMPTS = 8;
-const MAX_ENTRIES = 5_000;
-const attempts = new Map<string, { count: number; resetsAt: number }>();
 
-function prune(now: number): void {
-  for (const [key, entry] of attempts) {
-    if (entry.resetsAt <= now) attempts.delete(key);
-    if (attempts.size <= MAX_ENTRIES) break;
-  }
+function keyHash(key: string): string {
+  return createHash("sha256").update(key).digest("base64url");
 }
 
-export function consumePasswordAttempt(key: string, now = Date.now()): void {
-  prune(now);
-  const current = attempts.get(key);
-  if (current && current.resetsAt > now && current.count >= MAX_ATTEMPTS) {
-    throw new AppError("RATE_LIMITED", "Too many password attempts. Try again later.", true);
-  }
-  attempts.set(key, {
-    count: current && current.resetsAt > now ? current.count + 1 : 1,
-    resetsAt: current && current.resetsAt > now ? current.resetsAt : now + WINDOW_MS,
+export async function consumePasswordAttempts(keys: string[]): Promise<void> {
+  await withAppDbTransaction(async (tx) => {
+    for (const key of keys) {
+      const [attempt] = await tx.$queryRaw<{ attemptCount: number }[]>(Prisma.sql`
+        INSERT INTO v2_share_password_attempts (id, key_hash, attempt_count, resets_at)
+        VALUES (${randomUUID()}::uuid, ${keyHash(key)}, 1, now() + (${WINDOW_MINUTES} * interval '1 minute'))
+        ON CONFLICT (key_hash) DO UPDATE SET
+          attempt_count = CASE
+            WHEN v2_share_password_attempts.resets_at <= now() THEN 1
+            ELSE v2_share_password_attempts.attempt_count + 1
+          END,
+          resets_at = CASE
+            WHEN v2_share_password_attempts.resets_at <= now() THEN now() + (${WINDOW_MINUTES} * interval '1 minute')
+            ELSE v2_share_password_attempts.resets_at
+          END,
+          updated_at = now()
+        RETURNING attempt_count AS "attemptCount"
+      `);
+      if (!attempt || attempt.attemptCount > MAX_ATTEMPTS) {
+        throw new AppError("RATE_LIMITED", "Too many password attempts. Try again later.", true);
+      }
+    }
   });
 }
 
-export function clearPasswordAttempts(key: string): void {
-  attempts.delete(key);
+export async function clearPasswordAttempts(keys: string[]): Promise<void> {
+  await getAppDb().sharePasswordAttempt.deleteMany({
+    where: { keyHash: { in: keys.map(keyHash) } },
+  });
 }
-
