@@ -85,6 +85,11 @@ export const dashboardsApi = {
       method: "POST",
       body: input,
     }),
+  updateWidget: (dashboardId: string, widgetId: string, input: Partial<import("./types").CreateWidgetInput>) =>
+    apiRequest<DashboardDto["widgets"][number]>(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
+      method: "PATCH",
+      body: input,
+    }),
   removeWidget: (dashboardId: string, widgetId: string) =>
     apiRequest<void>(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, { method: "DELETE" }),
 };
