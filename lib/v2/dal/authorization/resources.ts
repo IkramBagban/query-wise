@@ -14,6 +14,7 @@ import {
   resourceNotFound,
 } from "@/lib/v2/dal/core";
 import type { ResourceId } from "@/types/v2";
+import { claimPendingEmailGrants } from "@/lib/v2/sharing/grants";
 
 export type ConnectionSecretRecord = DatabaseConnection;
 export type AuthorizedConversationRecord = Conversation;
@@ -47,6 +48,7 @@ export async function requireDashboardAccess(
   permission: DashboardPermission,
 ): Promise<AuthorizedDashboardRecord> {
   const { userId } = await requireUser();
+  await claimPendingEmailGrants(userId);
   const db = getAppDb();
   const ownedDashboard = await db.dashboard.findFirst({
     where: activeOwnedResourceWhere(userId, dashboardId),

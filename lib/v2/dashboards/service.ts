@@ -24,11 +24,12 @@ import {
   WidgetUpdateSchema,
 } from "./schemas";
 import { validationError } from "./http";
+import { claimPendingEmailGrants } from "@/lib/v2/sharing/grants";
 
 const DASHBOARD_LIST_ENDPOINT = "dashboards";
 const MAX_WIDGETS = 50;
 
-type DashboardListRow = Dashboard & { access: "owner" | "viewer" };
+type DashboardListRow = Dashboard & { access: "owner" | "viewer"; widgetCount: bigint };
 type DashboardDto = DashboardOwnerDto | DashboardViewerDto;
 
 function jsonInput(value: unknown): Prisma.InputJsonValue {
@@ -102,6 +103,7 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
 
 export async function listDashboards(input: { cursor?: string; limit?: number }) {
   const { userId } = await requireUser();
+  await claimPendingEmailGrants(userId);
   const limit = normalizePageLimit(input.limit);
   const cursor = input.cursor
     ? decodeCursor(input.cursor, DASHBOARD_LIST_ENDPOINT, userId)
@@ -125,6 +127,7 @@ export async function listDashboards(input: { cursor?: string; limit?: number })
       dashboard.deleted_at AS "deletedAt",
       dashboard.created_at AS "createdAt",
       dashboard.updated_at AS "updatedAt",
+      (SELECT count(*)::bigint FROM v2_dashboard_widgets AS widget WHERE widget.dashboard_id = dashboard.id) AS "widgetCount",
       CASE WHEN dashboard.owner_user_id = ${userId} THEN 'owner' ELSE 'viewer' END AS access
     FROM v2_dashboards AS dashboard
     LEFT JOIN v2_dashboard_access_grants AS access_grant
@@ -148,6 +151,7 @@ export async function listDashboards(input: { cursor?: string; limit?: number })
     access: row.access,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
+    widgetCount: Number(row.widgetCount),
   }));
   const last = rows[Math.min(rows.length, limit) - 1];
   return {
