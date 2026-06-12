@@ -67,7 +67,11 @@ async function resolveGrantRecipient(input: {
     limit: 2,
   });
   const exact = users.data.find((user) =>
-    user.emailAddresses.some((address) => address.emailAddress.toLowerCase() === email),
+    user.emailAddresses.some(
+      (address) =>
+        address.verification?.status === "verified" &&
+        address.emailAddress.toLowerCase() === email,
+    ),
   );
   return exact
     ? { key: exact.id, kind: "user" }

@@ -44,6 +44,7 @@ export interface QueryExecutionOptions {
   timeoutMs: number;
   maxRows: number;
   maxBytes: number;
+  signal?: AbortSignal;
 }
 
 export interface ResultColumn {

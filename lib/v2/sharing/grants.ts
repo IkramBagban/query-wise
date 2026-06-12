@@ -9,7 +9,9 @@ export async function claimPendingEmailGrants(userId: string): Promise<void> {
   let emailKeys: string[];
   try {
     const user = await (await clerkClient()).users.getUser(userId);
-    emailKeys = user.emailAddresses.map((address) => pendingEmailGrantKey(address.emailAddress));
+    emailKeys = user.emailAddresses
+      .filter((address) => address.verification?.status === "verified")
+      .map((address) => pendingEmailGrantKey(address.emailAddress));
   } catch {
     return;
   }

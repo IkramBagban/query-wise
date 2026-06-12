@@ -11,6 +11,8 @@ export interface ParsedPostgresUrl {
   hostDisplay: string;
   port: number;
   databaseName: string;
+  user: string;
+  password: string;
 }
 
 export function parsePostgresUrl(input: string): ParsedPostgresUrl {
@@ -47,5 +49,7 @@ export function parsePostgresUrl(input: string): ParsedPostgresUrl {
     hostDisplay: url.hostname,
     port,
     databaseName: decodeURIComponent(url.pathname.slice(1)),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
   };
 }

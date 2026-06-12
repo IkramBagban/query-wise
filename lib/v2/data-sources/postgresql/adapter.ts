@@ -10,6 +10,7 @@ import { validatePostgresQuery } from "./validation";
 import { introspectPostgresMetadata } from "./metadata";
 import { canonicalType, jsonValue } from "./json";
 import { mapPostgresError } from "../errors";
+import { pinnedPostgresConfig } from "./client-config";
 
 const capabilities = new Set<DataSourceCapability>([
   "connection-test", "metadata-introspection", "relationships", "estimated-row-counts",
@@ -24,7 +25,7 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
     const parsed = parsePostgresUrl(secret.connectionString);
     const endpoint = await resolvePublicEndpoint(parsed.host);
     const startedAt = Date.now();
-    const client = new Client({ connectionString: secret.connectionString, host: endpoint.address, ssl: { rejectUnauthorized: true, servername: parsed.host }, connectionTimeoutMillis: 8_000 });
+    const client = new Client(pinnedPostgresConfig(parsed, endpoint.address));
     try {
       await client.connect();
       const result = await client.query<{ server_version: string }>("SHOW server_version");
@@ -48,10 +49,18 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
     if (!validation.valid || !validation.normalizedQuery) {
       throw new AppError("QUERY_VALIDATION_BLOCKED", "The SQL query violates the read-only safety policy.");
     }
-    const pool = await getPostgresPool(connectionId, credentialVersion, secret.connectionString, endpoint.address, parsed.host);
+    const pool = await getPostgresPool(connectionId, credentialVersion, parsed, endpoint.address);
     const client = await pool.connect();
     const startedAt = Date.now();
+    let released = false;
+    const abort = () => {
+      if (released) return;
+      released = true;
+      client.release(new Error("Query execution cancelled."));
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
     try {
+      options.signal?.throwIfAborted();
       await client.query("BEGIN READ ONLY");
       await client.query(`SET LOCAL statement_timeout = ${Math.max(1_000, Math.min(options.timeoutMs, 60_000))}`);
       await client.query("SET LOCAL lock_timeout = '2s'");
@@ -69,11 +78,18 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
         executionTimeMs: Date.now() - startedAt, bytesReturned,
       };
     } catch (error) {
+      if (options.signal?.aborted) {
+        throw new AppError("QUERY_EXECUTION_FAILED", "The query run was cancelled.");
+      }
       if (error instanceof AppError) throw error;
       throw mapPostgresError(error);
     } finally {
-      await client.query("ROLLBACK").catch(() => undefined);
-      client.release();
+      options.signal?.removeEventListener("abort", abort);
+      if (!released) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        released = true;
+        client.release();
+      }
     }
   },
   dispose: disposePostgresPools,

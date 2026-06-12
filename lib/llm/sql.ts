@@ -10,6 +10,7 @@ interface GenerateSQLParams {
   provider: Provider;
   model: string;
   apiKey: string;
+  abortSignal?: AbortSignal;
 }
 
 export type ModelMessage = { role: "user" | "assistant"; content: string };
@@ -60,6 +61,7 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
         messages,
         maxOutputTokens: 2500,
         temperature: 0.1,
+        abortSignal: params.abortSignal,
       }),
   });
 

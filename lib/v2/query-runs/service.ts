@@ -7,6 +7,9 @@ import { appendMessage, fallbackConversationTitle } from "@/lib/v2/conversations
 import { AppError, requireFound } from "@/lib/v2/dal/core";
 import type { QueryRunDto, QueryRunStatus } from "@/types/v2";
 import { TERMINAL_QUERY_RUN_STATUSES, type QuerySubmission } from "./types";
+import { abortActiveQueryRun } from "@/lib/v2/query/cancellation";
+
+const STALE_QUERY_RUN_MS = 5 * 60_000;
 
 export function queryRunDto(run: QueryRun): QueryRunDto {
   return {
@@ -66,6 +69,32 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
     if (existing) {
       if (existing.requestFingerprint !== requestFingerprint) {
         throw new AppError("IDEMPOTENCY_KEY_REUSED", "The idempotency key was already used for a different request.");
+      }
+      if (
+        !TERMINAL_QUERY_RUN_STATUSES.has(existing.status) &&
+        existing.updatedAt.getTime() <= Date.now() - STALE_QUERY_RUN_MS
+      ) {
+        const response = await appendMessage(tx, {
+          conversationId: existing.conversationId,
+          role: "assistant",
+          content: "The previous query run expired before it could complete. Submit the question again to retry.",
+          queryRunId: existing.id,
+          metadata: { schemaVersion: 1, errorCode: "QUERY_EXECUTION_FAILED" },
+        });
+        return {
+          run: await tx.queryRun.update({
+            where: { id: existing.id },
+            data: {
+              status: "expired",
+              statusVersion: { increment: 1 },
+              responseMessageId: response.id,
+              errorCode: "QUERY_EXECUTION_FAILED",
+              errorMessage: "The query run expired before completion.",
+              finishedAt: new Date(),
+            },
+          }),
+          created: false,
+        };
       }
       return { run: existing, created: false };
     }
@@ -227,7 +256,7 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
 export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
   const current = await getOwnedQueryRun(queryRunId);
   if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
-  return withAppDbTransaction(async (tx) => {
+  const cancelled = await withAppDbTransaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`query-run:${current.id}`}))`;
     const fresh = requireFound(await tx.queryRun.findFirst({
       where: { id: current.id, ownerUserId: current.ownerUserId },
@@ -242,4 +271,6 @@ export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
       },
     });
   });
+  abortActiveQueryRun(queryRunId);
+  return cancelled;
 }

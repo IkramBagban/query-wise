@@ -2,6 +2,8 @@ import "server-only";
 
 import { Pool } from "pg";
 import type { ResourceId } from "@/types/v2";
+import type { ParsedPostgresUrl } from "./url";
+import { pinnedPostgresConfig } from "./client-config";
 
 const IDLE_DISPOSE_MS = 10 * 60_000;
 type Entry = { pool: Pool; connectionId: ResourceId; credentialVersion: number; lastUsedAt: number };
@@ -11,7 +13,7 @@ function key(connectionId: ResourceId, credentialVersion: number): string {
   return `${connectionId}:${credentialVersion}`;
 }
 
-export async function getPostgresPool(connectionId: ResourceId, credentialVersion: number, connectionString: string, address: string, servername: string): Promise<Pool> {
+export async function getPostgresPool(connectionId: ResourceId, credentialVersion: number, parsed: ParsedPostgresUrl, address: string): Promise<Pool> {
   const poolKey = key(connectionId, credentialVersion);
   const existing = pools.get(poolKey);
   if (existing) {
@@ -20,13 +22,10 @@ export async function getPostgresPool(connectionId: ResourceId, credentialVersio
   }
   await disposePostgresPools(connectionId);
   const pool = new Pool({
-    connectionString,
-    host: address,
+    ...pinnedPostgresConfig(parsed, address),
     max: 3,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 8_000,
     allowExitOnIdle: true,
-    ssl: { rejectUnauthorized: true, servername },
   });
   pools.set(poolKey, { pool, connectionId, credentialVersion, lastUsedAt: Date.now() });
   return pool;

@@ -137,8 +137,18 @@ export async function updateConnection(connectionId: ResourceId, input: { name?:
     };
     await adapter.dispose(connectionId);
   }
-  const record = await getAppDb().databaseConnection.update({
-    where: { id: connectionId }, data: { ...credentialData, ...(input.name ? { name: input.name } : {}) },
+  const record = await withAppDbTransaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`connection:${connectionId}`}))`;
+    if (input.connectionString) {
+      await tx.schemaSnapshot.updateMany({
+        where: { connectionId, status: { in: ["queued", "syncing", "succeeded"] } },
+        data: { status: "superseded" },
+      });
+    }
+    return tx.databaseConnection.update({
+      where: { id: connectionId },
+      data: { ...credentialData, ...(input.name ? { name: input.name } : {}) },
+    });
   });
   return dto(record);
 }

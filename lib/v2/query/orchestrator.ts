@@ -16,6 +16,11 @@ import { createResultPreview } from "./preview";
 import { getQueryRuntimeDependencies } from "./runtime";
 import { statusEvent, type QueryStreamEmitter } from "./sse";
 import { devLog, devLogError } from "@/lib/v2/observability";
+import {
+  registerActiveQueryRun,
+  throwIfQueryRunAborted,
+  unregisterActiveQueryRun,
+} from "./cancellation";
 
 function safeFailure(error: unknown): { code: string; message: string } {
   if (error instanceof AppError) return { code: error.code, message: error.message };
@@ -56,9 +61,12 @@ export async function executeDurableQueryRun(input: {
     emit?.(run.status === "succeeded" ? "completed" : "failed", { status: run.status, statusVersion: run.statusVersion });
     return run;
   }
+  const abortSignal = registerActiveQueryRun(run.id);
 
   try {
+    throwIfQueryRunAborted(abortSignal);
     run = await transitionQueryRun(run.id, "preparing");
+    throwIfQueryRunAborted(abortSignal);
     emit?.("status", statusEvent(run.status, run.statusVersion));
     const runtime = getQueryRuntimeDependencies();
     const context = {
@@ -73,6 +81,7 @@ export async function executeDurableQueryRun(input: {
     ]);
 
     run = await transitionQueryRun(run.id, "generating");
+    throwIfQueryRunAborted(abortSignal);
     emit?.("status", statusEvent(run.status, run.statusVersion));
     let boundedResult: BoundedQueryResult | null = null;
     let providerQuery: ProviderQuery | null = null;
@@ -83,9 +92,11 @@ export async function executeDurableQueryRun(input: {
       provider: input.provider,
       model: input.model,
       apiKey: input.apiKey,
+      abortSignal,
       onTextDelta: (chunk) => emit?.("text-delta", { chunk }),
       onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
       executeQueryTool: async (toolQuestion): Promise<ExecuteQueryToolResult> => {
+        throwIfQueryRunAborted(abortSignal);
         const { generateSQL } = await import("@/lib/llm");
         const text = await generateSQL({
           question: toolQuestion,
@@ -94,6 +105,7 @@ export async function executeDurableQueryRun(input: {
           provider: input.provider,
           model: input.model,
           apiKey: input.apiKey,
+          abortSignal,
         });
         providerQuery = { kind: "sql", dialectId: "postgresql", text };
         run = await transitionQueryRun(run.id, "validating", {
@@ -102,8 +114,9 @@ export async function executeDurableQueryRun(input: {
         });
         emit?.("sql-preview", { dialectId: "postgresql", language: "sql", text, validation: "pending" });
         run = await transitionQueryRun(run.id, "executing");
+        throwIfQueryRunAborted(abortSignal);
         emit?.("status", statusEvent(run.status, run.statusVersion));
-        boundedResult = await runtime.executeValidatedReadQuery(context, providerQuery);
+        boundedResult = await runtime.executeValidatedReadQuery(context, providerQuery, abortSignal);
         emit?.("query-stats", {
           rowCount: boundedResult.returnedRowCount,
           executionTimeMs: boundedResult.executionTimeMs,
@@ -120,6 +133,7 @@ export async function executeDurableQueryRun(input: {
     });
 
     run = await transitionQueryRun(run.id, "persisting");
+    throwIfQueryRunAborted(abortSignal);
     emit?.("status", statusEvent(run.status, run.statusVersion));
     const completedResult = boundedResult as BoundedQueryResult | null;
     const completedQuery = providerQuery as ProviderQuery | null;
@@ -169,5 +183,7 @@ export async function executeDurableQueryRun(input: {
     run = await failQueryRun(run.id, failure.code, failure.message);
     emit?.("failed", { status: run.status, statusVersion: run.statusVersion, error: failure });
     return run;
+  } finally {
+    unregisterActiveQueryRun(run.id);
   }
 }

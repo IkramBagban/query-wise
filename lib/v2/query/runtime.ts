@@ -19,7 +19,7 @@ export interface QueryRuntimeContext {
 
 export interface QueryRuntimeDependencies {
   loadGenerationSchema(context: QueryRuntimeContext): Promise<SchemaInfo>;
-  executeValidatedReadQuery(context: QueryRuntimeContext, query: ProviderQuery): Promise<BoundedQueryResult>;
+  executeValidatedReadQuery(context: QueryRuntimeContext, query: ProviderQuery, signal?: AbortSignal): Promise<BoundedQueryResult>;
 }
 
 function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string | null): SchemaInfo {
@@ -70,7 +70,7 @@ const defaultDependencies: QueryRuntimeDependencies = {
     }
     return toLegacySchema(snapshot.metadata as unknown as CanonicalDataSourceMetadata, snapshot.summary);
   },
-  async executeValidatedReadQuery(context, query) {
+  async executeValidatedReadQuery(context, query, signal) {
     const { record, secret } = await getConnectionSecret(context.connectionId);
     const adapter = getDataSourceAdapter(record.providerId);
     requireCapability(adapter, "sql-validation");
@@ -80,7 +80,7 @@ const defaultDependencies: QueryRuntimeDependencies = {
       record.credentialVersion,
       secret,
       query,
-      { timeoutMs: 15_000, maxRows: 500, maxBytes: 2 * 1024 * 1024 },
+      { timeoutMs: 15_000, maxRows: 500, maxBytes: 2 * 1024 * 1024, signal },
     );
   },
 };
