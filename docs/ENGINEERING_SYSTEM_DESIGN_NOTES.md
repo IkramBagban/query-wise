@@ -1257,3 +1257,38 @@ Why this is the right approach:
   3. Change a connection URL and confirm old successful schema snapshots are superseded.
   4. Cancel runs during LLM generation and SQL execution and confirm they remain `cancelled`.
   5. Retry a non-terminal run older than five minutes and confirm it becomes `expired`.
+
+## 39) LLM settings validation
+
+- What changed: Settings now restrict model selection to the supported provider catalog, invalid saved browser settings fall back to a supported model, query submission validates the saved provider/model before sending, and API validation returns the first safe validation reason.
+- Why: Prevent malformed model identifiers from producing generic `400` responses.
+- Tradeoff: Models must be added to the application catalog before users can select them.
+- How to test: Save an invalid model in local storage, open Settings, and confirm it is replaced; submit an invalid model directly to `/api/query` and confirm the response identifies it as unsupported.
+
+## 40) Persisted schema compatibility and transaction latency
+
+- What changed: Query schema conversion now normalizes relationship column lists stored as arrays, JSON-array strings, or PostgreSQL-array strings. Application database interactive transactions now allow a bounded 20-second execution window and 10-second acquisition wait.
+- Why: Older or manually repaired schema snapshots could contain serialized relationship arrays, and remote application databases can exceed Prisma's five-second default transaction timeout.
+- Tradeoff: Longer transaction timeouts reduce false failures but require continued discipline to keep external work outside transactions.
+- How to test: Load a snapshot containing string-serialized relationship columns and submit a query; run query submission against a high-latency application database and confirm its transaction completes.
+
+## 41) Conversation-only response rendering
+
+- What changed: Conversational responses no longer persist a fake result preview, historical malformed previews are ignored in chat, and the shared chart renderer displays a bounded fallback instead of throwing.
+- Why: A successful non-database response stored `{ conversationOnly: true }`, which the UI incorrectly attempted to render as chart data.
+- Tradeoff: Historical malformed previews remain stored but no longer affect rendering.
+- How to test: Ask a non-database question and confirm the response renders without chart controls or a page-level error.
+
+## 42) Application database pool pressure
+
+- What changed: Identical in-flight browser `GET` requests are deduplicated, and pending email-grant claiming only opens an interactive transaction when pending grants exist.
+- Why: React development rendering and shared workspace panels could issue duplicate reads while every dashboard list reserved a Prisma transaction connection, exhausting a small remote Postgres pool.
+- Tradeoff: Concurrent identical reads share one response until it settles; callers that require a fresh read must wait for the current request or call refresh afterward.
+- How to test: Open Connections, Chats, and Dashboards in development and confirm each identical list URL appears once at a time and normal dashboard lists without pending grants do not open an interactive transaction.
+
+## 43) Development observability
+
+- What changed: Development structured logs now emit the same redacted JSON event to both the terminal and `logs/querywise-development.log`. Next.js instrumentation records uncaught request/render errors, and legacy API/query flows use the shared logger instead of raw console or unredacted file writes.
+- Why: Request IDs, error codes, stack traces, and lifecycle events need to be visible immediately and persistently without leaking credentials.
+- Tradeoff: Development terminal output is more verbose; production behavior remains unchanged and requires an external observability sink before launch.
+- How to test: Trigger a handled API error and an uncaught server error in development, then confirm matching redacted entries appear in the terminal and development log file.
