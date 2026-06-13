@@ -29,7 +29,14 @@ const SubmitQuerySchema = z.object({
 export async function POST(request: Request) {
   try {
     const parsed = SubmitQuerySchema.safeParse(await request.json().catch(() => null));
-    if (!parsed.success) return apiError(new AppError("VALIDATION_FAILED", "Invalid query request."));
+    if (!parsed.success) {
+      return apiError(
+        new AppError(
+          "VALIDATION_FAILED",
+          parsed.error.issues[0]?.message ?? "Invalid query request.",
+        ),
+      );
+    }
     const accepted = await acceptQuerySubmission(parsed.data);
     const wantsSse = request.headers.get("accept")?.includes("text/event-stream");
     if (!accepted.created) return jsonData(queryRunDto(accepted.run), 200);

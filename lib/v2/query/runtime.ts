@@ -22,8 +22,36 @@ export interface QueryRuntimeDependencies {
   executeValidatedReadQuery(context: QueryRuntimeContext, query: ProviderQuery, signal?: AbortSignal): Promise<BoundedQueryResult>;
 }
 
+function stringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  }
+  if (typeof value !== "string" || !value.trim()) return [];
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      return stringList(JSON.parse(trimmed));
+    } catch {
+      return [];
+    }
+  }
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed
+      .slice(1, -1)
+      .split(",")
+      .map((item) => item.trim().replace(/^"(.*)"$/, "$1"))
+      .filter(Boolean);
+  }
+  return [trimmed];
+}
+
 function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string | null): SchemaInfo {
   const entityById = new Map(metadata.entities.map((entity) => [entity.id, entity]));
+  const relationships = metadata.relationships.map((relationship) => ({
+    ...relationship,
+    fromColumns: stringList(relationship.fromColumns),
+    toColumns: stringList(relationship.toColumns),
+  }));
   return {
     tables: metadata.entities.map((entity) => ({
       name: entity.namespace === "public" ? entity.name : `${entity.namespace}.${entity.name}`,
@@ -34,14 +62,14 @@ function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string |
         fullType: column.nativeType,
         nullable: column.nullable,
         isPrimaryKey: column.primaryKey,
-        isForeignKey: metadata.relationships.some(
+        isForeignKey: relationships.some(
           (relationship) =>
             relationship.fromEntityId === entity.id &&
             relationship.fromColumns.includes(column.name),
         ),
       })),
     })),
-    relationships: metadata.relationships.flatMap((relationship) => {
+    relationships: relationships.flatMap((relationship) => {
       const from = entityById.get(relationship.fromEntityId);
       const to = entityById.get(relationship.toEntityId);
       if (!from || !to) return [];

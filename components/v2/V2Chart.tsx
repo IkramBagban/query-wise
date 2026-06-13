@@ -3,7 +3,30 @@
 import { ChartRenderer } from "@/components/charts/ChartRenderer";
 import type { BoundedResultPreview, ChartConfig } from "@/types/v2";
 
-export function V2Chart({ preview, config }: { preview: BoundedResultPreview; config: ChartConfig }) {
+export function isBoundedResultPreview(preview: unknown): preview is BoundedResultPreview {
+  if (!preview || typeof preview !== "object") return false;
+  const value = preview as Partial<BoundedResultPreview>;
+  return (
+    Array.isArray(value.columns) &&
+    value.columns.every(
+      (column) =>
+        column != null &&
+        typeof column === "object" &&
+        typeof (column as { name?: unknown }).name === "string",
+    ) &&
+    Array.isArray(value.rows) &&
+    typeof value.returnedRowCount === "number"
+  );
+}
+
+export function V2Chart({ preview, config }: { preview: unknown; config: ChartConfig }) {
+  if (!isBoundedResultPreview(preview)) {
+    return (
+      <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">
+        No chart data is available for this response.
+      </p>
+    );
+  }
   return (
     <ChartRenderer
       result={{

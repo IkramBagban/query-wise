@@ -142,7 +142,6 @@ export async function executeDurableQueryRun(input: {
         queryRunId: run.id,
         assistantContent: agent.explanation,
         metadata: { schemaVersion: 1 },
-        resultPreview: { schemaVersion: 1, conversationOnly: true } as unknown as Prisma.InputJsonValue,
       });
     } else {
       const resultForChart = {

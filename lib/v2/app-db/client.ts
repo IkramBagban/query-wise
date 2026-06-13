@@ -17,5 +17,8 @@ export type AppDb = PrismaClient;
 export type AppDbTransaction = Prisma.TransactionClient;
 
 export async function withAppDbTransaction<T>(operation: (tx: AppDbTransaction) => Promise<T>): Promise<T> {
-  return getAppDb().$transaction(operation);
+  return getAppDb().$transaction(operation, {
+    maxWait: 10_000,
+    timeout: 20_000,
+  });
 }
