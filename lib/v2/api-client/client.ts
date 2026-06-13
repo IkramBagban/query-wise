@@ -17,6 +17,8 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   query?: Record<string, string | number | boolean | null | undefined>;
 }
 
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
 function buildUrl(path: string, query?: ApiRequestOptions["query"]) {
   if (!query) return path;
   const search = new URLSearchParams();
@@ -29,40 +31,55 @@ function buildUrl(path: string, query?: ApiRequestOptions["query"]) {
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { body, headers, query, ...init } = options;
-  const response = await fetch(buildUrl(path, query), {
-    cache: "no-store",
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      ...headers,
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+  const url = buildUrl(path, query);
+  const method = (init.method ?? "GET").toUpperCase();
+  const request = async () => {
+    const response = await fetch(url, {
+      cache: "no-store",
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...headers,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    if (response.status === 204) return undefined as T;
+    const payload = (await response.json().catch(() => null)) as
+      | ApiSuccess<T>
+      | ApiErrorResponse
+      | T
+      | null;
+
+    if (!response.ok) {
+      const error = payload && typeof payload === "object" && "error" in payload
+        ? (payload as ApiErrorResponse).error
+        : null;
+      throw new V2ApiError(
+        error?.message ?? `Request failed with status ${response.status}`,
+        response.status,
+        error?.code,
+        error?.retryable,
+      );
+    }
+
+    if (payload && typeof payload === "object" && "data" in payload) {
+      return (payload as ApiSuccess<T>).data;
+    }
+    return payload as T;
+  };
+
+  if (method !== "GET" || body !== undefined) return request();
+
+  const existing = inFlightGetRequests.get(url) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const pending = request().finally(() => {
+    if (inFlightGetRequests.get(url) === pending) inFlightGetRequests.delete(url);
   });
-
-  if (response.status === 204) return undefined as T;
-  const payload = (await response.json().catch(() => null)) as
-    | ApiSuccess<T>
-    | ApiErrorResponse
-    | T
-    | null;
-
-  if (!response.ok) {
-    const error = payload && typeof payload === "object" && "error" in payload
-      ? (payload as ApiErrorResponse).error
-      : null;
-    throw new V2ApiError(
-      error?.message ?? `Request failed with status ${response.status}`,
-      response.status,
-      error?.code,
-      error?.retryable,
-    );
-  }
-
-  if (payload && typeof payload === "object" && "data" in payload) {
-    return (payload as ApiSuccess<T>).data;
-  }
-  return payload as T;
+  inFlightGetRequests.set(url, pending);
+  return pending;
 }
 
 export function createIdempotencyKey() {

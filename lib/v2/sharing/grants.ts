@@ -1,7 +1,7 @@
 import "server-only";
 
 import { clerkClient } from "@clerk/nextjs/server";
-import { getAppDb } from "@/lib/v2/app-db";
+import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
 import { createResourceId } from "@/lib/v2/domain";
 import { pendingEmailGrantKey } from "./crypto";
 
@@ -17,11 +17,13 @@ export async function claimPendingEmailGrants(userId: string): Promise<void> {
   }
   if (!emailKeys.length) return;
 
-  await getAppDb().$transaction(async (tx) => {
-    const pending = await tx.dashboardAccessGrant.findMany({
-      where: { recipientUserId: { in: emailKeys } },
-      select: { id: true, dashboardId: true },
-    });
+  const pending = await getAppDb().dashboardAccessGrant.findMany({
+    where: { recipientUserId: { in: emailKeys } },
+    select: { id: true, dashboardId: true },
+  });
+  if (!pending.length) return;
+
+  await withAppDbTransaction(async (tx) => {
     for (const grant of pending) {
       await tx.dashboardAccessGrant.upsert({
         where: {
