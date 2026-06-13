@@ -1,8 +1,4 @@
-import fs from "fs";
-import path from "path";
-
-const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
-const LOG_PATH = path.join(process.cwd(), "logs", "conversation.log");
+import { devLog } from "@/lib/v2/observability";
 
 export type LogEventType =
   | "USER_QUERY"
@@ -20,28 +16,10 @@ export interface LogEvent {
 }
 
 export function logEvent(event: LogEvent) {
-  if (!IS_DEVELOPMENT) {
-    return;
-  }
-
-  // Console log for immediate visibility during development
-  const prefix = `[${event.type}]`;
-  const message = event.message.length > 200 
-    ? `${event.message.slice(0, 200)}...` 
-    : event.message;
-  
-  if (event.type === "ERROR") {
-    console.error(prefix, message, event.meta);
-  } else {
-    console.log(prefix, message, event.meta ? `(${Object.keys(event.meta).length} meta fields)` : "");
-  }
-
-  // File log for persistent record
-  const line = JSON.stringify(event) + "\n";
-  fs.appendFile(LOG_PATH, line, (err) => {
-    if (err) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to write log:", err);
-    }
-  });
+  devLog(
+    event.type === "ERROR" ? "error" : "info",
+    `legacy.${event.type.toLowerCase()}`,
+    event.message,
+    event.meta,
+  );
 }

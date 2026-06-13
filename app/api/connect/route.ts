@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { testConnection } from "@/lib/db";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { devLogError } from "@/lib/v2/observability";
 
 const ConnectRequestSchema = z.discriminatedUnion("type", [
   z.object({
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error";
-    console.error("[api/connect]", error);
+    devLogError("api.legacy-connect.error", "Legacy connection API request failed.", error);
     return Response.json({ error: message }, { status: 500 });
   }
 }

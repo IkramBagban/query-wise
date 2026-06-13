@@ -1,5 +1,6 @@
 import { requireAuth } from "@/lib/auth";
 import { getDashboardById } from "@/app/api/dashboard/store";
+import { devLogError } from "@/lib/v2/observability";
 
 export const runtime = "nodejs";
 
@@ -19,10 +20,9 @@ export async function GET(
     }
     return Response.json({ dashboard });
   } catch (error) {
-    console.error("[api/dashboard/:id GET]", error);
+    devLogError("api.legacy-dashboard-get.error", "Legacy dashboard read API request failed.", error);
     const message =
       error instanceof Error ? error.message : "Failed to load dashboard";
     return Response.json({ error: message }, { status: 500 });
   }
 }
-

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { createOrGetShareId } from "@/app/api/dashboard/store";
+import { devLogError } from "@/lib/v2/observability";
 import type { ShareResponse } from "@/types";
 
 export const runtime = "nodejs";
@@ -36,10 +37,9 @@ export async function POST(req: NextRequest) {
     };
     return Response.json(response);
   } catch (error) {
-    console.error("[api/share POST]", error);
+    devLogError("api.legacy-share-create.error", "Legacy share creation API request failed.", error);
     const message =
       error instanceof Error ? error.message : "Failed to create share link";
     return Response.json({ error: message }, { status: 500 });
   }
 }
-

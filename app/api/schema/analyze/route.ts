@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
 import { generateSchemaAnalysis } from "@/lib/llm/index";
 import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
+import { devLogError } from "@/lib/v2/observability";
 import type { SchemaAnalysisResponse } from "@/types";
 
 const ColumnSchema = z.object({
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error";
-    console.error("[api/schema/analyze]", error);
+    devLogError("api.legacy-schema-analysis.error", "Legacy schema analysis API request failed.", error);
     return Response.json(
       { error: "Failed to analyze schema", details: message },
       { status: 500 },

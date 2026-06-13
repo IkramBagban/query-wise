@@ -68,22 +68,21 @@ export function getDevelopmentLogPath(): string | null {
   return enabled ? logPath : null;
 }
 
-export function devLog(
-  level: DevLogLevel,
-  event: string,
-  message: string,
-  context?: Record<string, unknown>,
-  error?: unknown,
-): void {
-  if (!enabled) return;
-  const entry: DevLogEntry = {
-    timestamp: new Date().toISOString(),
-    level,
-    event,
-    message: redactText(message),
-    context: safeContext(context),
-    error: safeError(error),
-  };
+function emitToConsole(entry: DevLogEntry): void {
+  const line = JSON.stringify(entry);
+  if (entry.level === "error") {
+    console.error(line);
+  } else if (entry.level === "warn") {
+    console.warn(line);
+  } else if (entry.level === "debug") {
+    console.debug(line);
+  } else {
+    console.info(line);
+  }
+}
+
+function enqueueFileWrite(entry: DevLogEntry): Promise<void> {
+  if (!enabled) return Promise.resolve();
   const line = `${JSON.stringify(entry)}\n`;
   writeQueue = writeQueue
     .then(async () => {
@@ -93,6 +92,50 @@ export function devLog(
     .catch((writeError) => {
       console.error("[querywise-dev-log] Failed to write development log.", writeError);
     });
+  return writeQueue;
+}
+
+function createEntry(
+  level: DevLogLevel,
+  event: string,
+  message: string,
+  context?: Record<string, unknown>,
+  error?: unknown,
+): DevLogEntry {
+  return {
+    timestamp: new Date().toISOString(),
+    level,
+    event,
+    message: redactText(message),
+    context: safeContext(context),
+    error: safeError(error),
+  };
+}
+
+export function devLog(
+  level: DevLogLevel,
+  event: string,
+  message: string,
+  context?: Record<string, unknown>,
+  error?: unknown,
+): void {
+  if (!enabled) return;
+  const entry = createEntry(level, event, message, context, error);
+  emitToConsole(entry);
+  void enqueueFileWrite(entry);
+}
+
+export async function devLogAsync(
+  level: DevLogLevel,
+  event: string,
+  message: string,
+  context?: Record<string, unknown>,
+  error?: unknown,
+): Promise<void> {
+  if (!enabled) return;
+  const entry = createEntry(level, event, message, context, error);
+  emitToConsole(entry);
+  await enqueueFileWrite(entry);
 }
 
 export function devLogError(

@@ -3,6 +3,7 @@ import { introspectSchema } from "@/lib/schema";
 import type { SchemaResponse } from "@/types";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { devLogError } from "@/lib/v2/observability";
 
 const SchemaRequestSchema = z.object({
   connectionString: z.string().optional(),
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error";
-    console.error("[api/schema]", error);
+    devLogError("api.legacy-schema.error", "Legacy schema API request failed.", error);
     return Response.json(
       { error: "Failed to introspect schema", details: message },
       { status: 500 }

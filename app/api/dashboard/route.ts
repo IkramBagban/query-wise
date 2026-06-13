@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { upsertDashboard } from "@/app/api/dashboard/store";
+import { devLogError } from "@/lib/v2/observability";
 
 export const runtime = "nodejs";
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     const dashboard = await upsertDashboard(dashboardInput);
     return Response.json({ success: true, dashboard });
   } catch (error) {
-    console.error("[api/dashboard POST]", error);
+    devLogError("api.legacy-dashboard-save.error", "Legacy dashboard save API request failed.", error);
     const message =
       error instanceof Error ? error.message : "Failed to save dashboard";
     return Response.json({ error: message }, { status: 500 });

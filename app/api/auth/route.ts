@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { devLogError } from "@/lib/v2/observability";
 
 const AuthRequestSchema = z.object({
   username: z.string().min(1),
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error";
-    console.error("[api/auth]", error);
+    devLogError("api.legacy-auth.error", "Legacy authentication API request failed.", error);
     return Response.json({ success: false, error: message }, { status: 500 });
   }
 }
