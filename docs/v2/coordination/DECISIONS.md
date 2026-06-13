@@ -41,7 +41,7 @@ are coordinator-owned to prevent parallel merge conflicts.
 
 ### D-007: Application Persistence Stack
 
-The QueryWise application database uses PostgreSQL with Drizzle ORM and
+The QueryWise application database uses PostgreSQL with Prisma ORM and
 forward-only migrations. Customer SQL data sources remain isolated behind SQL
 adapter boundaries and are never accessed through the application DAL.
 

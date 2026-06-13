@@ -49,6 +49,7 @@ Do not scatter raw ownership checks across UI components.
 ### Data Source Provider Boundary
 
 Product features use the domain term `data source` and depend on a
+
 provider-neutral, capability-based contract. PostgreSQL is the only V2
 implementation. V2 supports SQL databases only, but PostgreSQL-specific syntax
 and behavior are not assumed by core product modules:

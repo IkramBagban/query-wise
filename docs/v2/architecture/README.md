@@ -53,7 +53,7 @@ state only. Route Handlers and Server Actions are untrusted public entry points.
 
 | ADR | Status | Decision |
 | --- | --- | --- |
-| [ADR-001](adr/ADR-001-persistence-and-migrations.md) | Accepted | Drizzle ORM over `pg`, PostgreSQL, forward-only migrations |
+| [ADR-001](adr/ADR-001-persistence-and-migrations.md) | Accepted | Prisma ORM, PostgreSQL, forward-only migrations |
 | [ADR-002](adr/ADR-002-runtime-and-caching.md) | Accepted | Node.js runtime, disposable instances, explicit safe caches |
 | [ADR-003](adr/ADR-003-background-jobs.md) | Accepted | Durable PostgreSQL job queue with leased workers |
 | [ADR-004](adr/ADR-004-rate-limits-and-concurrency.md) | Accepted | Redis distributed limits and leases |

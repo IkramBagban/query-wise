@@ -6,10 +6,10 @@
 
 ## Decision
 
-Use a dedicated PostgreSQL application database with Drizzle ORM and
-`drizzle-kit`, using `pg` as the runtime driver. All application persistence
-goes through server-only, authorization-aware repositories. Customer databases
-are never used for product persistence.
+Use a dedicated PostgreSQL application database with Prisma ORM and Prisma
+Migrate. All application persistence goes through server-only,
+authorization-aware repositories. Customer databases are never used for
+product persistence.
 
 Use forward-only, immutable SQL migration files committed to the repository.
 Production migrations run as an explicit deployment step from one controlled
@@ -63,9 +63,9 @@ the expanded schema. Destructive down migrations are not a production plan.
 
 ## Rationale
 
-Drizzle keeps SQL and migrations visible, supports typed repositories, and
-does not obscure provider-specific application-PostgreSQL behavior. Explicit
-migration execution avoids races and cold-start latency in disposable runtimes.
+Prisma provides a typed application-database client, explicit schema, and
+reviewable SQL migrations. Explicit migration execution avoids races and
+cold-start latency in disposable runtimes.
 
 ## Rejected Alternatives
 

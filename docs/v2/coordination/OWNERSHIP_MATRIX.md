@@ -22,7 +22,7 @@ recorded in the owner's work log and `CONTRACT_CHANGELOG.md`.
 | Workstream | Exclusive create/edit paths | Explicitly read-only or prohibited |
 | --- | --- | --- |
 | `W0-COORD` | `docs/v2/coordination/DEPENDENCY_GRAPH.md`; `docs/v2/coordination/OWNERSHIP_MATRIX.md`; `docs/v2/coordination/AGENT_PROMPT_STANDARD.md`; `docs/v2/coordination/CONTRACT_CHANGELOG.md`; `docs/v2/coordination/agents/W0-COORD.md` | all implementation code; `STATUS.md`; `DECISIONS.md`; `INTEGRATION_CONTRACTS.md`; specs |
-| `W1-FND` | `lib/v2/app-db/**`; `lib/v2/dal/core/**`; `lib/v2/domain/**`; `lib/v2/security/encryption.ts`; `types/v2/**`; `db/**`; `drizzle.config.*` or coordinator-approved equivalent; `docs/v2/coordination/agents/W1-FND.md` | feature repositories/routes/UI; auth implementation; customer DB adapters |
+| `W1-FND` | `lib/v2/app-db/**`; `lib/v2/dal/core/**`; `lib/v2/domain/**`; `lib/v2/security/encryption.ts`; `types/v2/**`; `prisma/**`; `db/**`; `docs/v2/coordination/agents/W1-FND.md` | feature repositories/routes/UI; auth implementation; customer DB adapters |
 | `W1-AUTH` | `lib/v2/auth/**`; `lib/v2/dal/authorization/**`; `app/(auth)/**`; `components/v2/auth/**`; `proxy.ts`; auth-specific tests; `docs/v2/coordination/agents/W1-AUTH.md` | feature repositories; public-share authorization implementation; shared domain types |
 | `W1-DATA` | `lib/v2/data-sources/**`; `lib/v2/connections/**`; `lib/v2/schema/**`; `app/api/connections/**`; connection/data-source tests; `docs/v2/coordination/agents/W1-DATA.md` | `lib/db.ts`; `lib/schema/**`; conversations; dashboards; UI components |
 | `W2-CONV` | `lib/v2/conversations/**`; `lib/v2/query-runs/**`; `lib/v2/query/**`; `app/api/conversations/**`; `app/api/query/**`; conversation/query tests; `docs/v2/coordination/agents/W2-CONV.md` | connection adapter internals; dashboard repositories; visual chat components |
@@ -83,4 +83,3 @@ following replacement points prevent accidental concurrent rewrites:
 4. Consumers integrate in their owned paths and record the producer commit hash.
 5. At the checkpoint, producer and consumers run focused tests plus
    `npm run build`, review diffs, and record evidence.
-

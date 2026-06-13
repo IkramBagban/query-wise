@@ -421,7 +421,6 @@ Public page. No auth required.
 **Layout:**
 - Simple header: "QueryWise" logo + "View only" badge
 - Read-only grid of widgets (same widget cards, but no edit controls)
-- Footer: "Create your own at querywise.app"
 
 **Data fetching:**
 - Server component: fetch `/api/share/[shareId]` on the server
