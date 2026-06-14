@@ -30,6 +30,24 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${remSeconds}s`;
 }
 
+export function formatRelativeTime(
+  value: string | null | undefined,
+  fallback = "Not synced yet",
+): string {
+  if (!value) return fallback;
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return value.slice(0, 10);
+  const diffMs = Date.now() - then;
+  if (diffMs < 60_000) return "just now";
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(value).toLocaleDateString();
+}
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes)) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
