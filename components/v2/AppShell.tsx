@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BarChart3, ChevronRight, Database, Home, LoaderCircle, Menu, MessageSquare, MessageSquarePlus, PanelRight, Plus, Search, Settings, Sparkles, X } from "lucide-react";
+import { BarChart3, ChevronRight, Database, Home, LoaderCircle, Menu, MessageSquare, Plus, Search, Settings, Sparkles, X } from "lucide-react";
 
 import { ChatSearchDialog } from "@/components/v2/ChatSearchDialog";
 import { UserControl } from "@/components/v2/auth/UserControl";
@@ -156,16 +156,7 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-text-1 shadow-sm"><Sparkles className="h-4 w-4" /></span>
         QueryWise
       </Link>
-      <Link
-        href="/chats/new"
-        onClick={onNavigate}
-        className="my-3 flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2.5 text-sm font-semibold text-text-1 shadow-sm transition hover:brightness-110"
-      >
-        <MessageSquarePlus className="h-4 w-4" /> New chat
-        <kbd className="ml-auto rounded border border-text-1/20 bg-text-1/10 px-1.5 py-0.5 text-[10px] font-medium">⌘K</kbd>
-      </Link>
-
-      <div className="border-b border-border pb-4">
+      <div className="mt-3 border-b border-border pb-4">
         <p className="mb-1 mt-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Main</p>
         <nav className="space-y-1">
           <NavLink href="/chats/new" label="Home" icon={Home} onClick={onNavigate} />
@@ -219,11 +210,8 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const conversationOpen = /^\/chats\/(?!new(?:\/|$))[^/]+/.test(pathname);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -243,13 +231,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/90 px-3 backdrop-blur lg:hidden">
           <button aria-label="Open navigation" onClick={() => setNavOpen(true)} className="rounded-lg border border-border p-2"><Menu className="h-4 w-4" /></button>
           <span className="font-syne font-semibold">QueryWise</span>
-          {conversationOpen ? <button aria-label="Open context" onClick={() => setContextOpen(true)} className="rounded-lg border border-border p-2"><PanelRight className="h-4 w-4" /></button> : <span className="h-9 w-9" />}
+          <span className="h-9 w-9" />
         </div>
         <main className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen">{children}</main>
       </div>
       <ChatSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       {navOpen ? <div className="fixed inset-0 z-50 lg:hidden"><button className="absolute inset-0 bg-black/40" onClick={() => setNavOpen(false)} aria-label="Close navigation" /><div className="relative h-full w-[86vw] max-w-[300px]"><Sidebar onNavigate={() => setNavOpen(false)} onOpenSearch={() => setSearchOpen(true)} /><button aria-label="Close navigation" className="absolute right-2 top-2 p-2" onClick={() => setNavOpen(false)}><X className="h-4 w-4" /></button></div></div> : null}
-      {conversationOpen && contextOpen ? <div className="fixed inset-0 z-50 lg:hidden"><button className="absolute inset-0 bg-black/40" onClick={() => setContextOpen(false)} aria-label="Close context" /><aside className="absolute right-0 h-full w-[86vw] max-w-[360px] bg-surface p-5"><button aria-label="Close context" className="absolute right-2 top-2 p-2" onClick={() => setContextOpen(false)}><X className="h-4 w-4" /></button><h2 className="font-syne text-lg font-semibold">Context panel</h2><p className="mt-2 text-sm text-text-3">Inspect the active connection, schema, and SQL preview from the conversation workspace.</p></aside></div> : null}
     </div>
   );
 }

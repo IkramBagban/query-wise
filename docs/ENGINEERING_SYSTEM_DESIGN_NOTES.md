@@ -1292,3 +1292,15 @@ Why this is the right approach:
 - Why: Request IDs, error codes, stack traces, and lifecycle events need to be visible immediately and persistently without leaking credentials.
 - Tradeoff: Development terminal output is more verbose; production behavior remains unchanged and requires an external observability sink before launch.
 - How to test: Trigger a handled API error and an uncaught server error in development, then confirm matching redacted entries appear in the terminal and development log file.
+
+## 44) Conversation chart details, exports, and dashboard saves
+
+- What changed: Conversation results now preserve the user's selected chart type when saving, can create a dashboard and immediately add the result widget, and export raw result data as CSV, JSON, or a real XLSX workbook generated in the browser.
+- UI follow-up: Dashboard saves now use an anchored menu from the chart actions, with owned dashboards listed first and a lightweight create-new action at the end. The chart-details dialog toggles between chart and raw-table views instead of rendering both simultaneously.
+- Why: The lightweight inline result needs a focused inspection flow while dashboard saves and exports must reflect the chart and data the user is currently viewing.
+- Tradeoffs and risks: XLSX generation lazy-loads `exceljs` and can use noticeable browser memory for large previews; dashboard creation followed by widget creation is two API calls, so a widget-save failure can leave an empty newly created dashboard.
+- How to test:
+  1. Switch a conversation result to a different chart type, save it to an existing dashboard, and confirm the widget uses that type.
+  2. Create a dashboard from the save dialog and confirm the chart is immediately added.
+  3. Export CSV, JSON, and XLSX and verify each file contains the displayed result rows.
+  4. Force widget creation to fail after dashboard creation and confirm the error is shown without retrying dashboard creation automatically.

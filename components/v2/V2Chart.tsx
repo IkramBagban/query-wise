@@ -1,6 +1,7 @@
 "use client";
 
 import { ChartRenderer } from "@/components/charts/ChartRenderer";
+import type { QueryResult } from "@/types";
 import type { BoundedResultPreview, ChartConfig } from "@/types/v2";
 
 export function isBoundedResultPreview(preview: unknown): preview is BoundedResultPreview {
@@ -19,6 +20,15 @@ export function isBoundedResultPreview(preview: unknown): preview is BoundedResu
   );
 }
 
+export function previewToQueryResult(preview: BoundedResultPreview): QueryResult {
+  return {
+    columns: preview.columns.map((column) => column.name),
+    rows: preview.rows,
+    rowCount: preview.returnedRowCount,
+    executionTimeMs: 0,
+  };
+}
+
 export function V2Chart({ preview, config }: { preview: unknown; config: ChartConfig }) {
   if (!isBoundedResultPreview(preview)) {
     return (
@@ -29,12 +39,7 @@ export function V2Chart({ preview, config }: { preview: unknown; config: ChartCo
   }
   return (
     <ChartRenderer
-      result={{
-        columns: preview.columns.map((column) => column.name),
-        rows: preview.rows,
-        rowCount: preview.returnedRowCount,
-        executionTimeMs: 0,
-      }}
+      result={previewToQueryResult(preview)}
       chartConfig={{
         ...config,
         availableTypes: ["bar", "line", "pie", "scatter", "area", "table"],

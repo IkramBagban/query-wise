@@ -4,35 +4,28 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3,
-  Bookmark,
   CheckCircle2,
-  Code2,
   Database,
-  Download,
   Loader2,
-  Maximize2,
   MessageSquarePlus,
   Paperclip,
-  RefreshCw,
   Send,
-  Settings2,
   Sparkles,
-  Table2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Select } from "@/components/ui/select";
+import { ConversationResultCard } from "@/components/v2/ConversationResultCard";
 import { PageHeader } from "@/components/v2/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
-import { isBoundedResultPreview, V2Chart } from "@/components/v2/V2Chart";
+import { isBoundedResultPreview } from "@/components/v2/V2Chart";
 import { useApiResource } from "@/hooks/v2";
-import { formatNumber, formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 import { connectionsApi, conversationsApi, dashboardsApi, type ConversationMessageDto, type QueryRunDto } from "@/lib/v2/api-client";
-import type { ChartConfig, ChartType } from "@/types/v2";
+import type { ChartConfig } from "@/types/v2";
 import {
   DEFAULT_LLM_MODEL,
   DEFAULT_LLM_PROVIDER,
@@ -48,15 +41,6 @@ const suggestions = [
   "What changed in the last 30 days?",
   "Show the top five categories by revenue",
   "Which customers are growing fastest?",
-];
-
-const CHART_TYPE_OPTIONS: { label: string; value: ChartType }[] = [
-  { label: "Bar", value: "bar" },
-  { label: "Line", value: "line" },
-  { label: "Area", value: "area" },
-  { label: "Pie", value: "pie" },
-  { label: "Scatter", value: "scatter" },
-  { label: "Table", value: "table" },
 ];
 
 const STORAGE_KEYS = {
@@ -177,128 +161,6 @@ export function NewConversationView() {
   );
 }
 
-/* ----------------------------- Connection bar ----------------------------- */
-
-function ConnectionStat({ icon: Icon, label, value, tone = "default" }: { icon: typeof Database; label: string; value: string; tone?: "default" | "success" }) {
-  return (
-    <div className="flex items-center gap-2">
-      <Icon className={`h-4 w-4 shrink-0 ${tone === "success" ? "text-success" : "text-text-3"}`} />
-      <div className="leading-tight">
-        <p className="text-[13px] font-medium text-text-1">{value}</p>
-        <p className="text-[11px] text-text-3">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-function ConnectionBar({ connectionId }: { connectionId: string }) {
-  const connection = useApiResource(() => connectionsApi.get(connectionId), [connectionId]);
-  const schema = useApiResource(() => connectionsApi.schema(connectionId), [connectionId]);
-  const tableCount = schema.data?.metadata?.entities.length ?? null;
-  const ready = (connection.data?.schemaSyncStatus ?? "") === "ready";
-
-  return (
-    <Card className="flex flex-wrap items-center gap-x-6 gap-y-3 p-3 sm:px-4">
-      <div className="flex items-center gap-2.5">
-        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-accent-dim text-accent-2"><Database className="size-4" /></span>
-        <div className="leading-tight">
-          <p className="text-[13px] font-semibold text-text-1">{connection.data?.name ?? "Loading…"}</p>
-          <p className="text-[11px] text-text-3">PostgreSQL</p>
-        </div>
-      </div>
-      <span className="hidden h-8 w-px bg-border sm:block" />
-      <ConnectionStat icon={ready ? CheckCircle2 : RefreshCw} tone={ready ? "success" : "default"} label="Schema" value={ready ? "Ready" : (connection.data?.schemaSyncStatus ?? "—")} />
-      <ConnectionStat icon={Table2} label="Tables" value={tableCount === null ? "—" : formatNumber(tableCount)} />
-      <ConnectionStat icon={RefreshCw} label="Last synced" value={formatRelativeTime(connection.data?.lastSchemaSyncAt ?? null, "Never")} />
-      <Link href={`/connections/${connectionId}`} className="ml-auto inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface-2">
-        <Settings2 className="size-3.5" />Manage connection
-      </Link>
-    </Card>
-  );
-}
-
-/* ------------------------------- Result card ------------------------------ */
-
-function ResultCard({
-  message,
-  dashboardOptions,
-  dashboardId,
-  onDashboardChange,
-  onSave,
-  saving,
-}: {
-  message: ConversationMessageDto;
-  dashboardOptions: { value: string; label: string }[];
-  dashboardId: string;
-  onDashboardChange: (value: string) => void;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  const run = message.queryRun;
-  const baseConfig = (message.metadata.chartConfig ?? { schemaVersion: 1, type: "table" }) as ChartConfig;
-  const [tab, setTab] = useState<"chart" | "sql">("chart");
-  const [chartType, setChartType] = useState<ChartType>(baseConfig.type);
-
-  if (!run || !isBoundedResultPreview(run.resultPreview)) return null;
-  const preview = run.resultPreview;
-  const rowCount = run.returnedRowCount ?? preview.returnedRowCount;
-  const ms = run.executionTimeMs;
-
-  return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="flex items-center gap-1 border-b border-border px-3 pt-2">
-        <button type="button" onClick={() => setTab("chart")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "chart" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}>
-          <BarChart3 className="size-3.5" />Chart
-        </button>
-        <button type="button" onClick={() => setTab("sql")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "sql" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}>
-          <Code2 className="size-3.5" />SQL
-        </button>
-        <div className="ml-auto flex items-center gap-3 pb-1.5 text-[11px] text-text-3">
-          <span>{formatNumber(rowCount)} row{rowCount === 1 ? "" : "s"}{ms != null ? ` · ${ms}ms` : ""}</span>
-        </div>
-      </div>
-
-      <div className="p-3 sm:p-4">
-        {tab === "chart" ? (
-          <>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <Select
-                className="min-w-28"
-                value={chartType}
-                onChange={(value) => setChartType(value as ChartType)}
-                options={CHART_TYPE_OPTIONS}
-              />
-              <div className="flex items-center gap-1 text-text-3">
-                <button type="button" aria-label="Expand" title="Expand" className="rounded-md border border-border p-1.5 hover:bg-surface-2 hover:text-text-1"><Maximize2 className="size-3.5" /></button>
-                <button type="button" aria-label="Download" title="Download" className="rounded-md border border-border p-1.5 hover:bg-surface-2 hover:text-text-1"><Download className="size-3.5" /></button>
-                <button type="button" aria-label="Bookmark" title="Bookmark" className="rounded-md border border-border p-1.5 hover:bg-surface-2 hover:text-text-1"><Bookmark className="size-3.5" /></button>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <V2Chart preview={preview} config={{ ...baseConfig, type: chartType }} />
-            </div>
-          </>
-        ) : run.generatedQuery ? (
-          <CodeBlock sql={run.generatedQuery.text} />
-        ) : (
-          <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">No SQL was generated for this response.</p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2 border-t border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-end sm:px-4">
-        <Select
-          className="min-w-48"
-          value={dashboardId}
-          onChange={onDashboardChange}
-          options={dashboardOptions}
-          menuSide="top"
-        />
-        <Button size="sm" disabled={!dashboardId} loading={saving} onClick={onSave}><Bookmark className="size-3.5" />Save to dashboard</Button>
-      </div>
-    </div>
-  );
-}
-
 /* -------------------------------- Messages -------------------------------- */
 
 function UserMessage({ message }: { message: ConversationMessageDto }) {
@@ -319,17 +181,13 @@ function UserMessage({ message }: { message: ConversationMessageDto }) {
 function AssistantMessage({
   message,
   dashboardOptions,
-  dashboardId,
-  onDashboardChange,
+  onCreateDashboard,
   onSave,
-  saving,
 }: {
   message: ConversationMessageDto;
   dashboardOptions: { value: string; label: string }[];
-  dashboardId: string;
-  onDashboardChange: (value: string) => void;
-  onSave: () => void;
-  saving: boolean;
+  onCreateDashboard: (name: string) => Promise<string>;
+  onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string) => Promise<void>;
 }) {
   const hasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
   return (
@@ -343,13 +201,11 @@ function AssistantMessage({
         {message.content ? <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
         {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.metadata.errorCode}</p> : null}
         {hasResult ? (
-          <ResultCard
+          <ConversationResultCard
             message={message}
             dashboardOptions={dashboardOptions}
-            dashboardId={dashboardId}
-            onDashboardChange={onDashboardChange}
+            onCreateDashboard={onCreateDashboard}
             onSave={onSave}
-            saving={saving}
           />
         ) : null}
       </div>
@@ -381,8 +237,6 @@ function Composer({
     if (typeof window === "undefined") return DEFAULT_LLM_MODEL;
     return window.localStorage.getItem(STORAGE_KEYS.model) ?? DEFAULT_LLM_MODEL;
   });
-  const [mode, setMode] = useState<"chart" | "sql">("chart");
-
   function changeProvider(value: string) {
     if (!isLlmProvider(value)) return;
     const nextModel = isSupportedModel(value, model) ? model : defaultModelForProvider(value);
@@ -425,10 +279,6 @@ function Composer({
             <Select className="min-w-44" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
 
             <div className="ml-auto flex items-center gap-2">
-              <div className="flex items-center rounded-md border border-border p-0.5">
-                <button type="button" onClick={() => setMode("chart")} className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition ${mode === "chart" ? "bg-surface-3 text-text-1" : "text-text-3 hover:text-text-1"}`}><BarChart3 className="size-3.5" />Chart</button>
-                <button type="button" onClick={() => setMode("sql")} className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition ${mode === "sql" ? "bg-surface-3 text-text-1" : "text-text-3 hover:text-text-1"}`}><Code2 className="size-3.5" />SQL</button>
-              </div>
               <Button size="sm" loading={submitting} disabled={!question.trim()} onClick={onSubmit} className="h-9 px-4">
                 <Send className="size-3.5" />Run
               </Button>
@@ -489,10 +339,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const dashboards = useApiResource(() => dashboardsApi.list(100), []);
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [savingRunId, setSavingRunId] = useState<string | null>(null);
-  const [dashboardId, setDashboardId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [latestRun, setLatestRun] = useState<QueryRunDto | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const ordered = useMemo(() => messages.data?.items.slice().sort((a, b) => a.sequence - b.sequence) ?? [], [messages.data]);
@@ -500,15 +347,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
     () => dashboards.data?.items.filter((item) => item.access === "owner").map((item) => ({ value: item.id, label: item.name })) ?? [],
     [dashboards.data],
   );
-
-  useEffect(() => {
-    if (!dashboardId && dashboardOptions[0]) setDashboardId(dashboardOptions[0].value);
-  }, [dashboardId, dashboardOptions]);
-
-  useEffect(() => {
-    const runId = [...ordered].reverse().find((message) => message.queryRunId)?.queryRunId;
-    if (runId) void conversationsApi.queryRun(runId).then(setLatestRun).catch(() => undefined);
-  }, [ordered]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -527,9 +365,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
     setSubmitting(true);
     setError(null);
     try {
-      const run = await conversationsApi.submit({ conversationId, question: question.trim(), provider, model, apiKey });
+      await conversationsApi.submit({ conversationId, question: question.trim(), provider, model, apiKey });
       setQuestion("");
-      setLatestRun(run);
       await messages.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit query");
@@ -538,24 +375,31 @@ export function ConversationView({ conversationId }: { conversationId: string })
     }
   }
 
-  async function saveResult(message: ConversationMessageDto) {
+  async function createDashboard(name: string) {
+    const dashboard = await dashboardsApi.create(name);
+    void dashboards.refresh();
+    return dashboard.id;
+  }
+
+  async function saveResult(message: ConversationMessageDto, chartConfig: ChartConfig, targetDashboardId: string) {
     const run = message.queryRun;
-    if (!dashboardId || !message.queryRunId || !isBoundedResultPreview(run?.resultPreview)) return;
-    setSavingRunId(message.queryRunId);
+    if (!targetDashboardId || !message.queryRunId || !isBoundedResultPreview(run?.resultPreview)) {
+      throw new Error("This chart is not ready to save.");
+    }
     setError(null);
     try {
-      await dashboardsApi.createWidget(dashboardId, {
-        title: message.metadata.chartConfig?.title ?? conversation.data?.title ?? "Query result",
+      await dashboardsApi.createWidget(targetDashboardId, {
+        title: chartConfig.title ?? conversation.data?.title ?? "Query result",
         queryRunId: message.queryRunId,
         queryDefinition: run.generatedQuery,
-        chartConfig: message.metadata.chartConfig ?? { schemaVersion: 1, type: "table" },
+        chartConfig,
         layout: { schemaVersion: 1, x: 0, y: 0, w: 6, h: 4 },
         snapshot: run.resultPreview,
       });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to save result");
-    } finally {
-      setSavingRunId(null);
+      const errorMessage = reason instanceof Error ? reason.message : "Unable to save result";
+      setError(errorMessage);
+      throw reason;
     }
   }
 
@@ -563,14 +407,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
   if (conversation.error || !conversation.data) return <div className="p-6"><ErrorState error={conversation.error ?? new Error("Conversation not found")} onRetry={() => void conversation.refresh()} /></div>;
 
   return (
-    <div className="grid h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen lg:grid-cols-[minmax(0,1fr)_350px]">
-      <section className="flex min-h-0 flex-col bg-bg">
-        <div className="border-b border-border px-4 py-3 sm:px-6">
-          <h1 className="font-syne text-2xl font-semibold tracking-tight">Ask your data</h1>
-          <p className="text-xs text-text-3">Turn questions into charts, SQL, and insights.</p>
-          <div className="mt-3"><ConnectionBar connectionId={conversation.data.connectionId} /></div>
-        </div>
-
+    <div className="h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen">
+      <section className="flex h-full min-h-0 flex-col bg-bg">
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.loading ? (
             <LoadingState label="Loading messages" />
@@ -597,10 +435,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
                     key={message.id}
                     message={message}
                     dashboardOptions={dashboardOptions}
-                    dashboardId={dashboardId}
-                    onDashboardChange={setDashboardId}
-                    onSave={() => void saveResult(message)}
-                    saving={savingRunId === message.queryRunId}
+                    onCreateDashboard={createDashboard}
+                    onSave={saveResult}
                   />
                 ),
               )}
@@ -618,7 +454,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
 
         <Composer question={question} setQuestion={setQuestion} onSubmit={() => void submit()} submitting={submitting} error={error} />
       </section>
-      <ContextPanel connectionId={conversation.data.connectionId} latestRun={latestRun} />
     </div>
   );
 }
