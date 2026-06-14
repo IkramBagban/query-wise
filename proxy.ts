@@ -17,7 +17,7 @@ const isPublicPage = createRouteMatcher([
 export default clerkMiddleware(
   async (auth, request) => {
     if (request.nextUrl.pathname === "/workspace") {
-      return NextResponse.redirect(new URL("/chats", request.url));
+      return NextResponse.redirect(new URL("/chats/new", request.url));
     }
     if (request.nextUrl.pathname === "/dashboard") {
       return NextResponse.redirect(new URL("/dashboards", request.url));
