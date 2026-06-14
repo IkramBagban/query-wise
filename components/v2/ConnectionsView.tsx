@@ -31,6 +31,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceSt
 import { PageHeader } from "@/components/v2/PageHeader";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
 import { useApiResource } from "@/hooks/v2";
+import { formatRelativeTime } from "@/lib/utils";
 import { connectionsApi } from "@/lib/v2/api-client";
 import type { ConnectionListItem } from "@/lib/v2/api-client";
 
@@ -40,22 +41,6 @@ function statusVariant(value: string) {
 
 function Status({ value }: { value: string }) {
   return <Badge variant={statusVariant(value)}>{value.replaceAll("_", " ")}</Badge>;
-}
-
-function formatRelativeTime(value: string | null) {
-  if (!value) return "Not synced yet";
-  const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return value.slice(0, 10);
-  const diffMs = Date.now() - then;
-  if (diffMs < 0) return "just now";
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
-  return new Date(value).toLocaleDateString();
 }
 
 function PostgresMark({ compact = false }: { compact?: boolean }) {
