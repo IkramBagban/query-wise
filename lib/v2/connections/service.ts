@@ -11,7 +11,7 @@ import { createResourceId } from "@/lib/v2/domain/ids";
 import { encryptSecret } from "@/lib/v2/security/encryption";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { parsePostgresUrl } from "@/lib/v2/data-sources/postgresql/url";
-import { refreshConnectionSchema } from "@/lib/v2/schema";
+import { enqueueSchemaIngestion } from "@/lib/v2/ingestion";
 import { getConnectionSecret } from "./credentials";
 import { devLog, devLogError } from "@/lib/v2/observability";
 
@@ -86,8 +86,8 @@ export async function createConnection(input: { name: string; providerId: "postg
     },
   });
   if (result.success) {
-    await refreshConnectionSchema(id).catch((error) => {
-      devLogError("connection.initial-schema.failed", "Initial schema refresh failed.", error, {
+    await enqueueSchemaIngestion({ connectionId: id, ownerUserId: userId, intent: "initial-connect" }).catch((error) => {
+      devLogError("connection.initial-schema-enqueue.failed", "Initial schema ingestion enqueue failed.", error, {
         connectionId: id,
       });
     });
@@ -137,7 +137,7 @@ export async function updateConnection(connectionId: ResourceId, input: { name?:
     };
     await adapter.dispose(connectionId);
   }
-  const record = await withAppDbTransaction(async (tx) => {
+  let record = await withAppDbTransaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`connection:${connectionId}`}))`;
     if (input.connectionString) {
       await tx.schemaSnapshot.updateMany({
@@ -150,6 +150,14 @@ export async function updateConnection(connectionId: ResourceId, input: { name?:
       data: { ...credentialData, ...(input.name ? { name: input.name } : {}) },
     });
   });
+  if (input.connectionString) {
+    await enqueueSchemaIngestion({ connectionId, ownerUserId: current.ownerUserId, intent: "credential-refresh" }).catch((error) => {
+      devLogError("connection.updated-schema-enqueue.failed", "Updated schema ingestion enqueue failed.", error, {
+        connectionId,
+      });
+    });
+    record = await requireOwnedConnection(connectionId);
+  }
   return dto(record);
 }
 
