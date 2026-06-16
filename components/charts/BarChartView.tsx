@@ -72,7 +72,7 @@ export function BarChartView({ result, xKey, yKey, yKeys }: BarChartViewProps) {
         <YAxis stroke="var(--text-3)" tick={{ fontSize: 12 }} />
         <Tooltip
           cursor={{ fill: "rgba(46,213,46,0.08)" }}
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8, color: "#000000" }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (

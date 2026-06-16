@@ -137,7 +137,7 @@ function AddConnectionDialog({
               <span className="block font-medium">PostgreSQL</span>
               <span className="block text-xs text-text-3">Connect using a PostgreSQL connection URL</span>
             </span>
-            <span className="inline-flex size-5 items-center justify-center rounded-full bg-accent text-text-1"><Check className="size-3.5" /></span>
+            <span className="inline-flex size-5 items-center justify-center rounded-full bg-accent text-accent-foreground"><Check className="size-3.5" /></span>
           </label>
           <p className="text-xs text-text-3">More database providers will be available later.</p>
         </fieldset>

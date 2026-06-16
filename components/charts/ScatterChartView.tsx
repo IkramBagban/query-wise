@@ -35,7 +35,7 @@ export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartView
         <XAxis dataKey="x" stroke="var(--text-3)" tick={{ fontSize: 12 }} />
         <YAxis dataKey="y" stroke="var(--text-3)" tick={{ fontSize: 12 }} />
         <Tooltip
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (

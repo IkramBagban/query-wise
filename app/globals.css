@@ -11,6 +11,7 @@
   --color-border: var(--border);
   --color-border-2: var(--border-2);
   --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --color-accent-dim: var(--accent-dim);
   --color-accent-2: var(--accent-2);
   --color-success: var(--success);
@@ -78,6 +79,7 @@
   --border: rgba(22, 66, 40, 0.14);
   --border-2: rgba(22, 66, 40, 0.24);
   --accent: #2ed52e;
+  --accent-foreground: #071108;
   --accent-dim: rgba(46, 213, 46, 0.16);
   --accent-2: #1f5c2f;
   --success: #2f9b44;
@@ -87,6 +89,27 @@
   --text-2: #000000;
   --text-3: #000000;
   --radius: 8px;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #090c0a;
+  --surface: #101311;
+  --surface-2: #151917;
+  --surface-3: #1c221e;
+  --border: rgba(218, 238, 224, 0.12);
+  --border-2: rgba(218, 238, 224, 0.22);
+  --accent: #2ed52e;
+  --accent-foreground: #061007;
+  --accent-dim: rgba(46, 213, 46, 0.14);
+  --accent-2: #63e56b;
+  --success: #5cdb74;
+  --warning: #f5b942;
+  --danger: #ff6b6b;
+  --text-1: #f2f6f3;
+  --text-2: #c8d0ca;
+  --text-3: #8c9790;
+  color-scheme: dark;
 }
 
 * {
@@ -151,7 +174,7 @@ body::before {
 
 /* Glassmorphism utility */
 .glass {
-  background: rgba(255, 255, 255, 0.74);
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
   backdrop-filter: blur(8px);
   border: 1px solid var(--border);
 }

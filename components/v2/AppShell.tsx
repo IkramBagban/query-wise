@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3, ChevronRight, Database, Home, LoaderCircle, Menu, MessageSquare, Plus, Search, Settings, Sparkles, X } from "lucide-react";
 
 import { ChatSearchDialog } from "@/components/v2/ChatSearchDialog";
+import { ThemeToggle } from "@/components/v2/ThemeToggle";
 import { UserControl } from "@/components/v2/auth/UserControl";
 import { useApiResource } from "@/hooks/v2";
 import { formatRelativeTime } from "@/lib/utils";
@@ -153,7 +154,7 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
   return (
     <aside className="flex h-full flex-col bg-bg p-3">
       <Link href="/chats/new" onClick={onNavigate} className="flex items-center gap-2.5 px-2 py-3 font-syne text-lg font-semibold tracking-tight">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-text-1 shadow-sm"><Sparkles className="h-4 w-4" /></span>
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"><Sparkles className="h-4 w-4" /></span>
         QueryWise
       </Link>
       <div className="mt-3 border-b border-border pb-4">
@@ -204,7 +205,7 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
         </section>
         <SidebarChatHistory onNavigate={onNavigate} />
       </div>
-      <div className="mt-3 rounded-xl border border-border bg-surface p-2 shadow-sm"><UserControl /></div>
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm"><div className="min-w-0 flex-1"><UserControl /></div><ThemeToggle /></div>
     </aside>
   );
 }

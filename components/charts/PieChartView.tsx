@@ -34,7 +34,7 @@ export function PieChartView({ result, nameKey, valueKey }: PieChartViewProps) {
     <ResponsiveContainer width="100%" height={320}>
       <PieChart>
         <Tooltip
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         <Legend

@@ -1304,3 +1304,13 @@ Why this is the right approach:
   2. Create a dashboard from the save dialog and confirm the chart is immediately added.
   3. Export CSV, JSON, and XLSX and verify each file contains the displayed result rows.
   4. Force widget creation to fail after dashboard creation and confirm the error is shown without retrying dashboard creation automatically.
+
+## 45) Persistent application theme
+
+- What changed: The private application now defaults to a dark semantic-token theme, provides a sidebar light/dark toggle, persists the choice in browser local storage, and applies the saved theme before hydration. Chart tooltips use theme tokens instead of fixed light colors.
+- Why: A pre-hydration theme decision avoids a light-mode flash, while semantic tokens keep shared screens and charts visually consistent.
+- Tradeoffs and risks: Theme preference is browser-local and does not follow a user across devices; authentication marketing surfaces retain their purpose-built styling.
+- How to test:
+  1. Open the app with no saved preference and confirm dark mode is applied before content renders.
+  2. Toggle to light mode, refresh, and confirm the light preference persists.
+  3. Open charts in both themes and confirm axes, tooltips, dialogs, and result cards remain readable.

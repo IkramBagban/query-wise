@@ -36,7 +36,15 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${syne.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("querywise.theme");document.documentElement.classList.toggle("dark",t!=="light")}catch(e){document.documentElement.classList.add("dark")}`,
+          }}
+        />
+      </head>
       <body className="min-h-screen">
         <ClerkProvider>
           <ToastProvider>
@@ -49,4 +57,3 @@ export default function RootLayout({
     </html>
   );
 }
-

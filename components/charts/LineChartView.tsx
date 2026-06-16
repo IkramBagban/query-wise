@@ -85,7 +85,7 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
         <Tooltip
           active={dragging ? false : undefined}
           cursor={dragging ? false : undefined}
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (
