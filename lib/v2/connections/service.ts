@@ -178,8 +178,6 @@ export async function deleteConnection(connectionId: ResourceId): Promise<void> 
   const record = await requireOwnedConnection(connectionId);
   await withAppDbTransaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`connection:${connectionId}`}))`;
-    const activeConversations = await tx.conversation.count({ where: { connectionId, deletedAt: null } });
-    if (activeConversations > 0) throw new AppError("CONFLICT", "Archive or delete active conversations before deleting this connection.");
     await tx.schemaSnapshot.updateMany({ where: { connectionId, status: { in: ["queued", "syncing"] } }, data: { status: "superseded" } });
     const deleted = await tx.databaseConnection.updateMany({
       where: { id: connectionId, ownerUserId: record.ownerUserId, deletedAt: null },

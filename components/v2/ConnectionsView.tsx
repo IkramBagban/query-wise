@@ -175,13 +175,17 @@ function ConnectionCard({
   expanded,
   onToggle,
   onRefresh,
+  onDelete,
   refreshing,
+  deleting,
 }: {
   connection: ConnectionListItem;
   expanded: boolean;
   onToggle: () => void;
   onRefresh: () => void;
+  onDelete: () => void;
   refreshing: boolean;
+  deleting: boolean;
 }) {
   const schemaStatus = getIngestionStatusView(connection.schemaSyncStatus);
   const needsAttention = connection.status === "error" || schemaStatus.tone === "danger";
@@ -213,6 +217,9 @@ function ConnectionCard({
             </Link>
           )}
           <Button type="button" size="sm" variant="ghost" loading={refreshing} onClick={onRefresh}><RefreshCw />Refresh</Button>
+          <Button type="button" size="sm" variant="danger" loading={deleting} onClick={onDelete} aria-label={`Delete ${connection.name}`}>
+            <Trash2 />Delete
+          </Button>
           <Link href={`/connections/${connection.id}`} aria-label={`Open ${connection.name}`} className="inline-flex size-8 items-center justify-center rounded-md border border-border text-text-3 hover:bg-surface-2 hover:text-text-1">
             <MoreVertical className="size-4" />
           </Link>
@@ -241,6 +248,9 @@ function ConnectionCard({
             <Link href={`/connections/${connection.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface">
               <Pencil className="size-3.5" />Edit connection
             </Link>
+            <Button type="button" size="sm" variant="danger" loading={deleting} onClick={onDelete}>
+              <Trash2 />Delete connection
+            </Button>
           </div>
         </div>
       ) : null}
@@ -252,7 +262,9 @@ export function ConnectionsListView() {
   const resource = useApiResource(() => connectionsApi.list(50), []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const refreshConnections = resource.refresh;
   const items = useMemo(() => resource.data?.items ?? [], [resource.data?.items]);
 
@@ -270,11 +282,31 @@ export function ConnectionsListView() {
 
   async function refreshSchema(connectionId: string) {
     setRefreshingId(connectionId);
+    setNotice(null);
     try {
       await connectionsApi.refreshSchema(connectionId);
       await resource.refresh();
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Unable to refresh schema");
     } finally {
       setRefreshingId(null);
+    }
+  }
+
+  async function deleteConnection(connection: ConnectionListItem) {
+    const confirmed = window.confirm(`Delete "${connection.name}"? This removes saved credentials and hides the connection from new chats.`);
+    if (!confirmed) return;
+    setDeletingId(connection.id);
+    setNotice(null);
+    try {
+      await connectionsApi.remove(connection.id);
+      setExpandedId((current) => (current === connection.id ? null : current));
+      setNotice("Connection deleted.");
+      await resource.refresh();
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Unable to delete connection");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -299,6 +331,7 @@ export function ConnectionsListView() {
           </div>
         ) : (
           <>
+            {notice ? <p className="mt-4 rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <StatCard icon={Database} label="Query-ready connections" value={stats.active} hint="Schema ready" />
               <StatCard icon={AlertTriangle} label="Need attention" value={stats.attention} hint={stats.attention ? "Action required" : "All healthy"} tone={stats.attention ? "warning" : "default"} />
@@ -318,7 +351,9 @@ export function ConnectionsListView() {
                   expanded={expandedId === connection.id}
                   onToggle={() => setExpandedId((current) => (current === connection.id ? null : connection.id))}
                   onRefresh={() => void refreshSchema(connection.id)}
+                  onDelete={() => void deleteConnection(connection)}
                   refreshing={refreshingId === connection.id}
+                  deleting={deletingId === connection.id}
                 />
               ))}
 

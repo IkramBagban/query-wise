@@ -1332,3 +1332,10 @@ Why this is the right approach:
 - Why: Debugging background ingestion and multi-step SQL generation requires seeing where a request or job failed without exposing credentials, API keys, prompts, result rows, or sample rows.
 - Tradeoffs and risks: Logs remain disabled outside `NODE_ENV=development`, so production observability still requires a separate sink later.
 - How to test: Run the schema ingestion worker and a query in development, then verify JSON logs appear in the terminal and `logs/querywise-development.log` with redacted URLs/keys and no raw rows.
+
+## 48) Connection deletion from the connections list
+
+- What changed: The connections list now exposes a delete action per saved PostgreSQL source. Deleting a connection soft-deletes the connection record, clears encrypted credentials, supersedes queued/syncing schema snapshots, and disposes adapter state without deleting historical conversations or query runs.
+- Why: Users need to remove connected databases directly from the management list, and keeping history intact preserves auditability while preventing future use of the removed connection.
+- Tradeoffs and risks: Historical conversations tied to a deleted connection remain in the database but cannot be opened through normal active-connection guards. A future archive UI could expose or purge this history explicitly.
+- How to test: Create a connection, optionally create a conversation for it, delete it from `/connections`, confirm it disappears from the list, and verify new chats cannot select the deleted connection.
