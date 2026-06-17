@@ -6,6 +6,7 @@ import {
   SCHEMA_INGESTION_QUEUE_NAME,
   type SchemaIngestionJobData,
 } from "@/lib/v2/ingestion";
+import { devLog, devLogError } from "@/lib/v2/observability";
 
 type BullMqWorkerConstructor = new (
   name: string,
@@ -20,50 +21,76 @@ async function loadBullMq(): Promise<{ Worker: BullMqWorkerConstructor } | null>
   try {
     const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<{ Worker: BullMqWorkerConstructor }>;
     return await dynamicImport("bullmq");
-  } catch {
+  } catch (error) {
+    devLogError("schema-ingestion.worker.bullmq-load-failed", "Schema ingestion worker could not load BullMQ.", error);
     return null;
   }
 }
 
 function redisConnectionOptions(): unknown {
   const url = process.env.QUERYWISE_REDIS_URL ?? process.env.REDIS_URL;
-  if (!url) throw new Error("QUERYWISE_REDIS_URL or REDIS_URL must be configured for schema ingestion workers.");
+  if (!url) {
+    devLog("error", "schema-ingestion.worker.redis-missing", "Schema ingestion worker Redis URL is not configured.");
+    throw new Error("QUERYWISE_REDIS_URL or REDIS_URL must be configured for schema ingestion workers.");
+  }
   return { url };
 }
 
 async function main(): Promise<void> {
+  devLog("info", "schema-ingestion.worker.boot", "Schema ingestion worker booting.", {
+    queueName: SCHEMA_INGESTION_QUEUE_NAME,
+  });
   const bullmq = await loadBullMq();
   if (!bullmq) {
     throw new Error("The schema ingestion worker requires the bullmq package. Add it in the shared package workstream before running this worker.");
   }
 
   const concurrency = Number.parseInt(process.env.QUERYWISE_SCHEMA_INGESTION_CONCURRENCY ?? "2", 10);
-  await publishQueuedSchemaIngestionOutbox();
+  const normalizedConcurrency = Math.max(1, Math.min(concurrency, 10));
+  const initiallyPublished = await publishQueuedSchemaIngestionOutbox();
+  devLog("info", "schema-ingestion.worker.started", "Schema ingestion worker started.", {
+    queueName: SCHEMA_INGESTION_QUEUE_NAME,
+    concurrency: normalizedConcurrency,
+    initiallyPublished,
+  });
   const relay = setInterval(() => {
-    void publishQueuedSchemaIngestionOutbox().catch((error) => {
-      console.error("[schema-ingestion] outbox relay failed", error);
-    });
+    void publishQueuedSchemaIngestionOutbox()
+      .then((published) => {
+        devLog("debug", "schema-ingestion.worker.outbox-relay", "Schema ingestion worker relayed queued outbox jobs.", { published });
+      })
+      .catch((error) => {
+        devLogError("schema-ingestion.worker.outbox-relay-failed", "Schema ingestion worker outbox relay failed.", error);
+      });
   }, 15_000);
 
   const worker = new bullmq.Worker(
     SCHEMA_INGESTION_QUEUE_NAME,
-    async (job) => processSchemaIngestionJob(job.data),
-    { connection: redisConnectionOptions(), concurrency: Math.max(1, Math.min(concurrency, 10)) },
+    async (job) => {
+      devLog("info", "schema-ingestion.worker.job-received", "Schema ingestion worker received job.", {
+        jobId: job.id,
+        connectionId: job.data.connectionId,
+        intent: job.data.intent,
+      });
+      return processSchemaIngestionJob(job.data);
+    },
+    { connection: redisConnectionOptions(), concurrency: normalizedConcurrency },
   );
 
   worker.on("completed", (job) => {
-    console.info("[schema-ingestion] completed", { jobId: (job as { id?: string }).id });
+    devLog("info", "schema-ingestion.worker.job-completed", "Schema ingestion worker completed job.", { jobId: (job as { id?: string }).id });
   });
   worker.on("failed", (job, error) => {
-    console.error("[schema-ingestion] failed", { jobId: (job as { id?: string } | undefined)?.id, error });
+    devLogError("schema-ingestion.worker.job-failed", "Schema ingestion worker job failed.", error, { jobId: (job as { id?: string } | undefined)?.id });
   });
   worker.on("error", (error) => {
-    console.error("[schema-ingestion] worker error", error);
+    devLogError("schema-ingestion.worker.error", "Schema ingestion worker emitted an error.", error);
   });
 
   const shutdown = async () => {
+    devLog("info", "schema-ingestion.worker.shutdown-started", "Schema ingestion worker shutdown started.");
     clearInterval(relay);
     await worker.close();
+    devLog("info", "schema-ingestion.worker.shutdown-completed", "Schema ingestion worker shutdown completed.");
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown());
@@ -71,6 +98,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error) => {
-  console.error("[schema-ingestion] fatal", error);
+  devLogError("schema-ingestion.worker.fatal", "Schema ingestion worker exited with a fatal error.", error);
   process.exit(1);
 });

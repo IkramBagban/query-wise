@@ -1325,3 +1325,10 @@ Why this is the right approach:
   1. Run `npm run db:validate`, `npx tsc --noEmit --pretty false --incremental false`, and `npm run build`.
   2. Create or refresh a connection and run `npm run worker:schema-ingestion` with Redis configured.
   3. Confirm schema status reaches ready, then submit a query and verify SQL still executes through the read-only adapter path.
+
+## 47) Development-only worker and NL-to-SQL stage logging
+
+- What changed: Schema ingestion worker console output was replaced with the shared redacted development logger, and schema ingestion plus NL-to-SQL query stages now emit structured timing/count logs in development.
+- Why: Debugging background ingestion and multi-step SQL generation requires seeing where a request or job failed without exposing credentials, API keys, prompts, result rows, or sample rows.
+- Tradeoffs and risks: Logs remain disabled outside `NODE_ENV=development`, so production observability still requires a separate sink later.
+- How to test: Run the schema ingestion worker and a query in development, then verify JSON logs appear in the terminal and `logs/querywise-development.log` with redacted URLs/keys and no raw rows.

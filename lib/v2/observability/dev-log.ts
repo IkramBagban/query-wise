@@ -29,8 +29,12 @@ let writeQueue = Promise.resolve();
 function redactText(value: string): string {
   return value
     .replace(/\b(?:postgres(?:ql)?):\/\/[^\s"'`]+/gi, "[REDACTED_DATABASE_URL]")
+    .replace(/\bredis(?:s)?:\/\/[^\s"'`]+/gi, "[REDACTED_REDIS_URL]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED_TOKEN]")
     .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, "[REDACTED_API_KEY]")
-    .replace(/\b(?:sk|pk)_(?:test|live)_[0-9A-Za-z_-]+\b/g, "[REDACTED_KEY]");
+    .replace(/\b(?:sk|pk)_(?:test|live)_[0-9A-Za-z_-]+\b/g, "[REDACTED_KEY]")
+    .replace(/\bsk-ant-[A-Za-z0-9._-]{20,}\b/g, "[REDACTED_API_KEY]")
+    .replace(/\bsk-proj-[A-Za-z0-9._-]{20,}\b/g, "[REDACTED_API_KEY]");
 }
 
 function safeContext(context?: Record<string, unknown>): Record<string, unknown> | undefined {

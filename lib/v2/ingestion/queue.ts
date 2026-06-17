@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { AppDbTransaction } from "@/lib/v2/app-db";
 import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
+import { devLog, devLogError } from "@/lib/v2/observability";
 import type { ResourceId } from "@/types/v2";
 import {
   SCHEMA_INGESTION_JOB_TYPE,
@@ -49,7 +50,15 @@ export function schemaIngestionIdempotencyKey(input: Pick<SchemaIngestionJobData
 export async function publishSchemaIngestionJob(data: SchemaIngestionJobData): Promise<"published" | "not-configured"> {
   const connection = redisConnectionOptions();
   const bullmq = await optionalBullMq();
-  if (!connection || !bullmq) return "not-configured";
+  if (!connection || !bullmq) {
+    devLog("warn", "schema-ingestion.publish.not-configured", "Schema ingestion job could not be published because Redis or BullMQ is unavailable.", {
+      connectionId: data.connectionId,
+      intent: data.intent,
+      hasRedisConnection: Boolean(connection),
+      hasBullMq: Boolean(bullmq),
+    });
+    return "not-configured";
+  }
 
   const queue = new bullmq.Queue(SCHEMA_INGESTION_QUEUE_NAME, { connection });
   try {
@@ -60,7 +69,19 @@ export async function publishSchemaIngestionJob(data: SchemaIngestionJobData): P
       removeOnComplete: { age: 86_400, count: 1_000 },
       removeOnFail: { age: 604_800 },
     });
+    devLog("info", "schema-ingestion.publish.succeeded", "Schema ingestion job published to BullMQ.", {
+      connectionId: data.connectionId,
+      intent: data.intent,
+      jobId: schemaIngestionJobId(data),
+    });
     return "published";
+  } catch (error) {
+    devLogError("schema-ingestion.publish.failed", "Schema ingestion job publish failed.", error, {
+      connectionId: data.connectionId,
+      intent: data.intent,
+      jobId: schemaIngestionJobId(data),
+    });
+    throw error;
   } finally {
     await queue.close?.();
   }
@@ -106,8 +127,19 @@ export async function enqueueSchemaIngestion(input: {
       data: { schemaSyncStatus: "queued" },
     });
   });
+  devLog("info", "schema-ingestion.enqueue.outbox-created", "Schema ingestion outbox job created.", {
+    connectionId: data.connectionId,
+    intent: data.intent,
+    jobId: schemaIngestionJobId(data),
+  });
 
   const publishResult = await publishSchemaIngestionJob(data);
+  devLog(publishResult === "published" ? "info" : "warn", "schema-ingestion.enqueue.completed", "Schema ingestion enqueue completed.", {
+    connectionId: data.connectionId,
+    intent: data.intent,
+    jobId: schemaIngestionJobId(data),
+    published: publishResult === "published",
+  });
   return { jobId: schemaIngestionJobId(data), published: publishResult === "published" };
 }
 
@@ -118,6 +150,7 @@ export async function publishQueuedSchemaIngestionOutbox(limit = 25): Promise<nu
     take: limit,
   });
   let published = 0;
+  devLog("debug", "schema-ingestion.outbox-relay.started", "Schema ingestion outbox relay started.", { queuedCount: jobs.length, limit });
   for (const job of jobs) {
     const result = await publishSchemaIngestionJob(job.payload as unknown as SchemaIngestionJobData);
     if (result === "published") {
@@ -125,5 +158,6 @@ export async function publishQueuedSchemaIngestionOutbox(limit = 25): Promise<nu
       published += 1;
     }
   }
+  devLog("debug", "schema-ingestion.outbox-relay.completed", "Schema ingestion outbox relay completed.", { queuedCount: jobs.length, published });
   return published;
 }

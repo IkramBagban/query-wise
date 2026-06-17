@@ -39,6 +39,10 @@ function toV2ChartConfig(chart: ReturnType<typeof resolveChartConfig>): ChartCon
   };
 }
 
+function elapsedMs(startedAt: number): number {
+  return Date.now() - startedAt;
+}
+
 export async function executeDurableQueryRun(input: {
   queryRunId: string;
   question: string;
@@ -63,6 +67,7 @@ export async function executeDurableQueryRun(input: {
   const abortSignal = registerActiveQueryRun(run.id);
 
   try {
+    const runStartedAt = Date.now();
     throwIfQueryRunAborted(abortSignal);
     run = await transitionQueryRun(run.id, "preparing");
     throwIfQueryRunAborted(abortSignal);
@@ -74,10 +79,18 @@ export async function executeDurableQueryRun(input: {
       providerId: run.providerId,
       dialectId: run.dialectId,
     };
+    const loadStartedAt = Date.now();
     const [schema, history] = await Promise.all([
       runtime.loadGenerationSchema(context),
       recentConversationHistory(run.conversationId),
     ]);
+    devLog("info", "query.run.context-loaded", "Query run context loaded.", {
+      queryRunId: run.id,
+      connectionId: run.connectionId,
+      durationMs: elapsedMs(loadStartedAt),
+      schemaTableCount: schema.tables.length,
+      historyTurnCount: history.length,
+    });
 
     run = await transitionQueryRun(run.id, "generating");
     throwIfQueryRunAborted(abortSignal);
@@ -88,6 +101,7 @@ export async function executeDurableQueryRun(input: {
       apiKey: input.apiKey,
       abortSignal,
     };
+    const planningStartedAt = Date.now();
     const plan = await planStagedNlSqlQuery({
       question: input.question,
       history,
@@ -95,8 +109,18 @@ export async function executeDurableQueryRun(input: {
       llm,
       onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
     });
+    devLog("info", "query.run.planning-completed", "Query run NL-to-SQL planning completed.", {
+      queryRunId: run.id,
+      connectionId: run.connectionId,
+      durationMs: elapsedMs(planningStartedAt),
+      mode: plan.mode,
+      candidateTableCount: plan.retrieval.candidateTableCount,
+      selectedTableCount: plan.retrieval.selectedTables.length,
+      prunedTableCount: plan.retrieval.prunedTables.length,
+    });
 
     if (plan.mode === "conversation" || !plan.sql) {
+      const persistenceStartedAt = Date.now();
       run = await transitionQueryRun(run.id, "persisting");
       throwIfQueryRunAborted(abortSignal);
       emit?.("status", statusEvent(run.status, run.statusVersion));
@@ -104,6 +128,10 @@ export async function executeDurableQueryRun(input: {
         queryRunId: run.id,
         assistantContent: plan.directAnswer ?? "I can help analyze your connected database when you ask a data question.",
         metadata: { schemaVersion: 1, nlSqlPipeline: plan.retrieval } as unknown as Prisma.InputJsonValue,
+      });
+      devLog("info", "query.run.conversation-persisted", "Query run conversational response persisted.", {
+        queryRunId: run.id,
+        durationMs: elapsedMs(persistenceStartedAt),
       });
     } else {
       const providerQuery: ProviderQuery = { kind: "sql", dialectId: "postgresql", text: plan.sql };
@@ -115,18 +143,33 @@ export async function executeDurableQueryRun(input: {
       run = await transitionQueryRun(run.id, "executing");
       throwIfQueryRunAborted(abortSignal);
       emit?.("status", statusEvent(run.status, run.statusVersion));
+      const executionStartedAt = Date.now();
       const completedResult: BoundedQueryResult = await runtime.executeValidatedReadQuery(context, providerQuery, abortSignal);
+      devLog("info", "query.run.sql-executed", "Query run SQL execution completed.", {
+        queryRunId: run.id,
+        connectionId: run.connectionId,
+        durationMs: elapsedMs(executionStartedAt),
+        returnedRowCount: completedResult.returnedRowCount,
+        truncated: completedResult.truncated,
+      });
       emit?.("query-stats", {
         rowCount: completedResult.returnedRowCount,
         executionTimeMs: completedResult.executionTimeMs,
         truncated: completedResult.truncated,
       });
+      const explanationStartedAt = Date.now();
       const explanation = await explainStagedNlSqlResult({
         question: plan.standaloneQuestion,
         sql: providerQuery.text,
         result: completedResult,
         llm,
         onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
+      });
+      devLog("info", "query.run.explanation-completed", "Query run explanation completed.", {
+        queryRunId: run.id,
+        durationMs: elapsedMs(explanationStartedAt),
+        explanationLength: explanation.explanation.length,
+        chartHintType: explanation.chartHint?.type ?? plan.chartHint?.type ?? null,
       });
       emit?.("text-delta", { chunk: explanation.explanation });
       const resultForChart = {
@@ -137,6 +180,7 @@ export async function executeDurableQueryRun(input: {
       };
       const chartConfig = toV2ChartConfig(resolveChartConfig(resultForChart, explanation.chartHint ?? plan.chartHint));
       const preview = createResultPreview(completedResult);
+      const persistenceStartedAt = Date.now();
       run = await transitionQueryRun(run.id, "persisting");
       throwIfQueryRunAborted(abortSignal);
       emit?.("status", statusEvent(run.status, run.statusVersion));
@@ -151,6 +195,12 @@ export async function executeDurableQueryRun(input: {
         truncated: completedResult.truncated || preview.truncated,
         executionTimeMs: completedResult.executionTimeMs,
       });
+      devLog("info", "query.run.result-persisted", "Query run result persisted.", {
+        queryRunId: run.id,
+        durationMs: elapsedMs(persistenceStartedAt),
+        previewRowCount: preview.previewRowCount,
+        chartType: chartConfig.type,
+      });
     }
     emit?.("completed", { status: run.status, statusVersion: run.statusVersion });
     devLog("info", "query.run.succeeded", "Durable query run completed.", {
@@ -158,6 +208,7 @@ export async function executeDurableQueryRun(input: {
       status: run.status,
       returnedRowCount: run.returnedRowCount,
       executionTimeMs: run.executionTimeMs,
+      durationMs: elapsedMs(runStartedAt),
     });
     return run;
   } catch (error) {

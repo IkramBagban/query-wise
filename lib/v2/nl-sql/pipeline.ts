@@ -3,6 +3,7 @@ import "server-only";
 import type { ChartHint, ChatMessage, SchemaInfo } from "@/types";
 import type { BoundedQueryResult } from "@/types/v2";
 import { generateStructuredObject, type Provider } from "@/lib/llm";
+import { devLog } from "@/lib/v2/observability";
 import {
   ColumnPruningSchema,
   ResultExplanationSchema,
@@ -43,6 +44,10 @@ export interface StagedPipelinePlan {
   };
 }
 
+function elapsedMs(startedAt: number): number {
+  return Date.now() - startedAt;
+}
+
 export async function planStagedNlSqlQuery(params: {
   question: string;
   history: ChatMessage[];
@@ -50,7 +55,9 @@ export async function planStagedNlSqlQuery(params: {
   llm: PipelineModelConfig;
   onStage?: (label: string) => void;
 }): Promise<StagedPipelinePlan> {
+  const pipelineStartedAt = Date.now();
   params.onStage?.("Rewriting follow-up");
+  const rewriteStartedAt = Date.now();
   const rewrite = await generateStructuredObject({
     ...params.llm,
     schema: RewriteQuestionSchema,
@@ -59,8 +66,17 @@ export async function planStagedNlSqlQuery(params: {
     prompt: rewritePrompt({ question: params.question, history: compactHistory(params.history) }),
     maxOutputTokens: 900,
   });
+  devLog("info", "nl-sql.rewrite.completed", "NL-to-SQL rewrite stage completed.", {
+    durationMs: elapsedMs(rewriteStartedAt),
+    requiresDatabase: rewrite.requiresDatabase,
+    historyTurnCount: params.history.length,
+  });
 
   if (!rewrite.requiresDatabase) {
+    devLog("info", "nl-sql.pipeline.completed", "NL-to-SQL pipeline completed with conversational response.", {
+      mode: "conversation",
+      durationMs: elapsedMs(pipelineStartedAt),
+    });
     return {
       mode: "conversation",
       standaloneQuestion: rewrite.standaloneQuestion,
@@ -72,13 +88,20 @@ export async function planStagedNlSqlQuery(params: {
   }
 
   params.onStage?.("Retrieving candidate tables");
+  const retrievalStartedAt = Date.now();
   const candidates = await retrieveCandidateTables({
     schema: params.schema,
     question: rewrite.standaloneQuestion,
     limit: 30,
   });
+  devLog("info", "nl-sql.retrieval.completed", "NL-to-SQL retrieval stage completed.", {
+    durationMs: elapsedMs(retrievalStartedAt),
+    candidateTableCount: candidates.length,
+    schemaTableCount: params.schema.tables.length,
+  });
 
   params.onStage?.("Selecting relevant tables");
+  const selectionStartedAt = Date.now();
   const selection = await generateStructuredObject({
     ...params.llm,
     schema: TableSelectionSchema,
@@ -89,8 +112,14 @@ export async function planStagedNlSqlQuery(params: {
   });
 
   const selectedCandidates = selectedCandidateTables(candidates, selection.selectedTables.map((table) => table.tableName));
+  devLog("info", "nl-sql.table-selection.completed", "NL-to-SQL table selection stage completed.", {
+    durationMs: elapsedMs(selectionStartedAt),
+    selectedTableCount: selectedCandidates.length,
+    selectedTables: selectedCandidates.map((candidate) => candidate.tableName),
+  });
 
   params.onStage?.("Pruning columns");
+  const pruningStartedAt = Date.now();
   const pruning = await generateStructuredObject({
     ...params.llm,
     schema: ColumnPruningSchema,
@@ -101,8 +130,14 @@ export async function planStagedNlSqlQuery(params: {
   });
 
   const normalizedPruning = normalizePruning(params.schema, selectedCandidates, pruning);
+  devLog("info", "nl-sql.column-prune.completed", "NL-to-SQL column pruning stage completed.", {
+    durationMs: elapsedMs(pruningStartedAt),
+    prunedTableCount: normalizedPruning.tables.length,
+    prunedColumnCount: normalizedPruning.tables.reduce((sum, table) => sum + table.columns.length, 0),
+  });
 
   params.onStage?.("Generating SQL");
+  const sqlStartedAt = Date.now();
   const sqlPlan = await generateStructuredObject({
     ...params.llm,
     schema: SqlPlanSchema,
@@ -115,12 +150,18 @@ export async function planStagedNlSqlQuery(params: {
     }),
     maxOutputTokens: 2800,
   });
+  const sql = cleanGeneratedSql(sqlPlan.sql);
+  devLog("info", "nl-sql.sql-generation.completed", "NL-to-SQL SQL generation stage completed.", {
+    durationMs: elapsedMs(sqlStartedAt),
+    sqlLength: sql.length,
+    chartHintType: sqlPlan.chartHint?.type ?? null,
+  });
 
   return {
     mode: "query",
     standaloneQuestion: rewrite.standaloneQuestion,
     directAnswer: null,
-    sql: cleanGeneratedSql(sqlPlan.sql),
+    sql,
     chartHint: sqlPlan.chartHint,
     retrieval: {
       candidateTableCount: candidates.length,
