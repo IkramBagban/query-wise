@@ -1,5 +1,6 @@
 import "server-only";
 import { getConnectionSecret } from "@/lib/v2/connections";
+import { requireOwnedConnection } from "@/lib/v2/dal/authorization";
 import { AppError } from "@/lib/v2/dal/core";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { getLatestConnectionSchema, refreshConnectionSchema } from "@/lib/v2/schema";
@@ -53,6 +54,10 @@ function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string |
     toColumns: stringList(relationship.toColumns),
   }));
   return {
+    connectionId: undefined,
+    schemaFingerprint: typeof (metadata as unknown as { ingestion?: { schemaFingerprint?: unknown } }).ingestion?.schemaFingerprint === "string"
+      ? (metadata as unknown as { ingestion: { schemaFingerprint: string } }).ingestion.schemaFingerprint
+      : null,
     tables: metadata.entities.map((entity) => ({
       name: entity.namespace === "public" ? entity.name : `${entity.namespace}.${entity.name}`,
       rowCount: entity.estimatedRowCount ?? undefined,
@@ -86,6 +91,14 @@ function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string |
 
 const defaultDependencies: QueryRuntimeDependencies = {
   async loadGenerationSchema(context) {
+    const connection = await requireOwnedConnection(context.connectionId);
+    if (connection.schemaSyncStatus !== "ready") {
+      throw new AppError(
+        "SCHEMA_SNAPSHOT_UNAVAILABLE",
+        "Schema ingestion is not ready yet. Wait for schema analysis to complete, then retry.",
+        true,
+      );
+    }
     let snapshot;
     try {
       snapshot = await getLatestConnectionSchema(context.connectionId);
@@ -96,7 +109,9 @@ const defaultDependencies: QueryRuntimeDependencies = {
       await refreshConnectionSchema(context.connectionId);
       snapshot = await getLatestConnectionSchema(context.connectionId);
     }
-    return toLegacySchema(snapshot.metadata as unknown as CanonicalDataSourceMetadata, snapshot.summary);
+    const schema = toLegacySchema(snapshot.metadata as unknown as CanonicalDataSourceMetadata, snapshot.summary);
+    schema.connectionId = context.connectionId;
+    return schema;
   },
   async executeValidatedReadQuery(context, query, signal) {
     const { record, secret } = await getConnectionSecret(context.connectionId);

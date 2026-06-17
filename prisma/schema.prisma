@@ -22,6 +22,9 @@ enum SchemaSyncStatus {
   never
   queued
   running
+  introspecting
+  describing
+  embedding
   ready
   error
 

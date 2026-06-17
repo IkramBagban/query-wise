@@ -9,6 +9,7 @@ import { requireOwnedConnection } from "@/lib/v2/dal/authorization";
 import { createResourceId } from "@/lib/v2/domain/ids";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { getConnectionSecret } from "@/lib/v2/connections/credentials";
+import { enqueueSchemaIngestion } from "@/lib/v2/ingestion";
 import { devLog, devLogError } from "@/lib/v2/observability";
 
 const DEFAULT_OPTIONS = {
@@ -17,6 +18,12 @@ const DEFAULT_OPTIONS = {
 };
 
 export async function refreshConnectionSchema(connectionId: ResourceId) {
+  const record = await requireOwnedConnection(connectionId);
+  await enqueueSchemaIngestion({ connectionId, ownerUserId: record.ownerUserId, intent: "manual-refresh" });
+  return { contractVersion: CONTRACT_VERSION, connectionId, status: "queued" as const, summary: "Schema ingestion queued." };
+}
+
+export async function refreshConnectionSchemaInline(connectionId: ResourceId) {
   devLog("info", "schema.refresh.started", "Schema refresh started.", { connectionId });
   const { record, secret } = await getConnectionSecret(connectionId);
   const adapter = getDataSourceAdapter(record.providerId);

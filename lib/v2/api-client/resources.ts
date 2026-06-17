@@ -11,6 +11,7 @@ import type {
   DashboardListItem,
   PublicDashboardDto,
   QueryRunDto,
+  QueryStreamEvent,
   SchemaDto,
   CreateShareInput,
   CreateShareResult,
@@ -60,8 +61,70 @@ export const conversationsApi = {
       method: "POST",
       body: { ...input, idempotencyKey: createIdempotencyKey() },
     }),
+  submitStream: (input: Omit<SubmitQueryInput, "idempotencyKey">, onEvent: (event: QueryStreamEvent) => void) =>
+    streamQuerySubmission({ ...input, idempotencyKey: createIdempotencyKey() }, onEvent),
   queryRun: (id: string) => apiRequest<QueryRunDto>(`/api/query/${id}`),
 };
+
+async function streamQuerySubmission(input: SubmitQueryInput, onEvent: (event: QueryStreamEvent) => void) {
+  const response = await fetch("/api/query", {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => null);
+    const error = payload && typeof payload === "object" && "error" in payload
+      ? (payload as { error?: { message?: string } }).error
+      : null;
+    throw new Error(error?.message ?? `Request failed with status ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/event-stream")) {
+    const run = await response.json().catch(() => null) as QueryRunDto | null;
+    if (run) {
+      onEvent({
+        contractVersion: "querywise.v2",
+        queryRunId: run.id,
+        sequence: 0,
+        type: run.status === "failed" ? "failed" : "completed",
+        occurredAt: new Date().toISOString(),
+        data: { status: run.status, statusVersion: run.statusVersion },
+      });
+      return;
+    }
+    throw new Error("Expected a query event stream response.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split(/\n\n/);
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      const dataLine = chunk.split(/\n/).find((line) => line.startsWith("data: "));
+      if (!dataLine) continue;
+      onEvent(JSON.parse(dataLine.slice(6)) as QueryStreamEvent);
+    }
+  }
+
+  const trailing = buffer.trim();
+  if (trailing) {
+    const dataLine = trailing.split(/\n/).find((line) => line.startsWith("data: "));
+    if (dataLine) onEvent(JSON.parse(dataLine.slice(6)) as QueryStreamEvent);
+  }
+}
 
 export const dashboardsApi = {
   list: (limit = 25, cursor?: string) =>

@@ -20,7 +20,7 @@ export interface ConnectionListItem extends ConnectionDto {
   updatedAt?: IsoDateTime;
 }
 
-export interface ConversationListItem extends ConversationDto {}
+export type ConversationListItem = ConversationDto;
 
 export type ConversationMessageDto = MessageDto & {
   queryRun: {
@@ -113,6 +113,17 @@ export interface SubmitQueryInput {
   model: string;
   apiKey: string;
   idempotencyKey: string;
+}
+
+export type QueryStreamEventType = "status" | "text-delta" | "sql-preview" | "query-stats" | "completed" | "failed";
+
+export interface QueryStreamEvent {
+  contractVersion: "querywise.v2";
+  queryRunId: ResourceId;
+  sequence: number;
+  type: QueryStreamEventType;
+  occurredAt: IsoDateTime;
+  data: unknown;
 }
 
 export interface CreateWidgetInput {

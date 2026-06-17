@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -32,7 +32,7 @@ import { PageHeader } from "@/components/v2/PageHeader";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
 import { useApiResource } from "@/hooks/v2";
 import { formatRelativeTime } from "@/lib/utils";
-import { connectionsApi } from "@/lib/v2/api-client";
+import { connectionsApi, getIngestionStatusView } from "@/lib/v2/api-client";
 import type { ConnectionListItem } from "@/lib/v2/api-client";
 
 function statusVariant(value: string) {
@@ -41,6 +41,11 @@ function statusVariant(value: string) {
 
 function Status({ value }: { value: string }) {
   return <Badge variant={statusVariant(value)}>{value.replaceAll("_", " ")}</Badge>;
+}
+
+function SchemaStatus({ value }: { value: string }) {
+  const status = getIngestionStatusView(value);
+  return <Badge variant={status.tone}>{status.label}</Badge>;
 }
 
 function PostgresMark({ compact = false }: { compact?: boolean }) {
@@ -178,7 +183,8 @@ function ConnectionCard({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
-  const needsAttention = connection.status === "error" || connection.schemaSyncStatus === "error";
+  const schemaStatus = getIngestionStatusView(connection.schemaSyncStatus);
+  const needsAttention = connection.status === "error" || schemaStatus.tone === "danger";
   return (
     <Card className={`overflow-hidden transition-all ${expanded ? "border-accent" : ""}`} hoverable={!expanded}>
       <div className="flex items-center gap-3 p-4">
@@ -191,7 +197,7 @@ function ConnectionCard({
             </span>
             <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-3">
               <Status value={connection.status} />
-              <span className="inline-flex items-center gap-1.5"><Table2 className="size-3.5" />Schema {connection.schemaSyncStatus}</span>
+              <span className="inline-flex items-center gap-1.5"><Table2 className="size-3.5" /><SchemaStatus value={connection.schemaSyncStatus} /></span>
               <span className="inline-flex items-center gap-1.5"><RefreshCw className="size-3.5" />Last synced {formatRelativeTime(connection.lastSchemaSyncAt)}</span>
             </span>
           </span>
@@ -220,7 +226,8 @@ function ConnectionCard({
         <div className="animate-fade-in border-t border-border bg-surface-2/60 p-4 sm:p-5">
           <dl className="grid grid-cols-1 gap-x-10 gap-y-3 text-xs sm:grid-cols-2">
             <DetailRow label="Host" value={`${connection.hostDisplay}${connection.port ? `:${connection.port}` : ""}`} />
-            <DetailRow label="Schema status" value={<span className="capitalize">{connection.schemaSyncStatus}</span>} />
+            <DetailRow label="Schema status" value={<SchemaStatus value={connection.schemaSyncStatus} />} />
+            <DetailRow label="Readiness" value={schemaStatus.description} />
             <DetailRow label="Database" value={connection.databaseName} />
             <DetailRow label="Last tested" value={formatRelativeTime(connection.lastTestedAt)} />
             <DetailRow label="Provider" value="PostgreSQL" />
@@ -246,13 +253,20 @@ export function ConnectionsListView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const items = resource.data?.items ?? [];
+  const refreshConnections = resource.refresh;
+  const items = useMemo(() => resource.data?.items ?? [], [resource.data?.items]);
 
   const stats = useMemo(() => {
-    const active = items.filter((item) => item.status === "connected").length;
-    const attention = items.filter((item) => item.status === "error" || item.schemaSyncStatus === "error").length;
+    const active = items.filter((item) => item.status === "connected" && getIngestionStatusView(item.schemaSyncStatus).ready).length;
+    const attention = items.filter((item) => item.status === "error" || getIngestionStatusView(item.schemaSyncStatus).tone === "danger").length;
     return { active, attention, total: items.length };
   }, [items]);
+
+  useEffect(() => {
+    if (!items.some((item) => !getIngestionStatusView(item.schemaSyncStatus).terminal)) return;
+    const timer = window.setInterval(() => void refreshConnections(), 5000);
+    return () => window.clearInterval(timer);
+  }, [items, refreshConnections]);
 
   async function refreshSchema(connectionId: string) {
     setRefreshingId(connectionId);
@@ -286,7 +300,7 @@ export function ConnectionsListView() {
         ) : (
           <>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <StatCard icon={Database} label="Active connections" value={stats.active} hint="Connected" />
+              <StatCard icon={Database} label="Query-ready connections" value={stats.active} hint="Schema ready" />
               <StatCard icon={AlertTriangle} label="Need attention" value={stats.attention} hint={stats.attention ? "Action required" : "All healthy"} tone={stats.attention ? "warning" : "default"} />
               <StatCard icon={Layers} label="Total sources" value={stats.total} hint="Across all connections" />
             </div>

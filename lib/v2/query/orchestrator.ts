@@ -1,8 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { resolveChartConfig } from "@/lib/charts";
-import { runConstrainedAnalystAgent } from "@/lib/llm";
-import type { ExecuteQueryToolResult } from "@/lib/llm";
 import {
   completeQueryRun,
   failQueryRun,
@@ -10,6 +8,7 @@ import {
   transitionQueryRun,
 } from "@/lib/v2/query-runs";
 import { recentConversationHistory } from "@/lib/v2/conversations";
+import { explainStagedNlSqlResult, planStagedNlSqlQuery } from "@/lib/v2/nl-sql";
 import { AppError } from "@/lib/v2/dal/core";
 import type { BoundedQueryResult, ChartConfig, ProviderQuery } from "@/types/v2";
 import { createResultPreview } from "./preview";
@@ -83,80 +82,69 @@ export async function executeDurableQueryRun(input: {
     run = await transitionQueryRun(run.id, "generating");
     throwIfQueryRunAborted(abortSignal);
     emit?.("status", statusEvent(run.status, run.statusVersion));
-    let boundedResult: BoundedQueryResult | null = null;
-    let providerQuery: ProviderQuery | null = null;
-    const agent = await runConstrainedAnalystAgent({
-      question: input.question,
-      history,
-      schema,
+    const llm = {
       provider: input.provider,
       model: input.model,
       apiKey: input.apiKey,
       abortSignal,
-      onTextDelta: (chunk) => emit?.("text-delta", { chunk }),
+    };
+    const plan = await planStagedNlSqlQuery({
+      question: input.question,
+      history,
+      schema,
+      llm,
       onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
-      executeQueryTool: async (toolQuestion): Promise<ExecuteQueryToolResult> => {
-        throwIfQueryRunAborted(abortSignal);
-        const { generateSQL } = await import("@/lib/llm");
-        const text = await generateSQL({
-          question: toolQuestion,
-          history,
-          schema,
-          provider: input.provider,
-          model: input.model,
-          apiKey: input.apiKey,
-          abortSignal,
-        });
-        providerQuery = { kind: "sql", dialectId: "postgresql", text };
-        run = await transitionQueryRun(run.id, "validating", {
-          generatedQuery: providerQuery as unknown as Prisma.InputJsonValue,
-          generatedAt: new Date(),
-        });
-        emit?.("sql-preview", { dialectId: "postgresql", language: "sql", text, validation: "pending" });
-        run = await transitionQueryRun(run.id, "executing");
-        throwIfQueryRunAborted(abortSignal);
-        emit?.("status", statusEvent(run.status, run.statusVersion));
-        boundedResult = await runtime.executeValidatedReadQuery(context, providerQuery, abortSignal);
-        emit?.("query-stats", {
-          rowCount: boundedResult.returnedRowCount,
-          executionTimeMs: boundedResult.executionTimeMs,
-          truncated: boundedResult.truncated,
-        });
-        return {
-          sql: text,
-          columns: boundedResult.columns.map((column) => column.name),
-          rows: boundedResult.rows,
-          rowCount: boundedResult.returnedRowCount,
-          executionTimeMs: boundedResult.executionTimeMs,
-        };
-      },
     });
 
-    run = await transitionQueryRun(run.id, "persisting");
-    throwIfQueryRunAborted(abortSignal);
-    emit?.("status", statusEvent(run.status, run.statusVersion));
-    const completedResult = boundedResult as BoundedQueryResult | null;
-    const completedQuery = providerQuery as ProviderQuery | null;
-    if (!completedResult || !completedQuery || agent.mode !== "query" || !agent.toolResult) {
+    if (plan.mode === "conversation" || !plan.sql) {
+      run = await transitionQueryRun(run.id, "persisting");
+      throwIfQueryRunAborted(abortSignal);
+      emit?.("status", statusEvent(run.status, run.statusVersion));
       run = await completeQueryRun({
         queryRunId: run.id,
-        assistantContent: agent.explanation,
-        metadata: { schemaVersion: 1 },
+        assistantContent: plan.directAnswer ?? "I can help analyze your connected database when you ask a data question.",
+        metadata: { schemaVersion: 1, nlSqlPipeline: plan.retrieval } as unknown as Prisma.InputJsonValue,
       });
     } else {
+      const providerQuery: ProviderQuery = { kind: "sql", dialectId: "postgresql", text: plan.sql };
+      run = await transitionQueryRun(run.id, "validating", {
+        generatedQuery: providerQuery as unknown as Prisma.InputJsonValue,
+        generatedAt: new Date(),
+      });
+      emit?.("sql-preview", { dialectId: "postgresql", language: "sql", text: providerQuery.text, validation: "pending" });
+      run = await transitionQueryRun(run.id, "executing");
+      throwIfQueryRunAborted(abortSignal);
+      emit?.("status", statusEvent(run.status, run.statusVersion));
+      const completedResult: BoundedQueryResult = await runtime.executeValidatedReadQuery(context, providerQuery, abortSignal);
+      emit?.("query-stats", {
+        rowCount: completedResult.returnedRowCount,
+        executionTimeMs: completedResult.executionTimeMs,
+        truncated: completedResult.truncated,
+      });
+      const explanation = await explainStagedNlSqlResult({
+        question: plan.standaloneQuestion,
+        sql: providerQuery.text,
+        result: completedResult,
+        llm,
+        onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
+      });
+      emit?.("text-delta", { chunk: explanation.explanation });
       const resultForChart = {
         columns: completedResult.columns.map((column) => column.name),
         rows: completedResult.rows,
         rowCount: completedResult.returnedRowCount,
         executionTimeMs: completedResult.executionTimeMs,
       };
-      const chartConfig = toV2ChartConfig(resolveChartConfig(resultForChart, agent.chartHint));
+      const chartConfig = toV2ChartConfig(resolveChartConfig(resultForChart, explanation.chartHint ?? plan.chartHint));
       const preview = createResultPreview(completedResult);
+      run = await transitionQueryRun(run.id, "persisting");
+      throwIfQueryRunAborted(abortSignal);
+      emit?.("status", statusEvent(run.status, run.statusVersion));
       run = await completeQueryRun({
         queryRunId: run.id,
-        assistantContent: agent.explanation,
-        metadata: { schemaVersion: 1, chartConfig } as unknown as Prisma.InputJsonValue,
-        generatedQuery: completedQuery as unknown as Prisma.InputJsonValue,
+        assistantContent: explanation.explanation,
+        metadata: { schemaVersion: 1, chartConfig, nlSqlPipeline: plan.retrieval } as unknown as Prisma.InputJsonValue,
+        generatedQuery: providerQuery as unknown as Prisma.InputJsonValue,
         resultPreview: preview as unknown as Prisma.InputJsonValue,
         returnedRowCount: completedResult.returnedRowCount,
         totalRowCount: completedResult.totalRowCount,

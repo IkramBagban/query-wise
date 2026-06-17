@@ -1314,3 +1314,13 @@ Why this is the right approach:
   1. Open the app with no saved preference and confirm dark mode is applied before content renders.
   2. Toggle to light mode, refresh, and confirm the light preference persists.
   3. Open charts in both themes and confirm axes, tooltips, dialogs, and result cards remain readable.
+
+## 46) V2 schema ingestion and staged NL-to-SQL
+
+- What changed: Saved connections now enqueue BullMQ-backed schema ingestion, persist enrichment progress on schema snapshots, write table/question embeddings to `v2_schema_embeddings` when pgvector is available, and gate query execution until schema status is ready. Query runs now use a staged pipeline: rewrite, retrieve, table select, column prune, SQL generate, safe execute, and explain.
+- Why: Large customer schemas need retrieval and column pruning instead of sending full metadata to the SQL-generation prompt.
+- Tradeoffs and risks: The worker requires Redis plus server-side ingestion LLM settings, and vector retrieval falls back to lexical scoring if pgvector rows are unavailable.
+- How to test:
+  1. Run `npm run db:validate`, `npx tsc --noEmit --pretty false --incremental false`, and `npm run build`.
+  2. Create or refresh a connection and run `npm run worker:schema-ingestion` with Redis configured.
+  3. Confirm schema status reaches ready, then submit a query and verify SQL still executes through the read-only adapter path.

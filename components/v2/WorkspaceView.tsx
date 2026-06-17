@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   Database,
   Loader2,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Select } from "@/components/ui/select";
@@ -24,7 +26,14 @@ import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
 import { isBoundedResultPreview } from "@/components/v2/V2Chart";
 import { useApiResource } from "@/hooks/v2";
 import { formatRelativeTime } from "@/lib/utils";
-import { connectionsApi, conversationsApi, dashboardsApi, type ConversationMessageDto, type QueryRunDto } from "@/lib/v2/api-client";
+import {
+  connectionsApi,
+  conversationsApi,
+  dashboardsApi,
+  getIngestionStatusView,
+  type ConversationMessageDto,
+  type QueryStreamEvent,
+} from "@/lib/v2/api-client";
 import type { ChartConfig } from "@/types/v2";
 import {
   DEFAULT_LLM_MODEL,
@@ -101,10 +110,19 @@ export function NewConversationView() {
   const [creating, setCreating] = useState(false);
   const [creatingDemo, setCreatingDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshConnections = connections.refresh;
+  const selectedConnection = connections.data?.items.find((item) => item.id === connectionId) ?? null;
+  const selectedIngestion = getIngestionStatusView(selectedConnection?.schemaSyncStatus);
 
   useEffect(() => {
     if (!connectionId && connections.data?.items[0]) setConnectionId(connections.data.items[0].id);
   }, [connectionId, connections.data]);
+
+  useEffect(() => {
+    if (!connections.data?.items.some((item) => !getIngestionStatusView(item.schemaSyncStatus).terminal)) return;
+    const timer = window.setInterval(() => void refreshConnections(), 5000);
+    return () => window.clearInterval(timer);
+  }, [connections.data, refreshConnections]);
 
   async function create() {
     setCreating(true);
@@ -150,9 +168,18 @@ export function NewConversationView() {
           <EmptyState title="No saved connections" description="Use the demo above or add your PostgreSQL database." action={<Link href="/connections/new" className="rounded-md bg-accent px-4 py-2 text-sm font-medium">Add connection</Link>} />
         ) : (
           <div className="space-y-4">
-            <Select className="w-full" value={connectionId} onChange={setConnectionId} options={connections.data.items.map((item) => ({ value: item.id, label: `${item.name} · ${item.databaseName}` }))} />
+            <Select className="w-full" value={connectionId} onChange={setConnectionId} options={connections.data.items.map((item) => {
+              const ingestion = getIngestionStatusView(item.schemaSyncStatus);
+              return { value: item.id, label: `${item.name} · ${item.databaseName} · ${ingestion.label}` };
+            })} />
+            {selectedConnection ? (
+              <div className="flex items-start gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-text-3">
+                <Badge variant={selectedIngestion.tone}>{selectedIngestion.label}</Badge>
+                <span>{selectedIngestion.description}</span>
+              </div>
+            ) : null}
             {error ? <p className="text-sm text-danger">{error}</p> : null}
-            <Button className="w-full" loading={creating} disabled={!connectionId} onClick={() => void create()}><MessageSquarePlus className="h-4 w-4" />Create conversation</Button>
+            <Button className="w-full" loading={creating} disabled={!connectionId || !selectedIngestion.ready} onClick={() => void create()}><MessageSquarePlus className="h-4 w-4" />Create conversation</Button>
           </div>
         )}
         {error && !connections.data?.items.length ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
@@ -221,12 +248,16 @@ function Composer({
   onSubmit,
   submitting,
   error,
+  disabledReason,
+  readinessLabel,
 }: {
   question: string;
   setQuestion: (value: string) => void;
   onSubmit: () => void;
   submitting: boolean;
   error: string | null;
+  disabledReason?: string | null;
+  readinessLabel?: string;
 }) {
   const [provider, setProvider] = useState<LlmProvider>(() => {
     if (typeof window === "undefined") return DEFAULT_LLM_PROVIDER;
@@ -252,6 +283,7 @@ function Composer({
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (disabledReason) return;
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       onSubmit();
@@ -268,10 +300,11 @@ function Composer({
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={onKeyDown}
+            disabled={Boolean(disabledReason)}
             maxLength={500}
             rows={2}
-            placeholder="Ask anything about your database..."
-            className="min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-text-3"
+            placeholder={disabledReason ?? "Ask anything about your database..."}
+            className="min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-text-3 disabled:cursor-not-allowed"
           />
           <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
             <button type="button" aria-label="Attach" title="Attach file" className="rounded-md border border-border p-2 text-text-3 hover:bg-surface-2 hover:text-text-1"><Paperclip className="size-4" /></button>
@@ -279,13 +312,15 @@ function Composer({
             <Select className="min-w-44" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
 
             <div className="ml-auto flex items-center gap-2">
-              <Button size="sm" loading={submitting} disabled={!question.trim()} onClick={onSubmit} className="h-9 px-4">
+              {readinessLabel ? <span className="hidden text-xs text-text-3 sm:inline">{readinessLabel}</span> : null}
+              <Button size="sm" loading={submitting} disabled={!question.trim() || Boolean(disabledReason)} onClick={onSubmit} className="h-9 px-4">
                 <Send className="size-3.5" />Run
               </Button>
             </div>
           </div>
         </Card>
         {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+        {disabledReason ? <p className="mt-2 text-center text-xs text-warning">{disabledReason}</p> : null}
         <p className="mt-2 text-center text-[11px] text-text-3">AI-generated results. Please verify accuracy before making decisions.</p>
       </div>
     </div>
@@ -294,16 +329,20 @@ function Composer({
 
 /* ------------------------------ Context panel ----------------------------- */
 
-function ContextPanel({ connectionId, latestRun }: { connectionId: string; latestRun: QueryRunDto | null }) {
+function ContextPanel({ connectionId, latestRun }: { connectionId: string; latestRun: ConversationMessageDto["queryRun"] | null }) {
   const connection = useApiResource(() => connectionsApi.get(connectionId), [connectionId]);
   const schema = useApiResource(() => connectionsApi.schema(connectionId), [connectionId]);
   const [tab, setTab] = useState<"schema" | "sql" | "summary">("schema");
+  const ingestion = getIngestionStatusView(connection.data?.schemaSyncStatus);
   return (
     <aside className="hidden min-h-0 border-l border-border bg-surface lg:flex lg:flex-col">
       <div className="border-b border-border p-4">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-3">Active data source</p>
         <h2 className="mt-1 truncate font-medium">{connection.data?.name ?? "Loading connection"}</h2>
-        <p className="text-xs capitalize text-text-3">{connection.data?.status ?? ""}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant={ingestion.tone}>{ingestion.label}</Badge>
+          <span className="text-xs capitalize text-text-3">{connection.data?.status ?? ""}</span>
+        </div>
       </div>
       <div className="grid grid-cols-3 border-b border-border text-xs">
         {(["schema", "sql", "summary"] as const).map((value) => (
@@ -322,7 +361,7 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
         {tab === "summary" ? (
           <div className="space-y-3 text-sm">
             <p>{schema.data?.summary ?? "No saved database summary is available."}</p>
-            <p className="text-xs text-text-3">Schema status: {connection.data?.schemaSyncStatus ?? "unknown"}</p>
+            <p className="text-xs text-text-3">Schema status: {ingestion.description}</p>
             <Link href={`/connections/${connectionId}`} className="text-xs font-semibold text-accent-2 underline">Open connection settings</Link>
           </div>
         ) : null}
@@ -335,26 +374,61 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
 
 export function ConversationView({ conversationId }: { conversationId: string }) {
   const conversation = useApiResource(() => conversationsApi.get(conversationId), [conversationId]);
+  const connection = useApiResource(
+    () => conversation.data?.connectionId ? connectionsApi.get(conversation.data.connectionId) : Promise.resolve(null),
+    [conversation.data?.connectionId],
+  );
   const messages = useApiResource(() => conversationsApi.messages(conversationId, 100), [conversationId]);
   const dashboards = useApiResource(() => dashboardsApi.list(100), []);
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const ordered = useMemo(() => messages.data?.items.slice().sort((a, b) => a.sequence - b.sequence) ?? [], [messages.data]);
+  const latestRun = useMemo(() => ordered.slice().reverse().find((message) => message.queryRun)?.queryRun ?? null, [ordered]);
   const dashboardOptions = useMemo(
     () => dashboards.data?.items.filter((item) => item.access === "owner").map((item) => ({ value: item.id, label: item.name })) ?? [],
     [dashboards.data],
   );
+  const ingestion = getIngestionStatusView(connection.data?.schemaSyncStatus);
+  const refreshConnection = connection.refresh;
+  const composerDisabledReason = conversation.data && connection.data && !ingestion.ready ? ingestion.description : null;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [ordered.length, submitting]);
 
+  useEffect(() => {
+    if (!connection.data || ingestion.terminal) return;
+    const timer = window.setInterval(() => void refreshConnection(), 5000);
+    return () => window.clearInterval(timer);
+  }, [connection.data, refreshConnection, ingestion.terminal]);
+
+  function handleQueryEvent(event: QueryStreamEvent) {
+    if (event.type === "status") {
+      const data = event.data as { status?: string; label?: string };
+      setStreamStatus(data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working"));
+    }
+    if (event.type === "sql-preview") setStreamStatus("Validating SQL");
+    if (event.type === "query-stats") setStreamStatus("Preparing results");
+    if (event.type === "text-delta") setStreamStatus("Writing answer");
+    if (event.type === "completed") setStreamStatus("Complete");
+    if (event.type === "failed") {
+      const data = event.data as { error?: { message?: string } };
+      setStreamStatus("Failed");
+      setError(data.error?.message ?? "Unable to submit query");
+    }
+  }
+
   async function submit(event?: FormEvent) {
     event?.preventDefault();
     if (!question.trim()) return;
+    if (composerDisabledReason) {
+      setError(composerDisabledReason);
+      return;
+    }
     const apiKey = window.localStorage.getItem(STORAGE_KEYS.apiKey) ?? "";
     const provider = window.localStorage.getItem(STORAGE_KEYS.provider) ?? "";
     const model = window.localStorage.getItem(STORAGE_KEYS.model) ?? "";
@@ -364,14 +438,17 @@ export function ConversationView({ conversationId }: { conversationId: string })
     }
     setSubmitting(true);
     setError(null);
+    setStreamStatus("Queued");
     try {
-      await conversationsApi.submit({ conversationId, question: question.trim(), provider, model, apiKey });
+      await conversationsApi.submitStream({ conversationId, question: question.trim(), provider, model, apiKey }, handleQueryEvent);
       setQuestion("");
       await messages.refresh();
+      await conversation.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit query");
     } finally {
       setSubmitting(false);
+      setStreamStatus(null);
     }
   }
 
@@ -407,8 +484,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
   if (conversation.error || !conversation.data) return <div className="p-6"><ErrorState error={conversation.error ?? new Error("Conversation not found")} onRetry={() => void conversation.refresh()} /></div>;
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen">
-      <section className="flex h-full min-h-0 flex-col bg-bg">
+    <div className="flex h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen">
+      <section className="flex h-full min-w-0 flex-1 flex-col bg-bg">
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.loading ? (
             <LoadingState label="Loading messages" />
@@ -421,9 +498,15 @@ export function ConversationView({ conversationId }: { conversationId: string })
               <p className="mt-1 text-sm text-text-3">Try one of these to get started.</p>
               <div className="mt-5 grid gap-2 sm:grid-cols-3">
                 {suggestions.map((suggestion) => (
-                  <button key={suggestion} onClick={() => setQuestion(suggestion)} className="rounded-lg border border-border bg-surface p-3 text-left text-xs transition hover:border-border-2 hover:bg-surface-2">{suggestion}</button>
+                  <button key={suggestion} disabled={Boolean(composerDisabledReason)} onClick={() => setQuestion(suggestion)} className="rounded-lg border border-border bg-surface p-3 text-left text-xs transition hover:border-border-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60">{suggestion}</button>
                 ))}
               </div>
+              {composerDisabledReason ? (
+                <div className="mt-5 inline-flex items-center gap-2 rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  <AlertTriangle className="size-3.5" />
+                  {composerDisabledReason}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mx-auto max-w-3xl space-y-6">
@@ -444,7 +527,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
                 <div className="flex items-center gap-3">
                   <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Sparkles className="size-4" /></span>
                   <span className="inline-flex items-center gap-2 rounded-2xl rounded-tl-sm border border-border bg-surface px-4 py-2.5 text-sm text-text-3">
-                    <Loader2 className="size-3.5 animate-spin" />Analyzing your data…
+                    <Loader2 className="size-3.5 animate-spin" />{streamStatus ?? "Analyzing your data..."}
                   </span>
                 </div>
               ) : null}
@@ -452,8 +535,17 @@ export function ConversationView({ conversationId }: { conversationId: string })
           )}
         </div>
 
-        <Composer question={question} setQuestion={setQuestion} onSubmit={() => void submit()} submitting={submitting} error={error} />
+        <Composer
+          question={question}
+          setQuestion={setQuestion}
+          onSubmit={() => void submit()}
+          submitting={submitting}
+          error={error}
+          disabledReason={composerDisabledReason}
+          readinessLabel={connection.loading ? "Checking schema" : ingestion.label}
+        />
       </section>
+      {conversation.data ? <ContextPanel connectionId={conversation.data.connectionId} latestRun={latestRun} /> : null}
     </div>
   );
 }

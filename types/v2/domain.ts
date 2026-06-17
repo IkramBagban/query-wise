@@ -3,7 +3,7 @@ import type { BoundedResultPreview, CanonicalDataSourceMetadata, DataSourceCapab
 import type { EncryptedPayload } from "./security";
 
 export type ConnectionStatus = "pending" | "connected" | "error" | "disabled" | "deleting" | "deleted";
-export type SchemaSyncStatus = "never" | "queued" | "running" | "ready" | "error";
+export type SchemaSyncStatus = "never" | "queued" | "running" | "introspecting" | "describing" | "embedding" | "ready" | "error";
 export type SchemaSnapshotStatus = "queued" | "syncing" | "succeeded" | "failed" | "superseded";
 export type ConversationStatus = "active" | "archived";
 export type MessageRole = "user" | "assistant" | "system";

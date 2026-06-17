@@ -37,12 +37,12 @@ function deterministicJobRowId(idempotencyKey: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-export function schemaIngestionJobId(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint">): string {
-  const dedupeKey = input.schemaFingerprint ?? input.intent;
+export function schemaIngestionJobId(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint" | "requestedAt">): string {
+  const dedupeKey = input.schemaFingerprint ?? `${input.intent}:${input.requestedAt}`;
   return `schema-ingestion:${input.connectionId}:${dedupeKey}`;
 }
 
-export function schemaIngestionIdempotencyKey(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint">): string {
+export function schemaIngestionIdempotencyKey(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint" | "requestedAt">): string {
   return createHash("sha256").update(schemaIngestionJobId(input)).digest("hex");
 }
 

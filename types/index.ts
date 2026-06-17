@@ -43,6 +43,8 @@ export interface SchemaTable {
  * Full database schema context used by backend and LLM prompts.
  */
 export interface SchemaInfo {
+  connectionId?: string;
+  schemaFingerprint?: string | null;
   tables: SchemaTable[];
   relationships: Relationship[];
   summary: string; // Human-readable schema summary generated during introspection
