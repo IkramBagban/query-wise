@@ -1,5 +1,8 @@
 import type { ChatMessage, SchemaInfo, SchemaTable } from "@/types";
 
+const SAMPLE_ROWS_ENABLED = process.env.QUERYWISE_LLM_INCLUDE_SAMPLE_ROWS === "true";
+const SENSITIVE_COLUMN_PATTERN = /(^|_)(email|phone|password|secret|token|key|address|name|first_name|last_name|full_name|ip|ssn|dob)($|_)/i;
+
 export interface TableCandidate {
   tableName: string;
   summary: string;
@@ -36,6 +39,27 @@ function tableRelationshipHints(schema: SchemaInfo, tableName: string): string[]
     .map((relationship) => `${relationship.fromTable}.${relationship.fromColumn} -> ${relationship.toTable}.${relationship.toColumn}`);
 }
 
+function redactSampleValue(columnName: string, value: unknown): unknown {
+  if (value == null) return value;
+  if (SENSITIVE_COLUMN_PATTERN.test(columnName)) return "[redacted]";
+  if (typeof value === "string") {
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "[redacted-email]";
+    if (value.length > 80) return `${value.slice(0, 77)}...`;
+  }
+  return value;
+}
+
+function redactedSampleRows(table: SchemaTable): Record<string, unknown>[] {
+  if (!SAMPLE_ROWS_ENABLED) return [];
+  return (table.sampleData ?? []).slice(0, 2).map((row) =>
+    Object.fromEntries(
+      Object.entries(row)
+        .slice(0, 20)
+        .map(([key, value]) => [key, redactSampleValue(key, value)]),
+    ),
+  );
+}
+
 export function toTableCandidate(schema: SchemaInfo, table: SchemaTable, score: number): TableCandidate {
   const relationshipHints = tableRelationshipHints(schema, table.name);
   const keyColumns = table.columns
@@ -52,7 +76,7 @@ export function toTableCandidate(schema: SchemaInfo, table: SchemaTable, score: 
         range ? `${column.name} range: ${range}` : null,
       ].filter((value): value is string => Boolean(value));
     }),
-    ...(table.sampleData?.slice(0, 2).map((row) => `sample row: ${JSON.stringify(row)}`) ?? []),
+    ...redactedSampleRows(table).map((row) => `sample row: ${JSON.stringify(row)}`),
   ].slice(0, 12);
   return {
     tableName: tableDisplayName(table),
@@ -109,8 +133,9 @@ export function formatSkinnySchemaForPrompt(params: {
         return `  - ${column.name}: ${column.fullType ?? column.type} (${flags})${sample ? `; ${sample}` : ""}`;
       })
       .join("\n");
-    const sampleRows = table.sampleData?.length
-      ? `\nSample rows:\n${table.sampleData.slice(0, 2).map((row) => `  - ${JSON.stringify(row)}`).join("\n")}`
+    const rows = redactedSampleRows(table);
+    const sampleRows = rows.length
+      ? `\nSample rows:\n${rows.map((row) => `  - ${JSON.stringify(row)}`).join("\n")}`
       : "";
     return `Table ${table.name}\n${columns}${sampleRows}`;
   });

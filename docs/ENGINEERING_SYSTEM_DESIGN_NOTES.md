@@ -1319,7 +1319,8 @@ Why this is the right approach:
 
 - What changed: Saved connections now enqueue BullMQ-backed schema ingestion, persist enrichment progress on schema snapshots, write table/question embeddings to `v2_schema_embeddings` when pgvector is available, and gate query execution until schema status is ready. Query runs now use a staged pipeline: rewrite, retrieve, table select, column prune, SQL generate, safe execute, and explain.
 - Why: Large customer schemas need retrieval and column pruning instead of sending full metadata to the SQL-generation prompt.
-- Tradeoffs and risks: The worker requires Redis plus server-side ingestion LLM settings, and vector retrieval falls back to lexical scoring if pgvector rows are unavailable.
+- Tradeoffs and risks: The worker requires Redis plus server-side ingestion LLM settings. Current pgvector rows use deterministic lexical feature hashing, not provider-native semantic embeddings, so retrieval is isolated and ranked but should be upgraded to real embedding models before relying on Pinterest-style semantic matching quality at 200+ table scale.
+- Data handling: Raw sample rows are excluded from NL-to-SQL prompts unless `QUERYWISE_LLM_INCLUDE_SAMPLE_ROWS=true`; when enabled, sample rows are capped and sensitive-looking fields are redacted before prompt construction.
 - How to test:
   1. Run `npm run db:validate`, `npx tsc --noEmit --pretty false --incremental false`, and `npm run build`.
   2. Create or refresh a connection and run `npm run worker:schema-ingestion` with Redis configured.
