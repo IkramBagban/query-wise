@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DashboardGrid } from "@/components/v2/DashboardGrid";
 import { PageHeader } from "@/components/v2/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
-import { V2Chart } from "@/components/v2/V2Chart";
 import { useApiResource } from "@/hooks/v2";
 import { dashboardsApi } from "@/lib/v2/api-client";
+import type { WidgetLayout } from "@/types/v2";
 
 export function DashboardsListView() {
   const resource = useApiResource(() => dashboardsApi.list(50), []);
@@ -43,5 +44,10 @@ export function DashboardDetailView({ dashboardId, editor = false }: { dashboard
     catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to update widget"); }
     finally { setBusyWidget(null); }
   }
-  return <div className="space-y-6"><PageHeader eyebrow={editor ? "Dashboard editor" : "Dashboard"} title={dashboard.name} description={`${dashboard.widgets.length} snapshot widgets · ${dashboard.access} access`} actions={<>{owner && !editor ? <Link href={`/dashboards/${dashboardId}/edit`} className="rounded-md border border-border bg-surface px-4 py-2 text-sm">Edit layout</Link> : null}{editor ? <Link href={`/dashboards/${dashboardId}`} className="rounded-md border border-border bg-surface px-4 py-2 text-sm">Done editing</Link> : null}{owner ? <Button onClick={() => setShareOpen(true)}><Share2 className="h-4 w-4" />Share</Button> : null}</>} />{error ? <p className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">{error}</p> : null}{!dashboard.widgets.length ? <EmptyState title="No widgets yet" description="Save a query result from a conversation to populate this dashboard." /> : <div className="grid gap-4 lg:grid-cols-2">{dashboard.widgets.map((widget) => <Card key={widget.id} className="overflow-hidden"><div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3"><div><h2 className="font-medium">{widget.title}</h2>{editor ? <p className="text-xs text-text-3">Layout: {widget.layout.x}, {widget.layout.y} · {widget.layout.w}×{widget.layout.h}</p> : null}</div>{editor && owner ? <div className="flex gap-1"><Button size="sm" variant="ghost" loading={busyWidget === widget.id} onClick={() => void mutateWidget(widget.id, () => dashboardsApi.updateWidget(dashboardId, widget.id, { layout: { ...widget.layout, w: Math.max(1, widget.layout.w - 1) } }))}>Narrower</Button><Button size="sm" variant="ghost" loading={busyWidget === widget.id} onClick={() => void mutateWidget(widget.id, () => dashboardsApi.updateWidget(dashboardId, widget.id, { layout: { ...widget.layout, w: Math.min(1000, widget.layout.w + 1) } }))}>Wider</Button><Button size="sm" variant="danger" loading={busyWidget === widget.id} onClick={() => void mutateWidget(widget.id, () => dashboardsApi.removeWidget(dashboardId, widget.id))}><Trash2 className="h-3.5 w-3.5" />Remove</Button></div> : null}</div><div className="min-h-64 p-3"><V2Chart preview={widget.snapshot} config={widget.chartConfig} /></div></Card>)}</div>}<ShareControls dashboardId={dashboardId} open={shareOpen} onOpenChange={setShareOpen} /></div>;
+  async function persistLayouts(widgets: Array<{ id: string; layout: WidgetLayout }>) {
+    setError(null);
+    try { await dashboardsApi.updateWidgetLayouts(dashboardId, widgets); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save layout"); throw reason; }
+  }
+  return <div className="space-y-6"><PageHeader eyebrow={editor ? "Dashboard editor" : "Dashboard"} title={dashboard.name} description={`${dashboard.widgets.length} snapshot widgets · ${dashboard.access} access`} actions={<>{owner && !editor ? <Link href={`/dashboards/${dashboardId}/edit`} className="rounded-md border border-border bg-surface px-4 py-2 text-sm">Edit layout</Link> : null}{editor ? <Link href={`/dashboards/${dashboardId}`} className="rounded-md border border-border bg-surface px-4 py-2 text-sm">Done editing</Link> : null}{owner ? <Button onClick={() => setShareOpen(true)}><Share2 className="h-4 w-4" />Share</Button> : null}</>} />{error ? <p className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">{error}</p> : null}{!dashboard.widgets.length ? <EmptyState title="No widgets yet" description="Save a query result from a conversation to populate this dashboard." /> : <DashboardGrid widgets={dashboard.widgets} editable={editor && owner} busyWidget={busyWidget} onRemoveWidget={(widgetId) => void mutateWidget(widgetId, () => dashboardsApi.removeWidget(dashboardId, widgetId))} onPersistLayouts={persistLayouts} />}<ShareControls dashboardId={dashboardId} open={shareOpen} onOpenChange={setShareOpen} /></div>;
 }

@@ -247,3 +247,20 @@ body::before {
 .signin-cta {
   background: linear-gradient(132deg, #66b444 0%, #3f9638 58%, #256d2f 100%);
 }
+
+.dashboard-grid-card {
+  grid-column: span 1 / span 1;
+  grid-row: span var(--dashboard-row-span) / span var(--dashboard-row-span);
+}
+
+@media (min-width: 768px) {
+  .dashboard-grid-card {
+    grid-column: span var(--dashboard-md-col-span) / span var(--dashboard-md-col-span);
+  }
+}
+
+@media (min-width: 1280px) {
+  .dashboard-grid-card {
+    grid-column: span var(--dashboard-col-span) / span var(--dashboard-col-span);
+  }
+}

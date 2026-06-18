@@ -155,6 +155,14 @@ export const dashboardsApi = {
       method: "PATCH",
       body: input,
     }),
+  updateWidgetLayouts: (
+    dashboardId: string,
+    widgets: Array<{ id: string; layout: import("./types").CreateWidgetInput["layout"] }>,
+  ) =>
+    apiRequest<{ id: string; updatedAt: string }>(`/api/dashboards/${dashboardId}/widgets`, {
+      method: "PATCH",
+      body: { widgets },
+    }),
   removeWidget: (dashboardId: string, widgetId: string) =>
     apiRequest<void>(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, { method: "DELETE" }),
 };

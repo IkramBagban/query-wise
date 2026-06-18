@@ -1346,3 +1346,16 @@ Why this is the right approach:
 - Why: BullMQ rejects custom job IDs containing `:`, and ISO timestamps include colons, so schema ingestion publish failed after a connection was created.
 - Tradeoffs and risks: Job IDs are less human-readable, but development logs still include connection ID and intent alongside the hashed ID.
 - How to test: Create or refresh a connection with Redis configured, confirm `schema-ingestion.publish.succeeded` is logged, and run the worker to verify the connection leaves `queued`.
+
+## 50) Durable dashboard layout editing
+
+- What changed: The v2 dashboard detail view now renders widgets through a layout-aware grid. Owners can unlock edit mode, drag widgets by the visible grip handle, resize them from the visible bottom-right corner handle, and persist the snapped widget layouts through the existing `PATCH /api/dashboards/:dashboardId/widgets` batch endpoint.
+- Why: The open-source drag/drop spec did not match this repo's implementation: `react-grid-layout` and the referenced BI files are not present, while the v2 dashboard backend already stores per-widget `layout`. Reusing that contract adds the required behavior without new dependencies or backend schema changes.
+- Tradeoffs and risks: Layout editing uses a lightweight native pointer/drag implementation instead of a dedicated grid library. It supports the assignment workflow and keeps dependency surface small, but it does not provide advanced collision behavior beyond row-packed snapping.
+- How to test:
+  1. Open an owned dashboard with multiple widgets and go to `/dashboards/:dashboardId/edit`.
+  2. Unlock layout, drag a widget using the grip handle, and confirm it snaps into the grid.
+  3. Resize a widget with the bottom-right handle and confirm the saved width/height changes.
+  4. Refresh the dashboard and verify the layout is restored from the backend.
+  5. Lock layout and confirm drag/resize actions are disabled.
+  6. Check mobile/tablet widths and confirm widgets stack or fit within the responsive grid.
