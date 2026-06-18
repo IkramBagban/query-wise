@@ -58,7 +58,7 @@ export function AreaChartView({ result, xKey, yKey, yKeys }: AreaChartViewProps)
   const shouldRotateTicks = result.rows.length > 8 || (!isDateLikeAxis && hasLongLabels);
   const tickInterval: number | "preserveStartEnd" = isVeryDenseAxis ? "preserveStartEnd" : 0;
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height="100%">
       <AreaChart
         data={result.rows}
         margin={{ top: 8, right: 10, left: 6, bottom: shouldRotateTicks ? 52 : 16 }}

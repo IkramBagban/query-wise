@@ -51,7 +51,7 @@ export function BarChartView({ result, xKey, yKey, yKeys }: BarChartViewProps) {
   const tickInterval: number | "preserveStartEnd" = isVeryDenseAxis ? "preserveStartEnd" : 0;
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={result.rows}
         margin={{ top: 8, right: 10, left: 6, bottom: shouldRotateTicks ? 52 : 16 }}

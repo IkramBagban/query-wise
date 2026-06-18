@@ -4,6 +4,8 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 import { AppStateProvider } from "@/store/app-state";
 import { ToastProvider } from "@/components/ui/toast";
 

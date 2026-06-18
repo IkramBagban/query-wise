@@ -168,9 +168,9 @@ export const dashboardsApi = {
 };
 
 export const publicSharesApi = {
-  get: (token: string) => apiRequest<PublicDashboardDto>(`/api/public/shares/${token}`),
+  get: (token: string) => apiRequest<PublicDashboardDto>(`/api/public/shares/${encodeURIComponent(token)}`),
   unlock: (token: string, password: string) =>
-    apiRequest<ShareUnlockResult>(`/api/public/shares/${token}/unlock`, {
+    apiRequest<ShareUnlockResult>(`/api/public/shares/${encodeURIComponent(token)}/unlock`, {
       method: "POST",
       body: { password },
     }),

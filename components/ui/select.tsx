@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,7 @@ interface SelectProps {
   menuAlign?: "left" | "right" | "mobile-right-desktop-left";
   menuMinWidthClassName?: string;
   disabled?: boolean;
+  icon?: ReactNode;
 }
 
 export function Select({
@@ -35,6 +36,7 @@ export function Select({
   menuAlign = "left",
   menuMinWidthClassName,
   disabled,
+  icon,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -72,6 +74,7 @@ export function Select({
         )}
         onClick={() => !disabled && setOpen((prev) => !prev)}
       >
+        {icon ? <span className="flex shrink-0 items-center text-text-3">{icon}</span> : null}
         <span className="truncate">{selected?.label ?? "Select"}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 text-text-3 transition-transform", open && "rotate-180")} />
       </button>

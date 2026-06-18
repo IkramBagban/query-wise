@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, LayoutGrid, Trash2 } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
@@ -12,9 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { dashboardsApi } from "@/lib/v2/api-client";
 import type { DashboardDto } from "@/lib/v2/api-client";
-
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
 
 type DashboardWidget = DashboardDto["widgets"][number];
 
@@ -97,7 +94,12 @@ export function DashboardGrid({
     };
   }, []);
 
-  const widgetMap = new Map(widgets.map((w) => [w.id, w]));
+  const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
+
+  const stableLayouts = useMemo(
+    () => ({ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }),
+    [layout],
+  );
 
   return (
     <div className="space-y-2">
@@ -135,13 +137,7 @@ export function DashboardGrid({
         {mounted && (
           <ResponsiveGridLayout
             width={width}
-            layouts={{
-              lg: layout,
-              md: layout,
-              sm: layout,
-              xs: layout,
-              xxs: layout,
-            }}
+            layouts={stableLayouts}
             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
             cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
             rowHeight={80}
@@ -182,8 +178,10 @@ export function DashboardGrid({
                         </Button>
                       ) : null}
                     </div>
-                    <div className="min-h-0 flex-1 p-3">
-                      <V2Chart preview={widget.snapshot} config={widget.chartConfig} />
+                    <div className="min-h-0 flex-1 overflow-hidden p-3">
+                      <div className="h-full w-full">
+                        <V2Chart preview={widget.snapshot} config={widget.chartConfig} />
+                      </div>
                     </div>
                   </Card>
                 </div>

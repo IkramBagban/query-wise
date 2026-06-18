@@ -258,7 +258,7 @@ export function ConversationResultCard({
                   <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />
                 </div>
               </div>
-              <div className="min-w-0 rounded-lg bg-surface-2/40 p-1"><V2Chart preview={preview} config={config} /></div>
+              <div className="min-w-0 h-80 rounded-lg bg-surface-2/40 p-1"><V2Chart preview={preview} config={config} /></div>
             </>
           ) : run.generatedQuery ? <CodeBlock sql={run.generatedQuery.text} variant="dark" /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">No SQL was generated for this response.</p>}
         </div>
@@ -290,7 +290,7 @@ export function ConversationResultCard({
           </div>
         </div>
 
-        <div className="mt-5 min-h-[360px] rounded-xl border border-border bg-surface-2/40 p-3">
+        <div className="mt-5 h-90 rounded-xl border border-border bg-surface-2/40 p-3">
           {detailsView === "chart" ? <V2Chart preview={preview} config={config} /> : <TableView result={result} />}
         </div>
         <details className="mt-5 overflow-hidden rounded-xl border border-border bg-[#102117] text-white shadow-sm">

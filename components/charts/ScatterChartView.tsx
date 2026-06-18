@@ -29,7 +29,7 @@ export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartView
     result.rows.map((row) => ({ x: row[xKey], y: row[seriesKey] })),
   );
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height="100%">
       <ScatterChart>
         <CartesianGrid stroke="var(--border)" />
         <XAxis dataKey="x" stroke="var(--text-3)" tick={{ fontSize: 12 }} />

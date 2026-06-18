@@ -85,7 +85,8 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
 
   if (connections.loading) {
     return (
-      <div className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-border px-3 text-xs text-text-3">
+      <div className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs text-text-3">
+        <Database className="size-3.5 shrink-0 text-text-3" />
         <Loader2 className="size-3.5 animate-spin" />
         <span>Loading…</span>
       </div>
@@ -97,9 +98,9 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
       <button
         type="button"
         onClick={() => void connections.refresh()}
-        className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-danger/40 px-3 text-xs text-danger hover:bg-danger/5"
+        className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-danger/40 bg-surface px-3 text-xs text-danger hover:bg-danger/5"
       >
-        <Database className="size-3.5" />
+        <Database className="size-3.5 shrink-0" />
         Could not load — retry
       </button>
     );
@@ -115,13 +116,20 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
   const separatorOption = { value: "__sep__", label: "", separator: true };
   const addOption = { value: "__add__", label: "+ Add connection" };
 
-  const options = [demoOption, ...connectionOptions, separatorOption, addOption];
+  const options = [
+    { value: "", label: "Select database" },
+    demoOption,
+    ...connectionOptions,
+    separatorOption,
+    addOption,
+  ];
 
   function handleChange(selected: string) {
     if (selected === "__add__") {
       router.push("/connections/new");
       return;
     }
+    if (selected === "") return;
     onChange(selected);
     if (selected !== "__demo__") {
       window.sessionStorage.setItem(STORAGE_KEYS.connection, selected);
@@ -132,12 +140,13 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
 
   return (
     <Select
-      className="min-w-40"
+      className="min-w-44"
       value={value ?? ""}
       onChange={handleChange}
       options={options}
       menuSide="top"
       disabled={disabled}
+      icon={<Database size={12} />}
     />
   );
 }
@@ -152,14 +161,14 @@ export function WorkspaceHomeView() {
         eyebrow="Workspace"
         title="Recent conversations"
         description="Reopen a durable conversation or start a new analysis."
-        actions={<Link href="/chats/new" className="inline-flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium"><MessageSquarePlus className="h-4 w-4" />New chat</Link>}
+        actions={<Link href="/workspace/new" className="inline-flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium"><MessageSquarePlus className="h-4 w-4" />New chat</Link>}
       />
       {conversations.loading ? (
         <LoadingState label="Loading conversations" />
       ) : conversations.error ? (
         <ErrorState error={conversations.error} onRetry={() => void conversations.refresh()} />
       ) : !conversations.data?.items.length ? (
-        <EmptyState title="No conversations yet" description="Start a chat by choosing one of your saved connections." action={<Link href="/chats/new" className="rounded-md bg-accent px-4 py-2 text-sm font-medium">Start new chat</Link>} />
+        <EmptyState title="No conversations yet" description="Start a chat by choosing one of your saved connections." action={<Link href="/workspace/new" className="rounded-md bg-accent px-4 py-2 text-sm font-medium">Start new chat</Link>} />
       ) : (
         <div className="space-y-2">
           {conversations.data.items.map((conversation) => (
@@ -523,9 +532,6 @@ function Composer({
             className="min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-text-3 disabled:cursor-not-allowed"
           />
           <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
-            <button type="button" aria-label="Attach" title="Attach file" className="rounded-md border border-border p-2 text-text-3 hover:bg-surface-2 hover:text-text-1"><Paperclip className="size-4" /></button>
-            <Select className="min-w-28" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
-            <Select className="min-w-44" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
             {onConnectionChange !== undefined ? (
               <ConnectionPicker value={connectionId ?? null} onChange={onConnectionChange} />
             ) : lockedConnectionName ? (
@@ -537,6 +543,9 @@ function Composer({
                 {lockedConnectionName}
               </span>
             ) : null}
+            <button type="button" aria-label="Attach" title="Attach file" className="rounded-md border border-border p-2 text-text-3 hover:bg-surface-2 hover:text-text-1"><Paperclip className="size-4" /></button>
+            <Select className="min-w-28" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
+            <Select className="min-w-44" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
 
             <div className="ml-auto flex items-center gap-2">
               <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="h-9 px-4">
@@ -710,7 +719,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
         {/* Conversation header */}
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
           <Link
-            href="/chats/new"
+            href="/workspace/new"
             className="flex items-center gap-1.5 text-xs text-text-3 transition hover:text-text-1"
           >
             ← Home

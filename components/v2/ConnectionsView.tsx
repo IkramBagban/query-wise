@@ -213,22 +213,25 @@ function ConnectionFormFields({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-[1fr_auto] gap-3">
-        <Input
-          required
-          label="Host"
-          value={fields.host}
-          onChange={(e) => set("host", e.target.value)}
-          placeholder="db.example.com"
-        />
-        <Input
-          required
-          label="Port"
-          type="number"
-          value={String(fields.port)}
-          onChange={(e) => set("port", Number(e.target.value))}
-          className="w-24"
-        />
+      <div className="flex gap-3">
+        <div className="flex-1 min-w-0">
+          <Input
+            required
+            label="Host"
+            value={fields.host}
+            onChange={(e) => set("host", e.target.value)}
+            placeholder="db.example.com"
+          />
+        </div>
+        <div className="w-24 shrink-0">
+          <Input
+            required
+            label="Port"
+            type="number"
+            value={String(fields.port)}
+            onChange={(e) => set("port", Number(e.target.value))}
+          />
+        </div>
       </div>
       <Input
         required
@@ -318,7 +321,7 @@ function AddConnectionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} panelClassName="max-w-xl">
+    <Dialog open={open} onOpenChange={onOpenChange} panelClassName="max-w-xl max-h-[90vh] overflow-y-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-2">New data source</p>

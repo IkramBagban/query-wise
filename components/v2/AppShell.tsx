@@ -127,7 +127,7 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mb-1.5 flex items-center justify-between px-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Chats</p>
         <Link
-          href="/chats/new"
+          href="/workspace/new"
           onClick={onNavigate}
           aria-label="New chat"
           title="New chat"
@@ -230,7 +230,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
         {/* Logo icon */}
         <Tooltip content="QueryWise" side="right">
           <Link
-            href="/chats/new"
+            href="/workspace/new"
             onClick={onNavigate}
             aria-label="QueryWise home"
             className="mb-1 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"
@@ -253,7 +253,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
 
         {/* Nav icons */}
         <div className="flex flex-col items-center gap-1">
-          <IconNavLink href="/chats/new" label="Home" icon={Home} onClick={onNavigate} />
+          <IconNavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <IconNavButton label="Search chats" icon={Search} onClick={openSearch} />
           <IconNavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
           <IconNavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} />
@@ -264,7 +264,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
         {/* New chat */}
         <Tooltip content="New chat" side="right">
           <Link
-            href="/chats/new"
+            href="/workspace/new"
             onClick={onNavigate}
             aria-label="New chat"
             className="flex h-9 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
@@ -287,7 +287,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
 
   return (
     <aside className="flex h-full flex-col bg-bg p-3">
-      <Link href="/chats/new" onClick={onNavigate} className="flex items-center gap-2.5 px-2 py-3 font-syne text-lg font-semibold tracking-tight">
+      <Link href="/workspace/new" onClick={onNavigate} className="flex items-center gap-2.5 px-2 py-3 font-syne text-lg font-semibold tracking-tight">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"><Sparkles className="h-4 w-4" /></span>
         QueryWise
       </Link>
@@ -307,7 +307,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
       <div className="border-b border-border pb-4">
         <p className="mb-1 mt-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Main</p>
         <nav className="space-y-1">
-          <NavLink href="/chats/new" label="Home" icon={Home} onClick={onNavigate} />
+          <NavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <NavButton label="Search chats" icon={Search} onClick={openSearch} />
           <NavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
           <NavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} />
