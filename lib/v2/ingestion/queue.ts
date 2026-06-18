@@ -40,7 +40,8 @@ function deterministicJobRowId(idempotencyKey: string): string {
 
 export function schemaIngestionJobId(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint" | "requestedAt">): string {
   const dedupeKey = input.schemaFingerprint ?? `${input.intent}:${input.requestedAt}`;
-  return `schema-ingestion:${input.connectionId}:${dedupeKey}`;
+  const dedupeHash = createHash("sha256").update(dedupeKey).digest("hex").slice(0, 16);
+  return `schema-ingestion-${input.connectionId}-${dedupeHash}`;
 }
 
 export function schemaIngestionIdempotencyKey(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint" | "requestedAt">): string {

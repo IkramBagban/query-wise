@@ -1339,3 +1339,10 @@ Why this is the right approach:
 - Why: Users need to remove connected databases directly from the management list, and keeping history intact preserves auditability while preventing future use of the removed connection.
 - Tradeoffs and risks: Historical conversations tied to a deleted connection remain in the database but cannot be opened through normal active-connection guards. A future archive UI could expose or purge this history explicitly.
 - How to test: Create a connection, optionally create a conversation for it, delete it from `/connections`, confirm it disappears from the list, and verify new chats cannot select the deleted connection.
+
+## 49) BullMQ-safe schema ingestion job IDs
+
+- What changed: Schema ingestion BullMQ job IDs now use a hyphenated connection prefix plus a short SHA-256 dedupe hash instead of colon-delimited raw intent/timestamp strings.
+- Why: BullMQ rejects custom job IDs containing `:`, and ISO timestamps include colons, so schema ingestion publish failed after a connection was created.
+- Tradeoffs and risks: Job IDs are less human-readable, but development logs still include connection ID and intent alongside the hashed ID.
+- How to test: Create or refresh a connection with Redis configured, confirm `schema-ingestion.publish.succeeded` is logged, and run the worker to verify the connection leaves `queued`.
