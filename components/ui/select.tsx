@@ -8,6 +8,11 @@ import { cn } from "@/lib/utils";
 interface SelectOption {
   label: string;
   value: string;
+  separator?: boolean;
+}
+
+export function SelectSeparator({ className }: { className?: string }) {
+  return <div role="separator" className={cn("-mx-1 my-1 border-t border-border", className)} />;
 }
 
 interface SelectProps {
@@ -78,7 +83,10 @@ export function Select({
             menuMinWidthClassName,
           )}
         >
-          {options.map((option) => {
+          {options.map((option, index) => {
+            if (option.separator) {
+              return <SelectSeparator key={`sep-${index}`} />;
+            }
             const isActive = option.value === value;
             return (
               <button

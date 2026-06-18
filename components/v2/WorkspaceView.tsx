@@ -71,9 +71,11 @@ function formatClockTime(value: string) {
 interface ConnectionPickerProps {
   value: string | null;
   onChange: (id: string) => void;
+  disabled?: boolean;
 }
 
 function ConnectionPicker({ value, onChange }: ConnectionPickerProps) {
+  const router = useRouter();
   const connections = useApiResource(() => connectionsApi.list(100), []);
 
   if (connections.loading) {
@@ -105,13 +107,14 @@ function ConnectionPicker({ value, onChange }: ConnectionPickerProps) {
     value: item.id,
     label: item.name,
   }));
+  const separatorOption = { value: "__sep__", label: "", separator: true };
   const addOption = { value: "__add__", label: "+ Add connection" };
 
-  const options = [demoOption, ...connectionOptions, addOption];
+  const options = [demoOption, ...connectionOptions, separatorOption, addOption];
 
   function handleChange(selected: string) {
     if (selected === "__add__") {
-      window.location.href = "/connections/new";
+      router.push("/connections/new");
       return;
     }
     onChange(selected);
@@ -257,6 +260,29 @@ export function NewConversationView() {
   );
 }
 
+/* ---------------------- Shared query event handler ------------------------ */
+
+function makeQueryEventHandler(
+  setStreamStatus: (status: string | null) => void,
+  setError: (error: string | null) => void,
+) {
+  return function handleQueryEvent(event: QueryStreamEvent) {
+    if (event.type === "status") {
+      const data = event.data as { status?: string; label?: string };
+      setStreamStatus(data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working"));
+    }
+    if (event.type === "sql-preview") setStreamStatus("Validating SQL");
+    if (event.type === "query-stats") setStreamStatus("Preparing results");
+    if (event.type === "text-delta") setStreamStatus("Writing answer");
+    if (event.type === "completed") setStreamStatus("Complete");
+    if (event.type === "failed") {
+      const data = event.data as { error?: { message?: string } };
+      setStreamStatus("Failed");
+      setError(data.error?.message ?? "Unable to submit query");
+    }
+  };
+}
+
 /* -------------------------- Empty workspace ------------------------------- */
 
 export function EmptyWorkspaceView() {
@@ -286,21 +312,7 @@ export function EmptyWorkspaceView() {
     return () => window.clearInterval(timer);
   }, [selectedConnection.data, selectedIngestion.terminal, refreshSelected]);
 
-  function handleQueryEvent(event: QueryStreamEvent) {
-    if (event.type === "status") {
-      const data = event.data as { status?: string; label?: string };
-      setStreamStatus(data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working"));
-    }
-    if (event.type === "sql-preview") setStreamStatus("Validating SQL");
-    if (event.type === "query-stats") setStreamStatus("Preparing results");
-    if (event.type === "text-delta") setStreamStatus("Writing answer");
-    if (event.type === "completed") setStreamStatus("Complete");
-    if (event.type === "failed") {
-      const data = event.data as { error?: { message?: string } };
-      setStreamStatus("Failed");
-      setError(data.error?.message ?? "Unable to submit query");
-    }
-  }
+  const handleQueryEvent = makeQueryEventHandler(setStreamStatus, setError);
 
   async function submit() {
     if (!question.trim() || !connectionId) return;
@@ -621,21 +633,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     return () => window.clearInterval(timer);
   }, [connection.data, refreshConnection, ingestion.terminal]);
 
-  function handleQueryEvent(event: QueryStreamEvent) {
-    if (event.type === "status") {
-      const data = event.data as { status?: string; label?: string };
-      setStreamStatus(data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working"));
-    }
-    if (event.type === "sql-preview") setStreamStatus("Validating SQL");
-    if (event.type === "query-stats") setStreamStatus("Preparing results");
-    if (event.type === "text-delta") setStreamStatus("Writing answer");
-    if (event.type === "completed") setStreamStatus("Complete");
-    if (event.type === "failed") {
-      const data = event.data as { error?: { message?: string } };
-      setStreamStatus("Failed");
-      setError(data.error?.message ?? "Unable to submit query");
-    }
-  }
+  const handleQueryEvent = makeQueryEventHandler(setStreamStatus, setError);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
