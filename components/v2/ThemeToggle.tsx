@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "querywise.theme";
 
-export function ThemeToggle() {
+// iconOnly is accepted for API consistency when used in collapsed sidebar mode
+export function ThemeToggle(_props: { iconOnly?: boolean } = {}) {
   const [dark, setDark] = useState(true);
 
   useEffect(() => {

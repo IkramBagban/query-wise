@@ -2,10 +2,10 @@
 
 import { UserButton } from "@clerk/nextjs";
 
-export function UserControl() {
+export function UserControl({ iconOnly = false }: { iconOnly?: boolean }) {
   return (
     <UserButton
-      showName
+      showName={!iconOnly}
       appearance={{
         elements: {
           userButtonBox: "text-text-1",

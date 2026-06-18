@@ -53,6 +53,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   });
   const [dashboard, setDashboard] = useState<Dashboard>(createFallbackDashboard);
   const [dashboardInitialized, setDashboardInitialized] = useState(false);
+  const [dashboardVersion, setDashboardVersion] = useState(0);
   const pendingQueryReset: PendingQueryState = {
     isLoading: false,
     stage: null,
@@ -175,6 +176,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const bumpDashboardVersion = useCallback(() => setDashboardVersion((v) => v + 1), []);
+
   const clearMessages = useCallback(() => {
     setMessages([]);
     setPendingQuery({
@@ -214,6 +217,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       dashboardInitialized,
       setDashboard,
       addDashboardWidget,
+      dashboardVersion,
+      bumpDashboardVersion,
     }),
     [
       connection,
@@ -229,6 +234,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSchemaAnalysis,
       saveConnection,
       clearMessages,
+      dashboardVersion,
+      bumpDashboardVersion,
     ],
   );
 

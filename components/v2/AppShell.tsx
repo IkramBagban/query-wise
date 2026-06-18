@@ -3,14 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BarChart3, ChevronRight, Database, Home, LoaderCircle, Menu, MessageSquare, Plus, Search, Settings, Sparkles, X } from "lucide-react";
+import {
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Home,
+  LoaderCircle,
+  Menu,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 import { ChatSearchDialog } from "@/components/v2/ChatSearchDialog";
 import { ThemeToggle } from "@/components/v2/ThemeToggle";
 import { UserControl } from "@/components/v2/auth/UserControl";
-import { useApiResource } from "@/hooks/v2";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useAppState } from "@/store/app-state/provider";
 import { formatRelativeTime } from "@/lib/utils";
-import { conversationsApi, dashboardsApi, type ConversationListItem } from "@/lib/v2/api-client";
+import { conversationsApi, dashboardsApi, type ConversationListItem, type DashboardListItem } from "@/lib/v2/api-client";
 
 function NavLink({ href, label, icon: Icon, onClick }: {
   href: string; label: string; icon: typeof Home; onClick?: () => void;
@@ -139,10 +156,66 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpenSearch: () => void }) {
+/* ----------------------------- Icon rail nav item ------------------------------ */
+
+function IconNavLink({ href, label, icon: Icon, onClick }: {
+  href: string; label: string; icon: typeof Home; onClick?: () => void;
+}) {
   const pathname = usePathname();
-  const dashboards = useApiResource(() => dashboardsApi.list(100), []);
-  const allDashboards = dashboards.data?.items ?? [];
+  const active = pathname === href || (href !== "/chats" && pathname.startsWith(`${href}/`));
+  return (
+    <Tooltip content={label} side="right">
+      <Link
+        href={href}
+        onClick={onClick}
+        aria-label={label}
+        className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${active ? "bg-accent-dim text-accent-2" : "text-text-3 hover:bg-surface-3 hover:text-text-1"}`}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+      </Link>
+    </Tooltip>
+  );
+}
+
+function IconNavButton({ label, icon: Icon, onClick }: { label: string; icon: typeof Home; onClick: () => void }) {
+  return (
+    <Tooltip content={label} side="right">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+      </button>
+    </Tooltip>
+  );
+}
+
+/* ----------------------------- Sidebar ---------------------------------- */
+
+interface SidebarProps {
+  onNavigate?: () => void;
+  onOpenSearch: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  dashboardVersion?: number;
+}
+
+function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashboardVersion = 0 }: SidebarProps) {
+  const pathname = usePathname();
+  const [dashboardItems, setDashboardItems] = useState<DashboardListItem[]>([]);
+  const [dashboardsLoading, setDashboardsLoading] = useState(false);
+
+  useEffect(() => {
+    setDashboardsLoading(true);
+    dashboardsApi.list(100)
+      .then((result) => { setDashboardItems(result.items ?? []); })
+      .catch(() => { setDashboardItems([]); })
+      .finally(() => { setDashboardsLoading(false); });
+  }, [dashboardVersion]); // re-fetch when a new dashboard is created
+
+  const allDashboards = dashboardItems;
   const visibleDashboards = allDashboards.slice(0, DASHBOARD_PREVIEW_COUNT);
   const hasMoreDashboards = allDashboards.length > DASHBOARD_PREVIEW_COUNT;
 
@@ -151,13 +224,87 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
     onOpenSearch();
   };
 
+  if (collapsed) {
+    return (
+      <aside className="flex h-full flex-col items-center bg-bg py-3">
+        {/* Logo icon */}
+        <Tooltip content="QueryWise" side="right">
+          <Link
+            href="/chats/new"
+            onClick={onNavigate}
+            aria-label="QueryWise home"
+            className="mb-1 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"
+          >
+            <Sparkles className="h-4 w-4" />
+          </Link>
+        </Tooltip>
+
+        {/* Expand toggle */}
+        <Tooltip content="Expand sidebar" side="right">
+          <button
+            type="button"
+            aria-label="Expand sidebar"
+            onClick={onToggleCollapse}
+            className="mb-3 flex h-7 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>
+
+        {/* Nav icons */}
+        <div className="flex flex-col items-center gap-1">
+          <IconNavLink href="/chats/new" label="Home" icon={Home} onClick={onNavigate} />
+          <IconNavButton label="Search chats" icon={Search} onClick={openSearch} />
+          <IconNavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
+          <IconNavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} />
+        </div>
+
+        <div className="my-3 h-px w-8 bg-border" />
+
+        {/* New chat */}
+        <Tooltip content="New chat" side="right">
+          <Link
+            href="/chats/new"
+            onClick={onNavigate}
+            aria-label="New chat"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+          >
+            <Pencil className="h-4 w-4" />
+          </Link>
+        </Tooltip>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Theme + user at bottom */}
+        <div className="flex flex-col items-center gap-2 pb-1">
+          <ThemeToggle iconOnly />
+          <UserControl iconOnly />
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="flex h-full flex-col bg-bg p-3">
       <Link href="/chats/new" onClick={onNavigate} className="flex items-center gap-2.5 px-2 py-3 font-syne text-lg font-semibold tracking-tight">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"><Sparkles className="h-4 w-4" /></span>
         QueryWise
       </Link>
-      <div className="mt-3 border-b border-border pb-4">
+
+      {/* Collapse toggle */}
+      <div className="flex justify-end px-2 pb-1">
+        <button
+          type="button"
+          aria-label="Collapse sidebar"
+          onClick={onToggleCollapse}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="border-b border-border pb-4">
         <p className="mb-1 mt-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Main</p>
         <nav className="space-y-1">
           <NavLink href="/chats/new" label="Home" icon={Home} onClick={onNavigate} />
@@ -194,8 +341,8 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
                 {item.widgetCount ? <span className="shrink-0 text-[10px] text-text-3">{item.widgetCount}</span> : null}
               </Link>
             ))}
-            {dashboards.loading && !allDashboards.length ? <p className="px-3 py-2 text-xs text-text-3">Loading dashboards...</p> : null}
-            {!dashboards.loading && !allDashboards.length ? <Link href="/dashboards" onClick={onNavigate} className="block rounded-lg px-3 py-2 text-xs text-text-3 hover:bg-surface-3 hover:text-text-1">Create your first dashboard</Link> : null}
+            {dashboardsLoading && !allDashboards.length ? <p className="px-3 py-2 text-xs text-text-3">Loading dashboards...</p> : null}
+            {!dashboardsLoading && !allDashboards.length ? <Link href="/dashboards" onClick={onNavigate} className="block rounded-lg px-3 py-2 text-xs text-text-3 hover:bg-surface-3 hover:text-text-1">Create your first dashboard</Link> : null}
             {hasMoreDashboards ? (
               <Link href="/dashboards" onClick={onNavigate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-text-3 transition hover:text-text-1">
                 View all <ChevronRight className="h-3.5 w-3.5" />
@@ -205,7 +352,10 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
         </section>
         <SidebarChatHistory onNavigate={onNavigate} />
       </div>
-      <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm"><div className="min-w-0 flex-1"><UserControl /></div><ThemeToggle /></div>
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm">
+        <div className="min-w-0 flex-1"><UserControl /></div>
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }
@@ -213,6 +363,8 @@ function Sidebar({ onNavigate, onOpenSearch }: { onNavigate?: () => void; onOpen
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [collapsed, setCollapsed] = useLocalStorage<boolean>("querywise.sidebar.collapsed", false);
+  const { dashboardVersion } = useAppState();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -226,9 +378,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="grid min-h-screen bg-bg lg:grid-cols-[260px_minmax(0,1fr)]">
-      <div className="hidden border-r border-border lg:block"><div className="sticky top-0 h-screen"><Sidebar onOpenSearch={() => setSearchOpen(true)} /></div></div>
-      <div className="min-w-0">
+    <div className="flex min-h-screen bg-bg">
+      {/* Desktop sidebar */}
+      <div
+        className={`hidden flex-shrink-0 border-r border-border transition-all duration-200 lg:block ${collapsed ? "w-[52px]" : "w-[240px]"}`}
+      >
+        <div className="sticky top-0 h-screen">
+          <Sidebar
+            onOpenSearch={() => setSearchOpen(true)}
+            collapsed={collapsed}
+            onToggleCollapse={() => setCollapsed(!collapsed)}
+            dashboardVersion={dashboardVersion}
+          />
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1">
         <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/90 px-3 backdrop-blur lg:hidden">
           <button aria-label="Open navigation" onClick={() => setNavOpen(true)} className="rounded-lg border border-border p-2"><Menu className="h-4 w-4" /></button>
           <span className="font-syne font-semibold">QueryWise</span>
@@ -236,8 +401,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <main className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen">{children}</main>
       </div>
+
       <ChatSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-      {navOpen ? <div className="fixed inset-0 z-50 lg:hidden"><button className="absolute inset-0 bg-black/40" onClick={() => setNavOpen(false)} aria-label="Close navigation" /><div className="relative h-full w-[86vw] max-w-[300px]"><Sidebar onNavigate={() => setNavOpen(false)} onOpenSearch={() => setSearchOpen(true)} /><button aria-label="Close navigation" className="absolute right-2 top-2 p-2" onClick={() => setNavOpen(false)}><X className="h-4 w-4" /></button></div></div> : null}
+
+      {navOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button className="absolute inset-0 bg-black/40" onClick={() => setNavOpen(false)} aria-label="Close navigation" />
+          <div className="relative h-full w-[86vw] max-w-[300px]">
+            <Sidebar
+              onNavigate={() => setNavOpen(false)}
+              onOpenSearch={() => setSearchOpen(true)}
+              collapsed={false}
+              onToggleCollapse={() => {}}
+              dashboardVersion={dashboardVersion}
+            />
+            <button aria-label="Close navigation" className="absolute right-2 top-2 p-2" onClick={() => setNavOpen(false)}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

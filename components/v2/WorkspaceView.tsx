@@ -9,6 +9,8 @@ import {
   Database,
   Loader2,
   MessageSquarePlus,
+  PanelRightClose,
+  PanelRightOpen,
   Paperclip,
   Send,
   Sparkles,
@@ -19,12 +21,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Select } from "@/components/ui/select";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/v2/ConversationResultCard";
 import { PageHeader } from "@/components/v2/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
 import { isBoundedResultPreview } from "@/components/v2/V2Chart";
 import { useApiResource } from "@/hooks/v2";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useAppState } from "@/store/app-state/provider";
 import { formatRelativeTime } from "@/lib/utils";
 import {
   connectionsApi,
@@ -534,7 +539,6 @@ function Composer({
             ) : null}
 
             <div className="ml-auto flex items-center gap-2">
-              {readinessLabel ? <span className="hidden text-xs text-text-3 sm:inline">{readinessLabel}</span> : null}
               <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="h-9 px-4">
                 <Send className="size-3.5" />Run
               </Button>
@@ -563,7 +567,7 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
   const [tab, setTab] = useState<"schema" | "sql" | "summary">("schema");
   const ingestion = getIngestionStatusView(connection.data?.schemaSyncStatus);
   return (
-    <aside className="hidden min-h-0 border-l border-border bg-surface lg:flex lg:flex-col">
+    <aside className="flex min-h-0 w-[320px] flex-col border-l border-border bg-surface">
       <div className="border-b border-border p-4">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-3">Active data source</p>
         <h2 className="mt-1 truncate font-medium">{connection.data?.name ?? "Loading connection"}</h2>
@@ -601,6 +605,8 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
 /* ------------------------------ Conversation ------------------------------ */
 
 export function ConversationView({ conversationId }: { conversationId: string }) {
+  const { bumpDashboardVersion } = useAppState();
+  const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>("querywise.contextPanel.open", false);
   const conversation = useApiResource(() => conversationsApi.get(conversationId), [conversationId]);
   const connection = useApiResource(
     () => conversation.data?.connectionId ? connectionsApi.get(conversation.data.connectionId) : Promise.resolve(null),
@@ -669,6 +675,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   async function createDashboard(name: string) {
     const dashboard = await dashboardsApi.create(name);
     void dashboards.refresh();
+    bumpDashboardVersion();
     return dashboard.id;
   }
 
@@ -700,6 +707,31 @@ export function ConversationView({ conversationId }: { conversationId: string })
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen">
       <section className="flex h-full min-w-0 flex-1 flex-col bg-bg">
+        {/* Conversation header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
+          <Link
+            href="/chats/new"
+            className="flex items-center gap-1.5 text-xs text-text-3 transition hover:text-text-1"
+          >
+            ← Home
+          </Link>
+          <span className="truncate px-4 text-xs font-medium text-text-2">
+            {conversation.data?.title ?? ""}
+          </span>
+          <Tooltip content={contextPanelOpen ? "Hide schema panel" : "Show schema panel"} side="top">
+            <button
+              type="button"
+              aria-label={contextPanelOpen ? "Hide schema panel" : "Show schema panel"}
+              onClick={() => setContextPanelOpen(!contextPanelOpen)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+            >
+              {contextPanelOpen
+                ? <PanelRightClose className="size-4" />
+                : <PanelRightOpen className="size-4" />
+              }
+            </button>
+          </Tooltip>
+        </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.loading ? (
             <LoadingState label="Loading messages" />
@@ -756,11 +788,16 @@ export function ConversationView({ conversationId }: { conversationId: string })
           submitting={submitting}
           error={error}
           disabledReason={composerDisabledReason}
-          readinessLabel={connection.loading ? "Checking schema" : ingestion.label}
           lockedConnectionName={connection.data?.name ?? null}
         />
       </section>
-      {conversation.data ? <ContextPanel connectionId={conversation.data.connectionId} latestRun={latestRun} /> : null}
+      {conversation.data ? (
+        <div
+          className={`flex-shrink-0 overflow-hidden transition-all duration-200 ${contextPanelOpen ? "w-[320px]" : "w-0"}`}
+        >
+          <ContextPanel connectionId={conversation.data.connectionId} latestRun={latestRun} />
+        </div>
+      ) : null}
     </div>
   );
 }
