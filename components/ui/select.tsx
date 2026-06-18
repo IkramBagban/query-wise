@@ -23,6 +23,7 @@ interface SelectProps {
   menuSide?: "top" | "bottom";
   menuAlign?: "left" | "right" | "mobile-right-desktop-left";
   menuMinWidthClassName?: string;
+  disabled?: boolean;
 }
 
 export function Select({
@@ -33,6 +34,7 @@ export function Select({
   menuSide = "bottom",
   menuAlign = "left",
   menuMinWidthClassName,
+  disabled,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -61,12 +63,14 @@ export function Select({
     <div ref={rootRef} className={cn("relative inline-flex min-w-0 sm:min-w-40", className)}>
       <button
         type="button"
+        disabled={disabled}
         className={cn(
           "h-9 w-full cursor-pointer rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1",
           "inline-flex items-center justify-between gap-2 transition-colors",
           open ? "border-border-2" : "hover:border-border-2",
+          disabled && "cursor-not-allowed opacity-50",
         )}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => !disabled && setOpen((prev) => !prev)}
       >
         <span className="truncate">{selected?.label ?? "Select"}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 text-text-3 transition-transform", open && "rotate-180")} />

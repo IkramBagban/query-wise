@@ -74,7 +74,7 @@ interface ConnectionPickerProps {
   disabled?: boolean;
 }
 
-function ConnectionPicker({ value, onChange }: ConnectionPickerProps) {
+function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) {
   const router = useRouter();
   const connections = useApiResource(() => connectionsApi.list(100), []);
 
@@ -132,6 +132,7 @@ function ConnectionPicker({ value, onChange }: ConnectionPickerProps) {
       onChange={handleChange}
       options={options}
       menuSide="top"
+      disabled={disabled}
     />
   );
 }
