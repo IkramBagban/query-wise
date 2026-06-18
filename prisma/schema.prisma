@@ -246,15 +246,18 @@ model DashboardAccessGrant {
 }
 
 model DashboardShareLink {
-  id           String    @id @db.Uuid
-  dashboardId  String    @map("dashboard_id") @db.Uuid
-  tokenHash    String    @unique(map: "v2_share_links_token_hash_key") @map("token_hash")
-  passwordHash String?   @map("password_hash")
-  version      Int       @default(1)
-  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
-  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String    @id @db.Uuid
+  dashboardId    String    @map("dashboard_id") @db.Uuid
+  tokenHash      String    @unique(map: "v2_share_links_token_hash_key") @map("token_hash")
+  encryptedToken Json?     @map("encrypted_token")
+  passwordHash   String?   @map("password_hash")
+  version        Int       @default(1)
+  viewCount      Int       @default(0) @map("view_count")
+  lastViewedAt   DateTime? @map("last_viewed_at") @db.Timestamptz(6)
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([dashboardId, createdAt(sort: Desc), id(sort: Desc)], map: "v2_share_links_dashboard_idx")
   @@map("v2_dashboard_share_links")

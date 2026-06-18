@@ -56,8 +56,11 @@ export interface ShareLinkListItem {
   id: ResourceId;
   passwordProtected: boolean;
   version: number;
+  urlAvailable: boolean;
+  url: string | null;
+  viewCount: number;
+  lastViewedAt: IsoDateTime | null;
   expiresAt: IsoDateTime | null;
-  revokedAt: IsoDateTime | null;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }
@@ -80,11 +83,15 @@ export type CreateShareResult =
       type: "link";
       link: {
         id: ResourceId;
-        token: string;
+        url: string;
+        urlAvailable: true;
         passwordProtected: boolean;
         version: number;
+        viewCount: number;
+        lastViewedAt: IsoDateTime | null;
         expiresAt: IsoDateTime | null;
         createdAt: IsoDateTime;
+        updatedAt: IsoDateTime;
       };
     }
   | {

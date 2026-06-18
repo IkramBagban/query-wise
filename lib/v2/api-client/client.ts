@@ -6,6 +6,7 @@ export class V2ApiError extends Error {
     readonly status: number,
     readonly code?: string,
     readonly retryable = false,
+    readonly requiresPassword = false,
   ) {
     super(message);
     this.name = "V2ApiError";
@@ -61,6 +62,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         response.status,
         error?.code,
         error?.retryable,
+        error?.requiresPassword ?? false,
       );
     }
 

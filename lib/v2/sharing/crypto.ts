@@ -1,14 +1,21 @@
 import "server-only";
 
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
+import type { EncryptedPayload } from "@/types/v2";
+import { AppError } from "@/lib/v2/dal/core";
+
 const SCRYPT_KEY_LENGTH = 32;
-const UNLOCK_TTL_SECONDS = 15 * 60;
+const UNLOCK_TTL_SECONDS = 60 * 60;
+const TOKEN_AAD = Buffer.from("querywise:v2:share-token:v1", "utf8");
+const ENCRYPTION_KEY_ENV = "QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1";
 
 function scrypt(
   password: string,
@@ -30,6 +37,48 @@ export function createShareToken(): string {
 
 export function hashShareToken(token: string): string {
   return createHash("sha256").update(token).digest("base64url");
+}
+
+function shareTokenEncryptionKey(): Buffer {
+  const encoded = process.env[ENCRYPTION_KEY_ENV];
+  if (!encoded) {
+    throw new AppError("DATA_SOURCE_UNAVAILABLE", "Share-token encryption is not configured.");
+  }
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) {
+    throw new AppError("DATA_SOURCE_UNAVAILABLE", "Share-token encryption is configured incorrectly.");
+  }
+  return key;
+}
+
+export async function encryptShareToken(token: string): Promise<EncryptedPayload> {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", shareTokenEncryptionKey(), iv);
+  cipher.setAAD(TOKEN_AAD);
+  const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  return {
+    version: 1,
+    algorithm: "aes-256-gcm",
+    keyId: "v1",
+    iv: iv.toString("base64url"),
+    ciphertext: ciphertext.toString("base64url"),
+    authTag: cipher.getAuthTag().toString("base64url"),
+  };
+}
+
+export async function decryptShareToken(payload: EncryptedPayload): Promise<string | null> {
+  try {
+    if (payload.version !== 1 || payload.algorithm !== "aes-256-gcm" || payload.keyId !== "v1") return null;
+    const decipher = createDecipheriv("aes-256-gcm", shareTokenEncryptionKey(), Buffer.from(payload.iv, "base64url"));
+    decipher.setAAD(TOKEN_AAD);
+    decipher.setAuthTag(Buffer.from(payload.authTag, "base64url"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(payload.ciphertext, "base64url")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    return null;
+  }
 }
 
 export async function hashSharePassword(password: string): Promise<string> {

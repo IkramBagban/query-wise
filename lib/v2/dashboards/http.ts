@@ -25,6 +25,7 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   RESULT_LIMIT_EXCEEDED: 413,
   SHARE_PASSWORD_REQUIRED: 401,
   SHARE_PASSWORD_INVALID: 401,
+  SHARE_EXPIRED: 410,
   SHARE_REVOKED_OR_NOT_FOUND: 404,
   INTERNAL_ERROR: 500,
 };
@@ -58,6 +59,7 @@ export function apiErrorResponse(error: unknown): Response {
         message: appError.message,
         retryable: appError.retryable,
         requestId,
+        ...(appError.code === "SHARE_PASSWORD_REQUIRED" ? { requiresPassword: true } : {}),
       },
     },
     { status: STATUS_BY_CODE[appError.code], headers: NO_STORE_HEADERS },

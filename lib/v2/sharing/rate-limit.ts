@@ -5,8 +5,8 @@ import { Prisma } from "@prisma/client";
 import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
 import { AppError } from "@/lib/v2/dal/core";
 
-const WINDOW_MINUTES = 10;
-const MAX_ATTEMPTS = 8;
+const WINDOW_MINUTES = 15;
+const MAX_ATTEMPTS = 5;
 
 function keyHash(key: string): string {
   return createHash("sha256").update(key).digest("base64url");

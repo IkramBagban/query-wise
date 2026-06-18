@@ -22,3 +22,17 @@ export async function getConnectionSecretForIngestion(connectionId: ResourceId):
   const connectionString = await decryptSecret(record.encryptedSecret as unknown as EncryptedPayload);
   return { record, secret: { connectionString } };
 }
+
+export async function getConnectionSecretForOwner(
+  connectionId: ResourceId,
+  ownerUserId: string,
+): Promise<{ record: DatabaseConnection; secret: DataSourceSecret }> {
+  const record = await getAppDb().databaseConnection.findFirst({
+    where: { id: connectionId, ownerUserId, deletedAt: null, status: { not: "deleted" } },
+  });
+  if (!record?.encryptedSecret) {
+    throw new AppError("DATA_SOURCE_UNAVAILABLE", "The data source credentials are unavailable.", false);
+  }
+  const connectionString = await decryptSecret(record.encryptedSecret as unknown as EncryptedPayload);
+  return { record, secret: { connectionString } };
+}

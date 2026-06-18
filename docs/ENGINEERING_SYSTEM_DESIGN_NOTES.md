@@ -1359,3 +1359,17 @@ Why this is the right approach:
   4. Refresh the dashboard and verify the layout is restored from the backend.
   5. Lock layout and confirm drag/resize actions are disabled.
   6. Check mobile/tablet widths and confirm widgets stack or fit within the responsive grid.
+
+## 51) Public dashboard share-link management and live public refresh
+
+- What changed: Dashboard owners can manage public share links in a dedicated modal with copyable newly generated URLs, password and expiry options, view counts, revoke confirmation, and a data-visibility warning. New share links store an encrypted token copy for owner-side copying while legacy hash-only links remain revokable but not recoverable. Public dashboard loads now execute each saved widget query server-side with the owner's saved connection credentials and return only bounded result rows, chart config, layout, and safe per-widget errors.
+- Why: Public BI sharing needs a complete link-management UX while keeping SQL and credentials off the public client. Live refresh uses saved widget `queryDefinition` plus the original query run as provenance instead of trusting arbitrary public input.
+- Tradeoffs and risks: Public loads can execute up to the dashboard widget limit of read-only SQL statements, so high-traffic shared dashboards can add database load. Existing hash-only links cannot be copied because bearer tokens were intentionally unrecoverable. Expiry now returns a distinct `410`, which is more useful UX but reveals that a token existed and expired.
+- How to test:
+  1. Open an owned dashboard, click Share, and verify the empty state says `No share links yet`.
+  2. Generate links with no expiry, 7-day expiry, 30-day expiry, custom expiry, and optional password.
+  3. Copy a newly generated link and verify the `Link copied!` toast.
+  4. Load the public link while signed out and verify charts render without SQL in the response/UI.
+  5. Revoke the link and verify public loads fail immediately with the revoked/not-found state.
+  6. Test password unlock success, incorrect password, and rate limiting after repeated failed attempts.
+  7. Create an expired link and verify the public page shows the expired state.

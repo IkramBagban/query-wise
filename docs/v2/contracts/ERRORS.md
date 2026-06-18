@@ -12,6 +12,7 @@ interface ApiErrorResponse {
     requestId: string;
     fieldErrors?: Record<string, string[]>;
     retryAfterSeconds?: number;
+    requiresPassword?: boolean;
   };
 }
 ```
@@ -43,11 +44,12 @@ hostnames MUST NOT cross the wire.
 | `RESULT_LIMIT_EXCEEDED` | 413 | no | serialized bounded payload still too large |
 | `SHARE_PASSWORD_REQUIRED` | 401 | no | valid share requires unlock |
 | `SHARE_PASSWORD_INVALID` | 401 | no | generic invalid unlock response |
-| `SHARE_REVOKED_OR_NOT_FOUND` | 404 | no | absent, revoked, disabled, or expired share |
+| `SHARE_EXPIRED` | 410 | no | valid public share token has expired |
+| `SHARE_REVOKED_OR_NOT_FOUND` | 404 | no | absent, revoked, disabled, or deleted share |
 | `INTERNAL_ERROR` | 500 | yes | unexpected server failure |
 
 Cross-owner private access MUST map to `RESOURCE_NOT_FOUND`, never `403`.
-Public share misses, expiry, and revocation use one indistinguishable response.
+Public share password-required responses include `requiresPassword: true`.
 
 ## Internal Error Requirements
 
@@ -85,4 +87,3 @@ interface QueryErrorEvent {
 
 Exactly one terminal SSE event (`completed` or `failed`) is emitted. The
 persisted query-run terminal state is authoritative if transport disconnects.
-

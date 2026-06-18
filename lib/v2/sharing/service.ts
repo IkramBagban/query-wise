@@ -1,21 +1,27 @@
 import "server-only";
 
 import { clerkClient } from "@clerk/nextjs/server";
-import type { DashboardShareLink } from "@prisma/client";
+import type { DashboardShareLink, DashboardWidget } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getAppDb } from "@/lib/v2/app-db";
+import { getConnectionSecretForOwner } from "@/lib/v2/connections";
 import { requireDashboardAccess } from "@/lib/v2/dal/authorization";
 import { AppError, resourceNotFound } from "@/lib/v2/dal/core";
+import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { createResourceId } from "@/lib/v2/domain";
-import type { PublicDashboardDto } from "@/types/v2";
+import { createResultPreview } from "@/lib/v2/query";
+import type { EncryptedPayload, ProviderQuery, PublicDashboardDto } from "@/types/v2";
 import {
-  BoundedSnapshotSchema,
   ChartConfigSchema,
+  ProviderQuerySchema,
   validationError,
   WidgetLayoutSchema,
 } from "@/lib/v2/dashboards";
 import {
   createShareToken,
+  decryptShareToken,
+  encryptShareToken,
   hashSharePassword,
   hashShareToken,
   pendingEmailGrantKey,
@@ -56,6 +62,40 @@ function iso(value: Date): string {
   return value.toISOString();
 }
 
+function publicShareUrl(baseUrl: string, token: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/shared/${encodeURIComponent(token)}`;
+}
+
+function encryptedPayload(value: unknown): EncryptedPayload | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as Partial<EncryptedPayload>;
+  return payload.version === 1 &&
+    payload.algorithm === "aes-256-gcm" &&
+    payload.keyId === "v1" &&
+    typeof payload.iv === "string" &&
+    typeof payload.ciphertext === "string" &&
+    typeof payload.authTag === "string"
+    ? (payload as EncryptedPayload)
+    : null;
+}
+
+async function linkDto(link: DashboardShareLink, baseUrl: string) {
+  const tokenPayload = encryptedPayload(link.encryptedToken);
+  const token = tokenPayload ? await decryptShareToken(tokenPayload) : null;
+  return {
+    id: link.id,
+    passwordProtected: Boolean(link.passwordHash),
+    version: link.version,
+    urlAvailable: Boolean(token),
+    url: token ? publicShareUrl(baseUrl, token) : null,
+    viewCount: link.viewCount,
+    lastViewedAt: link.lastViewedAt?.toISOString() ?? null,
+    expiresAt: link.expiresAt?.toISOString() ?? null,
+    createdAt: iso(link.createdAt),
+    updatedAt: iso(link.updatedAt),
+  };
+}
+
 async function resolveGrantRecipient(input: {
   recipientUserId?: string;
   recipientEmail?: string;
@@ -78,11 +118,15 @@ async function resolveGrantRecipient(input: {
     : { key: pendingEmailGrantKey(email), kind: "pending-email" };
 }
 
-export async function listShares(dashboardId: string) {
+export async function listShares(dashboardId: string, baseUrl: string) {
   await requireDashboardAccess(dashboardId, "edit");
   const [links, grants] = await Promise.all([
     getAppDb().dashboardShareLink.findMany({
-      where: { dashboardId },
+      where: {
+        dashboardId,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 100,
     }),
@@ -93,15 +137,7 @@ export async function listShares(dashboardId: string) {
     }),
   ]);
   return {
-    links: links.map((link) => ({
-      id: link.id,
-      passwordProtected: Boolean(link.passwordHash),
-      version: link.version,
-      expiresAt: link.expiresAt?.toISOString() ?? null,
-      revokedAt: link.revokedAt?.toISOString() ?? null,
-      createdAt: iso(link.createdAt),
-      updatedAt: iso(link.updatedAt),
-    })),
+    links: await Promise.all(links.map((link) => linkDto(link, baseUrl))),
     grants: grants.map((grant) => ({
       id: grant.id,
       recipient:
@@ -115,7 +151,7 @@ export async function listShares(dashboardId: string) {
   };
 }
 
-export async function createShare(dashboardId: string, input: unknown) {
+export async function createShare(dashboardId: string, input: unknown, baseUrl: string) {
   const parsed = CreateShareSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
   await requireDashboardAccess(dashboardId, "edit");
@@ -162,6 +198,7 @@ export async function createShare(dashboardId: string, input: unknown) {
       id: createResourceId(),
       dashboardId,
       tokenHash: hashShareToken(token),
+      encryptedToken: await encryptShareToken(token) as unknown as Prisma.InputJsonValue,
       passwordHash: parsed.data.password
         ? await hashSharePassword(parsed.data.password)
         : null,
@@ -172,11 +209,15 @@ export async function createShare(dashboardId: string, input: unknown) {
     type: "link" as const,
     link: {
       id: link.id,
-      token,
+      url: publicShareUrl(baseUrl, token),
+      urlAvailable: true,
       passwordProtected: Boolean(link.passwordHash),
       version: link.version,
+      viewCount: link.viewCount,
+      lastViewedAt: link.lastViewedAt?.toISOString() ?? null,
       expiresAt: link.expiresAt?.toISOString() ?? null,
       createdAt: iso(link.createdAt),
+      updatedAt: iso(link.updatedAt),
     },
   };
 }
@@ -243,20 +284,112 @@ function publicShareNotFound(): AppError {
   );
 }
 
+function publicShareExpired(): AppError {
+  return new AppError("SHARE_EXPIRED", "This link has expired.");
+}
+
 async function activeShare(token: string): Promise<DashboardShareLink> {
   if (token.length < 32 || token.length > 200) throw publicShareNotFound();
   const share = await getAppDb().dashboardShareLink.findUnique({
     where: { tokenHash: hashShareToken(token) },
   });
-  if (!share || share.revokedAt || (share.expiresAt && share.expiresAt <= new Date())) {
-    throw publicShareNotFound();
-  }
+  if (!share || share.revokedAt) throw publicShareNotFound();
+  if (share.expiresAt && share.expiresAt <= new Date()) throw publicShareExpired();
   const dashboard = await getAppDb().dashboard.findFirst({
     where: { id: share.dashboardId, deletedAt: null },
     select: { id: true },
   });
   if (!dashboard) throw publicShareNotFound();
   return share;
+}
+
+async function executePublicWidget(
+  widget: DashboardWidget,
+  dashboardOwnerUserId: string,
+): Promise<PublicDashboardDto["dashboard"]["widgets"][number]> {
+  const chartConfig = ChartConfigSchema.parse(widget.chartConfig);
+  const layout = WidgetLayoutSchema.parse(widget.layout);
+  const base = {
+    id: widget.id,
+    title: widget.title,
+    chartConfig,
+    layout,
+  };
+  const query = ProviderQuerySchema.safeParse(widget.queryDefinition);
+  if (!widget.queryRunId || !query.success) {
+    return {
+      ...base,
+      result: null,
+      error: {
+        code: "WIDGET_QUERY_UNAVAILABLE",
+        message: "This chart cannot be refreshed because its saved query is unavailable.",
+      },
+    };
+  }
+  const run = await getAppDb().queryRun.findFirst({
+    where: { id: widget.queryRunId, ownerUserId: dashboardOwnerUserId },
+    select: {
+      ownerUserId: true,
+      connectionId: true,
+      providerId: true,
+      dialectId: true,
+      generatedQuery: true,
+    },
+  });
+  if (!run) {
+    return {
+      ...base,
+      result: null,
+      error: {
+        code: "WIDGET_QUERY_RUN_UNAVAILABLE",
+        message: "This chart cannot be refreshed because its query run is unavailable.",
+      },
+    };
+  }
+  const generatedQuery = ProviderQuerySchema.safeParse(run.generatedQuery);
+  if (
+    run.dialectId !== query.data.dialectId ||
+    !generatedQuery.success ||
+    generatedQuery.data.kind !== query.data.kind ||
+    generatedQuery.data.dialectId !== query.data.dialectId ||
+    generatedQuery.data.text.trim() !== query.data.text.trim()
+  ) {
+    return {
+      ...base,
+      result: null,
+      error: {
+        code: "WIDGET_QUERY_MISMATCH",
+        message: "This chart cannot be refreshed because its saved query no longer matches the original run.",
+      },
+    };
+  }
+  try {
+    const { record, secret } = await getConnectionSecretForOwner(run.connectionId, run.ownerUserId);
+    const adapter = getDataSourceAdapter(record.providerId);
+    requireCapability(adapter, "sql-validation");
+    requireCapability(adapter, "read-sql-execution");
+    const result = await adapter.executeReadQuery(
+      record.id,
+      record.credentialVersion,
+      secret,
+      query.data as ProviderQuery,
+      { timeoutMs: 15_000, maxRows: 500, maxBytes: 2 * 1024 * 1024 },
+    );
+    return { ...base, result: createResultPreview(result), error: null };
+  } catch (error) {
+    const code = error instanceof AppError ? error.code : "WIDGET_QUERY_EXECUTION_FAILED";
+    return {
+      ...base,
+      result: null,
+      error: {
+        code,
+        message:
+          code === "DATA_SOURCE_UNAVAILABLE"
+            ? "This chart cannot be refreshed because the connected data source is unavailable."
+            : "This chart could not be refreshed.",
+      },
+    };
+  }
 }
 
 export async function getPublicDashboard(
@@ -282,24 +415,26 @@ export async function getPublicDashboard(
   if (widgets.length > 50) {
     throw new AppError("RESULT_LIMIT_EXCEEDED", "Shared dashboard exceeds the widget limit.");
   }
+  const publicWidgets: PublicDashboardDto["dashboard"]["widgets"] = [];
+  for (const widget of widgets) {
+    publicWidgets.push(await executePublicWidget(widget, dashboard.ownerUserId));
+  }
   const dto: PublicDashboardDto = {
     contractVersion: "querywise.v2",
     dashboard: {
       name: dashboard.name,
       updatedAt: iso(dashboard.updatedAt),
-      widgets: widgets.map((widget) => ({
-        id: widget.id,
-        title: widget.title,
-        chartConfig: ChartConfigSchema.parse(widget.chartConfig),
-        layout: WidgetLayoutSchema.parse(widget.layout),
-        result: BoundedSnapshotSchema.parse(widget.snapshot) as unknown as PublicDashboardDto["dashboard"]["widgets"][number]["result"],
-      })),
+      widgets: publicWidgets,
     },
     share: { expiresAt: share.expiresAt?.toISOString() ?? null },
   };
   if (Buffer.byteLength(JSON.stringify(dto), "utf8") > 2 * 1024 * 1024) {
     throw new AppError("RESULT_LIMIT_EXCEEDED", "Shared dashboard exceeds the response limit.");
   }
+  await getAppDb().dashboardShareLink.update({
+    where: { id: share.id },
+    data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
+  });
   return dto;
 }
 

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "e2e:share-links": "node scripts/e2e-share-links.mjs",
     "start": "next start",
     "worker:schema-ingestion": "tsx workers/schema-ingestion/index.ts",
     "lint": "eslint",
