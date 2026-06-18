@@ -32,6 +32,7 @@ import {
   dashboardsApi,
   getIngestionStatusView,
   type ConversationMessageDto,
+  type ConnectionListItem,
   type QueryStreamEvent,
 } from "@/lib/v2/api-client";
 import type { ChartConfig } from "@/types/v2";
@@ -56,12 +57,80 @@ const STORAGE_KEYS = {
   provider: "querywise.v2.llmProvider",
   model: "querywise.v2.llmModel",
   apiKey: "querywise.v2.llmApiKey",
+  connection: "querywise.v2.connectionId",
 } as const;
 
 function formatClockTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/* --------------------------- ConnectionPicker ----------------------------- */
+
+interface ConnectionPickerProps {
+  value: string | null;
+  onChange: (id: string) => void;
+}
+
+function ConnectionPicker({ value, onChange }: ConnectionPickerProps) {
+  const connections = useApiResource(() => connectionsApi.list(100), []);
+
+  if (connections.loading) {
+    return (
+      <div className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-border px-3 text-xs text-text-3">
+        <Loader2 className="size-3.5 animate-spin" />
+        <span>Loading…</span>
+      </div>
+    );
+  }
+
+  if (connections.error) {
+    return (
+      <button
+        type="button"
+        onClick={() => void connections.refresh()}
+        className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-danger/40 px-3 text-xs text-danger hover:bg-danger/5"
+      >
+        <Database className="size-3.5" />
+        Could not load — retry
+      </button>
+    );
+  }
+
+  const items = connections.data?.items ?? [];
+
+  const demoOption = { value: "__demo__", label: "Demo database" };
+  const connectionOptions = items.map((item: ConnectionListItem) => ({
+    value: item.id,
+    label: item.name,
+  }));
+  const addOption = { value: "__add__", label: "+ Add connection" };
+
+  const options = [demoOption, ...connectionOptions, addOption];
+
+  function handleChange(selected: string) {
+    if (selected === "__add__") {
+      window.location.href = "/connections/new";
+      return;
+    }
+    onChange(selected);
+    if (selected !== "__demo__") {
+      window.sessionStorage.setItem(STORAGE_KEYS.connection, selected);
+    } else {
+      window.sessionStorage.removeItem(STORAGE_KEYS.connection);
+    }
+  }
+
+  return (
+    <Select
+      className="min-w-40"
+      value={value ?? ""}
+      onChange={handleChange}
+      options={options}
+      menuSide="top"
+    />
+  );
 }
 
 /* ---------------------------------- Home ---------------------------------- */
@@ -188,6 +257,124 @@ export function NewConversationView() {
   );
 }
 
+/* -------------------------- Empty workspace ------------------------------- */
+
+export function EmptyWorkspaceView() {
+  const router = useRouter();
+  const [connectionId, setConnectionId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.sessionStorage.getItem(STORAGE_KEYS.connection) ?? null;
+  });
+  const [question, setQuestion] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<string | null>(null);
+
+  const selectedConnection = useApiResource(
+    () => connectionId && connectionId !== "__demo__" ? connectionsApi.get(connectionId) : Promise.resolve(null),
+    [connectionId],
+  );
+  const selectedIngestion = getIngestionStatusView(selectedConnection.data?.schemaSyncStatus);
+  const schemaSyncWarning = connectionId && !selectedIngestion.terminal && selectedConnection.data
+    ? "Schema syncing — your first query may be slower."
+    : null;
+
+  const refreshSelected = selectedConnection.refresh;
+  useEffect(() => {
+    if (!selectedConnection.data || selectedIngestion.terminal) return;
+    const timer = window.setInterval(() => void refreshSelected(), 5000);
+    return () => window.clearInterval(timer);
+  }, [selectedConnection.data, selectedIngestion.terminal, refreshSelected]);
+
+  function handleQueryEvent(event: QueryStreamEvent) {
+    if (event.type === "status") {
+      const data = event.data as { status?: string; label?: string };
+      setStreamStatus(data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working"));
+    }
+    if (event.type === "sql-preview") setStreamStatus("Validating SQL");
+    if (event.type === "query-stats") setStreamStatus("Preparing results");
+    if (event.type === "text-delta") setStreamStatus("Writing answer");
+    if (event.type === "completed") setStreamStatus("Complete");
+    if (event.type === "failed") {
+      const data = event.data as { error?: { message?: string } };
+      setStreamStatus("Failed");
+      setError(data.error?.message ?? "Unable to submit query");
+    }
+  }
+
+  async function submit() {
+    if (!question.trim() || !connectionId) return;
+    const apiKey = window.localStorage.getItem(STORAGE_KEYS.apiKey) ?? "";
+    const provider = window.localStorage.getItem(STORAGE_KEYS.provider) ?? "";
+    const model = window.localStorage.getItem(STORAGE_KEYS.model) ?? "";
+    if (!apiKey || !isLlmProvider(provider) || !isSupportedModel(provider, model)) {
+      setError("Select a supported LLM provider and model, then add your API key in Settings.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    setStreamStatus("Queued");
+    try {
+      let resolvedConnectionId = connectionId;
+      if (connectionId === "__demo__") {
+        const demo = await connectionsApi.createDemo();
+        resolvedConnectionId = demo.id;
+      }
+      const conversation = await conversationsApi.create(resolvedConnectionId);
+      await conversationsApi.submitStream(
+        { conversationId: conversation.id, question: question.trim(), provider, model, apiKey },
+        handleQueryEvent,
+      );
+      router.push(`/workspace/${conversation.id}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to start conversation");
+      setSubmitting(false);
+      setStreamStatus(null);
+    }
+  }
+
+  return (
+    <div className="flex h-[calc(100vh-3.5rem)] min-h-[640px] flex-col items-center justify-center lg:h-screen">
+      <div className="w-full max-w-3xl px-4 sm:px-6">
+        <div className="mb-8 text-center">
+          <span className="mx-auto inline-flex size-12 items-center justify-center rounded-2xl bg-accent-dim text-accent-2">
+            <Sparkles className="size-6" />
+          </span>
+          <h1 className="mt-4 font-syne text-3xl font-semibold">Ask your data anything</h1>
+          <p className="mt-2 text-sm text-text-3">Choose a database and type a question to get started.</p>
+        </div>
+        <Composer
+          question={question}
+          setQuestion={setQuestion}
+          onSubmit={() => void submit()}
+          submitting={submitting}
+          error={error}
+          connectionId={connectionId}
+          onConnectionChange={setConnectionId}
+          schemaSyncWarning={schemaSyncWarning}
+        />
+        {streamStatus && submitting ? (
+          <p className="mt-2 text-center text-xs text-text-3">
+            <Loader2 className="mr-1 inline size-3 animate-spin" />
+            {streamStatus}
+          </p>
+        ) : null}
+        <div className="mt-6 grid gap-2 sm:grid-cols-3">
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              onClick={() => setQuestion(suggestion)}
+              className="rounded-lg border border-border bg-surface p-3 text-left text-xs transition hover:border-border-2 hover:bg-surface-2"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------- Messages -------------------------------- */
 
 function UserMessage({ message }: { message: ConversationMessageDto }) {
@@ -242,6 +429,20 @@ function AssistantMessage({
 
 /* -------------------------------- Composer -------------------------------- */
 
+interface ComposerProps {
+  question: string;
+  setQuestion: (value: string) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  error: string | null;
+  disabledReason?: string | null;
+  readinessLabel?: string;
+  connectionId?: string | null;
+  onConnectionChange?: (id: string) => void;
+  lockedConnectionName?: string | null;
+  schemaSyncWarning?: string | null;
+}
+
 function Composer({
   question,
   setQuestion,
@@ -250,15 +451,11 @@ function Composer({
   error,
   disabledReason,
   readinessLabel,
-}: {
-  question: string;
-  setQuestion: (value: string) => void;
-  onSubmit: () => void;
-  submitting: boolean;
-  error: string | null;
-  disabledReason?: string | null;
-  readinessLabel?: string;
-}) {
+  connectionId,
+  onConnectionChange,
+  lockedConnectionName,
+  schemaSyncWarning,
+}: ComposerProps) {
   const [provider, setProvider] = useState<LlmProvider>(() => {
     if (typeof window === "undefined") return DEFAULT_LLM_PROVIDER;
     const stored = window.localStorage.getItem(STORAGE_KEYS.provider);
@@ -291,6 +488,7 @@ function Composer({
   }
 
   const modelOptions = LLM_MODEL_CATALOG.filter((entry) => entry.provider === provider).map((entry) => ({ value: entry.model, label: entry.label }));
+  const runDisabled = !question.trim() || Boolean(disabledReason) || (onConnectionChange !== undefined && !connectionId);
 
   return (
     <div className="border-t border-border bg-bg px-3 py-3 sm:px-6 sm:py-4">
@@ -310,15 +508,32 @@ function Composer({
             <button type="button" aria-label="Attach" title="Attach file" className="rounded-md border border-border p-2 text-text-3 hover:bg-surface-2 hover:text-text-1"><Paperclip className="size-4" /></button>
             <Select className="min-w-28" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
             <Select className="min-w-44" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
+            {onConnectionChange !== undefined ? (
+              <ConnectionPicker value={connectionId ?? null} onChange={onConnectionChange} />
+            ) : lockedConnectionName ? (
+              <span
+                title="To use a different database, start a new chat."
+                className="inline-flex cursor-default items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs text-text-2"
+              >
+                <Database className="size-3.5 shrink-0 text-text-3" />
+                {lockedConnectionName}
+              </span>
+            ) : null}
 
             <div className="ml-auto flex items-center gap-2">
               {readinessLabel ? <span className="hidden text-xs text-text-3 sm:inline">{readinessLabel}</span> : null}
-              <Button size="sm" loading={submitting} disabled={!question.trim() || Boolean(disabledReason)} onClick={onSubmit} className="h-9 px-4">
+              <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="h-9 px-4">
                 <Send className="size-3.5" />Run
               </Button>
             </div>
           </div>
         </Card>
+        {schemaSyncWarning ? (
+          <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-warning">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            {schemaSyncWarning}
+          </p>
+        ) : null}
         {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
         {disabledReason ? <p className="mt-2 text-center text-xs text-warning">{disabledReason}</p> : null}
         <p className="mt-2 text-center text-[11px] text-text-3">AI-generated results. Please verify accuracy before making decisions.</p>
@@ -543,6 +758,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
           error={error}
           disabledReason={composerDisabledReason}
           readinessLabel={connection.loading ? "Checking schema" : ingestion.label}
+          lockedConnectionName={connection.data?.name ?? null}
         />
       </section>
       {conversation.data ? <ContextPanel connectionId={conversation.data.connectionId} latestRun={latestRun} /> : null}
