@@ -8,18 +8,18 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  CheckCircle2,
   Database,
   ExternalLink,
   Layers,
-  Link2,
-  MoreVertical,
-  Pencil,
+  Loader2,
   Plus,
   RefreshCw,
   Table2,
   TestTube2,
   Trash2,
   X,
+  XCircle,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
 import { PageHeader } from "@/components/v2/PageHeader";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
@@ -34,6 +35,7 @@ import { useApiResource } from "@/hooks/v2";
 import { formatRelativeTime } from "@/lib/utils";
 import { connectionsApi, getIngestionStatusView } from "@/lib/v2/api-client";
 import type { ConnectionListItem } from "@/lib/v2/api-client";
+import { assemblePostgresUrl } from "@/lib/v2/connections/assemble-url";
 
 function statusVariant(value: string) {
   return value === "connected" || value === "ready" ? "success" : value === "error" ? "danger" : "warning";
@@ -50,8 +52,8 @@ function SchemaStatus({ value }: { value: string }) {
 
 function PostgresMark({ compact = false }: { compact?: boolean }) {
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-accent-dim text-accent-2 ${compact ? "size-8" : "size-11"}`}>
-      <Database className={compact ? "size-4" : "size-5"} />
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-accent-dim ${compact ? "size-8" : "size-11"}`}>
+      <img src="/icons/postgresql.svg" alt="PostgreSQL" className={compact ? "size-5" : "size-6"} />
     </span>
   );
 }
@@ -88,6 +90,184 @@ function StatCard({
   );
 }
 
+type TestState =
+  | { status: "idle" }
+  | { status: "testing" }
+  | { status: "success"; latencyMs: number }
+  | { status: "error"; message: string };
+
+function TestConnectionButton({
+  connectionString,
+  onTestResult,
+}: {
+  connectionString: string;
+  onTestResult: (success: boolean) => void;
+}) {
+  const [testState, setTestState] = useState<TestState>({ status: "idle" });
+
+  async function runTest() {
+    if (!connectionString) return;
+    setTestState({ status: "testing" });
+    const start = Date.now();
+    try {
+      const res = await fetch("/api/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "custom", connectionString }),
+      });
+      const data = (await res.json()) as { success: boolean; error?: string };
+      const latencyMs = Date.now() - start;
+      if (data.success) {
+        setTestState({ status: "success", latencyMs });
+        onTestResult(true);
+      } else {
+        setTestState({ status: "error", message: data.error ?? "Connection failed" });
+        onTestResult(false);
+      }
+    } catch {
+      setTestState({ status: "error", message: "Network error — could not reach the server" });
+      onTestResult(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        disabled={!connectionString || testState.status === "testing"}
+        onClick={() => void runTest()}
+        className="self-start"
+      >
+        {testState.status === "testing" ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <TestTube2 className="size-4" />
+        )}
+        {testState.status === "testing" ? "Testing…" : "Test connection"}
+      </Button>
+
+      {testState.status === "success" ? (
+        <p className="inline-flex items-center gap-1.5 text-sm text-success">
+          <CheckCircle2 className="size-4 shrink-0" />
+          Connected — {testState.latencyMs}ms
+        </p>
+      ) : testState.status === "error" ? (
+        <p className="inline-flex items-center gap-1.5 text-sm text-danger">
+          <XCircle className="size-4 shrink-0" />
+          {testState.message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+type ConnectionMode = "fields" | "url";
+
+interface FieldValues {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  ssl: boolean;
+}
+
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: ConnectionMode;
+  onChange: (mode: ConnectionMode) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+      {(["fields", "url"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            mode === m
+              ? "bg-accent-dim text-accent-2 shadow-sm"
+              : "text-text-3 hover:text-text-1"
+          }`}
+        >
+          {m === "fields" ? "Fields" : "URL"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ConnectionFormFields({
+  fields,
+  onChange,
+}: {
+  fields: FieldValues;
+  onChange: (fields: FieldValues) => void;
+}) {
+  function set<K extends keyof FieldValues>(key: K, value: FieldValues[K]) {
+    onChange({ ...fields, [key]: value });
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-[1fr_auto] gap-3">
+        <Input
+          required
+          label="Host"
+          value={fields.host}
+          onChange={(e) => set("host", e.target.value)}
+          placeholder="db.example.com"
+        />
+        <Input
+          required
+          label="Port"
+          type="number"
+          value={String(fields.port)}
+          onChange={(e) => set("port", Number(e.target.value))}
+          className="w-24"
+        />
+      </div>
+      <Input
+        required
+        label="Database"
+        value={fields.database}
+        onChange={(e) => set("database", e.target.value)}
+        placeholder="mydb"
+      />
+      <Input
+        required
+        label="Username"
+        value={fields.username}
+        onChange={(e) => set("username", e.target.value)}
+        placeholder="postgres"
+        autoComplete="off"
+      />
+      <Input
+        required
+        type="password"
+        label="Password"
+        value={fields.password}
+        onChange={(e) => set("password", e.target.value)}
+        placeholder="••••••••"
+        autoComplete="new-password"
+      />
+      <label className="inline-flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={fields.ssl}
+          onChange={(e) => set("ssl", e.target.checked)}
+          className="size-4 rounded accent-accent-2"
+        />
+        <span className="text-sm">Require SSL</span>
+      </label>
+      <p className="text-xs text-text-3">Credentials are encrypted and never shown again.</p>
+    </div>
+  );
+}
+
 function AddConnectionDialog({
   open,
   onOpenChange,
@@ -98,9 +278,25 @@ function AddConnectionDialog({
   onCreated?: (connectionId: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [connectionString, setConnectionString] = useState("");
+  const [mode, setMode] = useState<ConnectionMode>("fields");
+  const [fields, setFields] = useState<FieldValues>({
+    host: "",
+    port: 5432,
+    database: "",
+    username: "",
+    password: "",
+    ssl: true,
+  });
+  const [rawUrl, setRawUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [testPassed, setTestPassed] = useState(false);
+
+  const connectionString = useMemo(() => {
+    if (mode === "url") return rawUrl;
+    if (!fields.host || !fields.database || !fields.username) return "";
+    return assemblePostgresUrl(fields);
+  }, [mode, rawUrl, fields]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -109,7 +305,9 @@ function AddConnectionDialog({
     try {
       const connection = await connectionsApi.create({ name, providerId: "postgresql", connectionString });
       setName("");
-      setConnectionString("");
+      setFields({ host: "", port: 5432, database: "", username: "", password: "", ssl: true });
+      setRawUrl("");
+      setTestPassed(false);
       onOpenChange(false);
       onCreated?.(connection.id);
     } catch (reason) {
@@ -133,28 +331,64 @@ function AddConnectionDialog({
       </div>
 
       <form onSubmit={submit} className="mt-6 flex flex-col gap-5">
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-xs font-medium text-text-2">Database</legend>
-          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-accent bg-accent-dim p-3">
-            <input className="sr-only" type="radio" name="provider" value="postgresql" checked readOnly />
-            <PostgresMark />
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium">PostgreSQL</span>
-              <span className="block text-xs text-text-3">Connect using a PostgreSQL connection URL</span>
-            </span>
-            <span className="inline-flex size-5 items-center justify-center rounded-full bg-accent text-accent-foreground"><Check className="size-3.5" /></span>
-          </label>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-text-2">Database type</label>
+          <Select
+            value="postgresql"
+            onChange={() => {}}
+            disabled
+            options={[{ value: "postgresql", label: "PostgreSQL — Connect using a PostgreSQL connection string" }]}
+          />
           <p className="text-xs text-text-3">More database providers will be available later.</p>
-        </fieldset>
+        </div>
 
-        <Input required label="Connection name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Production analytics" />
-        <Input required type="password" label="Database credentials / URL" monospace value={connectionString} onChange={(event) => setConnectionString(event.target.value)} placeholder="postgresql://user:password@host:5432/database" autoComplete="off" />
-        <p className="text-xs text-text-3">Credentials are encrypted when saved and are never shown again.</p>
-        {error ? <p className="rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p> : null}
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs font-medium text-text-2">Connection details</span>
+          <ModeToggle mode={mode} onChange={(m) => { setMode(m); setTestPassed(false); }} />
+        </div>
+
+        <Input
+          required
+          label="Connection name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Production analytics"
+        />
+
+        {mode === "fields" ? (
+          <ConnectionFormFields fields={fields} onChange={(f) => { setFields(f); setTestPassed(false); }} />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-text-2">Connection URL</label>
+            <textarea
+              required
+              value={rawUrl}
+              onChange={(e) => { setRawUrl(e.target.value); setTestPassed(false); }}
+              placeholder="postgresql://user:password@host:5432/database"
+              rows={3}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-text-1 placeholder:text-text-3 focus:border-border-2 focus:outline-none resize-none"
+              autoComplete="off"
+            />
+            <p className="text-xs text-text-3">Credentials are encrypted and never shown again.</p>
+          </div>
+        )}
+
+        <TestConnectionButton
+          connectionString={connectionString}
+          onTestResult={(success) => setTestPassed(success)}
+        />
+
+        {error ? (
+          <p className="rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>
+        ) : null}
 
         <div className="flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" loading={saving}>Connect database <ArrowRight /></Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={saving}>
+            {testPassed ? "Save connection" : "Connect database"} <ArrowRight />
+          </Button>
         </div>
       </form>
     </Dialog>
@@ -220,9 +454,6 @@ function ConnectionCard({
           <Button type="button" size="sm" variant="danger" loading={deleting} onClick={onDelete} aria-label={`Delete ${connection.name}`}>
             <Trash2 />Delete
           </Button>
-          <Link href={`/connections/${connection.id}`} aria-label={`Open ${connection.name}`} className="inline-flex size-8 items-center justify-center rounded-md border border-border text-text-3 hover:bg-surface-2 hover:text-text-1">
-            <MoreVertical className="size-4" />
-          </Link>
         </div>
         <button type="button" onClick={onToggle} aria-label={expanded ? "Collapse" : "Expand"} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-2 hover:text-text-1">
           <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
@@ -240,18 +471,6 @@ function ConnectionCard({
             <DetailRow label="Provider" value="PostgreSQL" />
             <DetailRow label="Capabilities" value={connection.capabilities.length ? connection.capabilities.length : "None reported"} />
           </dl>
-          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
-            <Link href={`/connections/${connection.id}/schema`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface">
-              <Table2 className="size-3.5" />Open schema
-            </Link>
-            <Button type="button" size="sm" variant="ghost" loading={refreshing} onClick={onRefresh}><RefreshCw />Refresh schema</Button>
-            <Link href={`/connections/${connection.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface">
-              <Pencil className="size-3.5" />Edit connection
-            </Link>
-            <Button type="button" size="sm" variant="danger" loading={deleting} onClick={onDelete}>
-              <Trash2 />Delete connection
-            </Button>
-          </div>
         </div>
       ) : null}
     </Card>
@@ -319,10 +538,7 @@ export function ConnectionsListView() {
         <PageHeader
           title="Connections"
           description="Connect databases and manage schema syncs."
-          actions={<>
-            <Button type="button" onClick={() => setDialogOpen(true)}><Plus />Add connection</Button>
-            <Button type="button" variant="ghost" onClick={() => setDialogOpen(true)}><Link2 />Import URL</Button>
-          </>}
+          actions={<Button type="button" onClick={() => setDialogOpen(true)}><Plus />Add connection</Button>}
         />
 
         {!items.length ? (
