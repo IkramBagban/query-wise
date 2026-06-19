@@ -227,27 +227,15 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
   if (collapsed) {
     return (
       <aside className="flex h-full flex-col items-center bg-bg py-3">
-        {/* Logo icon */}
-        <Tooltip content="QueryWise" side="right">
-          <Link
-            href="/workspace/new"
-            onClick={onNavigate}
-            aria-label="QueryWise home"
-            className="mb-1 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"
-          >
-            <Sparkles className="h-4 w-4" />
-          </Link>
-        </Tooltip>
-
-        {/* Expand toggle */}
         <Tooltip content="Expand sidebar" side="right">
           <button
             type="button"
             aria-label="Expand sidebar"
             onClick={onToggleCollapse}
-            className="mb-3 flex h-7 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+            className="group mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm transition hover:bg-surface-3 hover:text-text-1"
           >
-            <ChevronRight className="h-3.5 w-3.5" />
+            <Sparkles className="h-4 w-4 group-hover:hidden" />
+            <ChevronRight className="hidden h-4 w-4 group-hover:block" />
           </button>
         </Tooltip>
 
@@ -287,20 +275,18 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
 
   return (
     <aside className="flex h-full flex-col bg-bg p-3">
-      <Link href="/workspace/new" onClick={onNavigate} className="flex items-center gap-2.5 px-2 py-3 font-syne text-lg font-semibold tracking-tight">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"><Sparkles className="h-4 w-4" /></span>
-        QueryWise
-      </Link>
-
-      {/* Collapse toggle */}
-      <div className="flex justify-end px-2 pb-1">
+      <div className="flex items-center justify-between px-2 py-3">
+        <Link href="/workspace/new" onClick={onNavigate} className="flex min-w-0 items-center gap-2.5 font-syne text-lg font-semibold tracking-tight">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"><Sparkles className="h-4 w-4" /></span>
+          <span className="truncate">QueryWise</span>
+        </Link>
         <button
           type="button"
           aria-label="Collapse sidebar"
           onClick={onToggleCollapse}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
+          <ChevronLeft className="h-4 w-4" />
         </button>
       </div>
 

@@ -1002,11 +1002,11 @@ export function ConversationView({ conversationId }: { conversationId: string })
       <section className="relative flex h-full min-w-0 flex-1 flex-col bg-bg">
         {/* Conversation header */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
-          <div className="pointer-events-auto absolute left-0 flex h-14 min-w-0 max-w-[calc(100%-11rem)] items-center gap-2.5 rounded-br-xl border border-l-0 border-t-0 border-border bg-surface/95 px-4 shadow-sm backdrop-blur">
+          <div className="pointer-events-auto absolute left-0 flex h-14 min-w-0 max-w-[calc(100%-11rem)] items-center gap-2.5 rounded-br-xl border border-l-0 border-t-0 border-border/70 bg-surface/65 px-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
             <Database className="size-4 shrink-0 text-accent-2" />
             <span className="truncate text-sm font-medium text-text-1">{connection.data?.name ?? "Loading source"}</span>
           </div>
-          <div className="pointer-events-auto absolute right-0 flex h-14 shrink-0 items-center gap-1.5 rounded-bl-xl border border-r-0 border-t-0 border-border bg-surface/95 px-3 shadow-sm backdrop-blur">
+          <div className="pointer-events-auto absolute right-0 flex h-14 shrink-0 items-center gap-1.5 rounded-bl-xl border border-r-0 border-t-0 border-border/70 bg-surface/65 px-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
             <button type="button" aria-label="Favorite chat" title="Favorite chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Star className="size-4" /></button>
             <button type="button" aria-label="Share chat" title="Share chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Share2 className="size-4" /></button>
             <Tooltip content={contextPanelOpen ? "Hide schema panel" : "Show schema panel"} side="top">
@@ -1089,5 +1089,4 @@ export function ConversationView({ conversationId }: { conversationId: string })
     </div>
   );
 }
-
 
