@@ -240,11 +240,11 @@ export function ConversationResultCard({
 
   return (
     <>
-      <Card className="mt-3 overflow-visible">
-        <div className="flex items-center gap-1 border-b border-border px-3 pt-2">
+      <Card className="mt-3 overflow-visible rounded-xl border-border bg-surface shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 pt-3">
           <button type="button" onClick={() => setTab("chart")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "chart" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}><BarChart3 className="size-3.5" />Chart</button>
           <button type="button" onClick={() => setTab("sql")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "sql" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}><Code2 className="size-3.5" />SQL</button>
-          <span className="ml-auto pb-1.5 text-[11px] text-text-3">{formatNumber(rowCount)} row{rowCount === 1 ? "" : "s"}{run.executionTimeMs != null ? ` · ${run.executionTimeMs}ms` : ""}</span>
+          <span className="ml-auto pb-2 text-[11px] text-text-3">{formatNumber(rowCount)} row{rowCount === 1 ? "" : "s"}{run.executionTimeMs != null ? ` · ${run.executionTimeMs}ms` : ""}</span>
         </div>
 
         <div className="p-3 sm:p-4">
@@ -258,7 +258,7 @@ export function ConversationResultCard({
                   <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />
                 </div>
               </div>
-              <div className="min-w-0 h-80 rounded-lg bg-surface-2/40 p-1"><V2Chart preview={preview} config={config} /></div>
+              <div className="min-w-0 h-[21rem] rounded-lg border border-border bg-surface-2/40 p-2"><V2Chart preview={preview} config={config} /></div>
             </>
           ) : run.generatedQuery ? <CodeBlock sql={run.generatedQuery.text} variant="dark" /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">No SQL was generated for this response.</p>}
         </div>
@@ -306,3 +306,4 @@ export function ConversationResultCard({
     </>
   );
 }
+

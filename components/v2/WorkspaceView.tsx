@@ -12,10 +12,11 @@ import {
   MessageSquarePlus,
   PanelRightClose,
   PanelRightOpen,
-  Paperclip,
   Plus,
   Send,
+  Share2,
   Sparkles,
+  Star,
   Table2,
 } from "lucide-react";
 
@@ -710,14 +711,14 @@ export function EmptyWorkspaceView() {
 function UserMessage({ message }: { message: ConversationMessageDto }) {
   return (
     <div className="flex items-start justify-end gap-3">
-      <div className="max-w-[80%] rounded-2xl rounded-tr-sm border border-border bg-surface-2 px-4 py-2.5">
+      <div className="max-w-[78%] rounded-xl border border-success/20 bg-success/10 px-4 py-3 shadow-sm">
         <p className="whitespace-pre-wrap text-sm text-text-1">{message.content}</p>
-        <p className="mt-1 flex items-center justify-end gap-1 text-[10px] text-text-3">
+        <p className="mt-1.5 flex items-center justify-end gap-1 text-[10px] text-text-3">
           {formatClockTime(message.createdAt)}
           <CheckCircle2 className="size-3 text-success" />
         </p>
       </div>
-      <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[11px] font-semibold text-text-2">You</span>
+      <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-semibold text-accent-foreground shadow-sm">N</span>
     </div>
   );
 }
@@ -736,13 +737,13 @@ function AssistantMessage({
   const hasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
   return (
     <div className="flex items-start gap-3">
-      <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Sparkles className="size-4" /></span>
+      <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm"><Sparkles className="size-4" /></span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-text-1">QueryWise</span>
+          <span className="text-sm font-semibold text-text-1">QueryWise</span>
           <span className="text-[10px] text-text-3">{formatClockTime(message.createdAt)}</span>
         </div>
-        {message.content ? <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
+        {message.content ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
         {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.metadata.errorCode}</p> : null}
         {hasResult ? (
           <ConversationResultCard
@@ -766,10 +767,6 @@ interface ComposerProps {
   submitting: boolean;
   error: string | null;
   disabledReason?: string | null;
-  readinessLabel?: string;
-  connectionId?: string | null;
-  onConnectionChange?: (id: string) => void;
-  lockedConnectionName?: string | null;
   schemaSyncWarning?: string | null;
 }
 
@@ -780,10 +777,6 @@ function Composer({
   submitting,
   error,
   disabledReason,
-  readinessLabel,
-  connectionId,
-  onConnectionChange,
-  lockedConnectionName,
   schemaSyncWarning,
 }: ComposerProps) {
   const [provider, setProvider] = useState<LlmProvider>(() => {
@@ -818,12 +811,12 @@ function Composer({
   }
 
   const modelOptions = LLM_MODEL_CATALOG.filter((entry) => entry.provider === provider).map((entry) => ({ value: entry.model, label: entry.label }));
-  const runDisabled = !question.trim() || Boolean(disabledReason) || (onConnectionChange !== undefined && !connectionId);
+  const runDisabled = !question.trim() || Boolean(disabledReason);
 
   return (
-    <div className="border-t border-border bg-bg px-3 py-3 sm:px-6 sm:py-4">
-      <div className="mx-auto max-w-3xl">
-        <Card className="p-2 shadow-sm">
+    <div className="shrink-0 bg-bg px-4 pb-4 pt-2 sm:px-6">
+      <div className="mx-auto max-w-6xl">
+        <Card className="overflow-hidden rounded-xl border-border bg-surface shadow-sm">
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
@@ -832,29 +825,17 @@ function Composer({
             maxLength={500}
             rows={2}
             placeholder={disabledReason ?? "Ask anything about your database..."}
-            className="min-h-12 w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-text-3 disabled:cursor-not-allowed"
+            className="min-h-16 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-text-3 disabled:cursor-not-allowed"
           />
-          <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
-            {onConnectionChange !== undefined ? (
-              <ConnectionPicker value={connectionId ?? null} onChange={onConnectionChange} />
-            ) : lockedConnectionName ? (
-              <span
-                title="To use a different database, start a new chat."
-                className="inline-flex cursor-default items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs text-text-2"
-              >
-                <Database className="size-3.5 shrink-0 text-text-3" />
-                {lockedConnectionName}
-              </span>
-            ) : null}
-            <button type="button" aria-label="Attach" title="Attach file" className="rounded-md border border-border p-2 text-text-3 hover:bg-surface-2 hover:text-text-1"><Paperclip className="size-4" /></button>
-            <Select className="min-w-28" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
-            <Select className="min-w-44" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
-
-            <div className="ml-auto flex items-center gap-2">
-              <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="h-9 px-4">
-                <Send className="size-3.5" />Run
-              </Button>
+          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center">
+            <div className="grid min-w-0 grid-cols-1 gap-2 sm:w-[27rem] sm:grid-cols-[10.5rem_15.5rem]">
+              <Select className="w-full sm:min-w-0" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
+              <Select className="w-full sm:min-w-0" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
             </div>
+
+            <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="ml-auto h-9 w-full px-5 sm:w-auto">
+              <Send className="size-3.5" />Run
+            </Button>
           </div>
         </Card>
         {schemaSyncWarning ? (
@@ -1018,33 +999,29 @@ export function ConversationView({ conversationId }: { conversationId: string })
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen">
-      <section className="flex h-full min-w-0 flex-1 flex-col bg-bg">
+      <section className="relative flex h-full min-w-0 flex-1 flex-col bg-bg">
         {/* Conversation header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
-          <Link
-            href="/workspace/new"
-            className="flex items-center gap-1.5 text-xs text-text-3 transition hover:text-text-1"
-          >
-            ← Home
-          </Link>
-          <span className="truncate px-4 text-xs font-medium text-text-2">
-            {conversation.data?.title ?? ""}
-          </span>
-          <Tooltip content={contextPanelOpen ? "Hide schema panel" : "Show schema panel"} side="top">
-            <button
-              type="button"
-              aria-label={contextPanelOpen ? "Hide schema panel" : "Show schema panel"}
-              onClick={() => setContextPanelOpen(!contextPanelOpen)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"
-            >
-              {contextPanelOpen
-                ? <PanelRightClose className="size-4" />
-                : <PanelRightOpen className="size-4" />
-              }
-            </button>
-          </Tooltip>
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
+          <div className="pointer-events-auto absolute left-0 flex h-14 min-w-0 max-w-[calc(100%-11rem)] items-center gap-2.5 rounded-br-xl border border-l-0 border-t-0 border-border bg-surface/95 px-4 shadow-sm backdrop-blur">
+            <Database className="size-4 shrink-0 text-accent-2" />
+            <span className="truncate text-sm font-medium text-text-1">{connection.data?.name ?? "Loading source"}</span>
+          </div>
+          <div className="pointer-events-auto absolute right-0 flex h-14 shrink-0 items-center gap-1.5 rounded-bl-xl border border-r-0 border-t-0 border-border bg-surface/95 px-3 shadow-sm backdrop-blur">
+            <button type="button" aria-label="Favorite chat" title="Favorite chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Star className="size-4" /></button>
+            <button type="button" aria-label="Share chat" title="Share chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Share2 className="size-4" /></button>
+            <Tooltip content={contextPanelOpen ? "Hide schema panel" : "Show schema panel"} side="top">
+              <button
+                type="button"
+                aria-label={contextPanelOpen ? "Hide schema panel" : "Show schema panel"}
+                onClick={() => setContextPanelOpen(!contextPanelOpen)}
+                className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+              >
+                {contextPanelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+              </button>
+            </Tooltip>
+          </div>
         </div>
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
           {messages.loading ? (
             <LoadingState label="Loading messages" />
           ) : messages.error ? (
@@ -1067,7 +1044,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               ) : null}
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl space-y-6">
+            <div className="mx-auto max-w-6xl space-y-6">
               {ordered.map((message) =>
                 message.role === "user" ? (
                   <UserMessage key={message.id} message={message} />
@@ -1100,12 +1077,11 @@ export function ConversationView({ conversationId }: { conversationId: string })
           submitting={submitting}
           error={error}
           disabledReason={composerDisabledReason}
-          lockedConnectionName={connection.data?.name ?? null}
         />
       </section>
       {conversation.data ? (
         <div
-          className={`flex-shrink-0 overflow-hidden transition-all duration-200 ${contextPanelOpen ? "w-[320px]" : "w-0"}`}
+          className={`hidden flex-shrink-0 overflow-hidden transition-all duration-200 lg:block ${contextPanelOpen ? "w-[320px]" : "w-0"}`}
         >
           <ContextPanel connectionId={conversation.data.connectionId} latestRun={latestRun} />
         </div>
@@ -1113,4 +1089,5 @@ export function ConversationView({ conversationId }: { conversationId: string })
     </div>
   );
 }
+
 
