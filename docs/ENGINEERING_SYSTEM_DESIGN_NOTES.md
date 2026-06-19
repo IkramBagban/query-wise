@@ -1373,3 +1373,14 @@ Why this is the right approach:
   5. Revoke the link and verify public loads fail immediately with the revoked/not-found state.
   6. Test password unlock success, incorrect password, and rate limiting after repeated failed attempts.
   7. Create an expired link and verify the public page shows the expired state.
+
+## 52) AI-generated conversation titles
+
+- What changed: New conversations keep the default `New conversation` title through user-message submission, then generate a short title from the first user message plus the first assistant response. The generated title is applied only while the stored title is still the default.
+- Why: Copying the first user prompt into chat history made long or awkward titles and exposed raw prompt text where a concise conversation label was expected.
+- Tradeoffs and risks: Title generation adds one small LLM call to the first completed assistant turn. If generation fails or the title was already edited/generated, the query response still persists and the existing title is preserved.
+- How to test:
+  1. Start a new chat, send a question, and confirm the title remains `New conversation` until the assistant response completes.
+  2. Confirm the completed chat receives a short descriptive title that is not a direct copy of the prompt.
+  3. Rename or pre-title a conversation and confirm later responses do not overwrite it.
+  4. Simulate title-generation failure and confirm the assistant response still persists.

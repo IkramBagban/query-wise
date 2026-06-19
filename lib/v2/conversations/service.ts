@@ -22,6 +22,7 @@ import type {
 
 const CONVERSATION_CURSOR = "conversations";
 const MESSAGE_CURSOR = "conversation-messages";
+export const DEFAULT_CONVERSATION_TITLE = "New conversation";
 
 function conversationDto(record: Conversation): ConversationDto {
   return {
@@ -49,11 +50,6 @@ function messageDto(record: Message): MessageDto {
   };
 }
 
-export function fallbackConversationTitle(question: string): string {
-  const compact = question.trim().replace(/\s+/g, " ");
-  return compact.length <= 120 ? compact : `${compact.slice(0, 117).trimEnd()}...`;
-}
-
 export async function createConversation(connectionId: string, title?: string): Promise<ConversationDto> {
   const { userId } = await requireUser();
   return withAppDbTransaction(async (tx) => {
@@ -67,7 +63,7 @@ export async function createConversation(connectionId: string, title?: string): 
         id: randomUUID(),
         ownerUserId: userId,
         connectionId,
-        title: title?.trim() || "New conversation",
+        title: title?.trim() || DEFAULT_CONVERSATION_TITLE,
       },
     });
     return conversationDto(record);
@@ -162,6 +158,15 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     data: { deletedAt: new Date(), status: "archived" },
   });
   if (result.count === 0) requireFound(null);
+}
+
+export async function needsGeneratedConversationTitle(conversationId: string): Promise<boolean> {
+  const { userId } = await requireUser();
+  const record = requireFound(await getAppDb().conversation.findFirst({
+    where: { id: conversationId, ownerUserId: userId, deletedAt: null },
+    select: { title: true },
+  }));
+  return record.title === DEFAULT_CONVERSATION_TITLE;
 }
 
 export async function listMessages(input: {

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type QueryRun } from "@prisma/client";
 import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
 import { requireUser } from "@/lib/v2/auth";
-import { appendMessage, fallbackConversationTitle } from "@/lib/v2/conversations";
+import { appendMessage, DEFAULT_CONVERSATION_TITLE } from "@/lib/v2/conversations";
 import { AppError, requireFound } from "@/lib/v2/dal/core";
 import type { QueryRunDto, QueryRunStatus } from "@/types/v2";
 import { TERMINAL_QUERY_RUN_STATUSES, type QuerySubmission } from "./types";
@@ -128,9 +128,6 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
       where: { id: conversation.id },
       data: {
         lastActivityAt: new Date(),
-        ...(conversation.title === "New conversation"
-          ? { title: fallbackConversationTitle(input.question) }
-          : {}),
       },
     });
     return { run, created: true };
@@ -171,6 +168,7 @@ export async function transitionQueryRun(
 export async function completeQueryRun(input: {
   queryRunId: string;
   assistantContent: string;
+  conversationTitle?: string;
   metadata?: Prisma.InputJsonValue;
   generatedQuery?: Prisma.InputJsonValue;
   resultPreview?: Prisma.InputJsonValue;
@@ -209,10 +207,26 @@ export async function completeQueryRun(input: {
         finishedAt: new Date(),
       },
     });
-    await tx.conversation.update({
-      where: { id: fresh.conversationId },
-      data: { lastActivityAt: new Date() },
-    });
+    const now = new Date();
+    const title = input.conversationTitle?.trim();
+    const titled = title
+      ? await tx.conversation.updateMany({
+          where: {
+            id: fresh.conversationId,
+            title: DEFAULT_CONVERSATION_TITLE,
+          },
+          data: {
+            lastActivityAt: now,
+            title,
+          },
+        })
+      : { count: 0 };
+    if (titled.count === 0) {
+      await tx.conversation.update({
+        where: { id: fresh.conversationId },
+        data: { lastActivityAt: now },
+      });
+    }
     return run;
   });
 }
