@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth";
 import { createOrGetShareId } from "@/app/api/dashboard/store";
 import { devLogError } from "@/lib/v2/observability";
 import type { ShareResponse } from "@/types";
+import { LEGACY_PRIVATE_HEADERS, requireLegacyUser } from "@/app/api/legacy-security";
 
 export const runtime = "nodejs";
 
@@ -13,9 +13,8 @@ const ShareRequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  // Auth disabled - uncomment to re-enable authentication
-  // const authError = await requireAuth();
-  // if (authError) return authError;
+  const auth = await requireLegacyUser();
+  if (auth.error) return auth.error;
 
   const body = await req.json().catch(() => null);
   const parsed = ShareRequestSchema.safeParse(body);
@@ -24,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const shared = await createOrGetShareId(parsed.data.dashboardId);
+    const shared = await createOrGetShareId(auth.userId, parsed.data.dashboardId);
     if (!shared) {
       return Response.json({ error: "Dashboard not found" }, { status: 404 });
     }
@@ -35,7 +34,7 @@ export async function POST(req: NextRequest) {
       shareId: shared.shareId,
       url: `${baseUrl}/share/${shared.shareId}`,
     };
-    return Response.json(response);
+    return Response.json(response, { headers: LEGACY_PRIVATE_HEADERS });
   } catch (error) {
     devLogError("api.legacy-share-create.error", "Legacy share creation API request failed.", error);
     const message =

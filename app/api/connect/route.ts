@@ -1,9 +1,10 @@
 import type { ConnectResponse } from "@/types";
-import { requireAuth } from "@/lib/auth";
-import { testConnection } from "@/lib/db";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { devLogError } from "@/lib/v2/observability";
+import { getDataSourceAdapter } from "@/lib/v2/data-sources";
+import { AppError } from "@/lib/v2/dal/core";
+import { LEGACY_PRIVATE_HEADERS, requireLegacyUser } from "@/app/api/legacy-security";
 
 const ConnectRequestSchema = z.discriminatedUnion("type", [
   z.object({
@@ -31,11 +32,8 @@ function deriveDatabaseName(connectionString: string): string {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  // Auth disabled - uncomment to re-enable authentication
-  // const authError = await requireAuth();
-  // if (authError) {
-  //   return authError;
-  // }
+  const auth = await requireLegacyUser();
+  if (auth.error) return auth.error;
 
   let body: unknown;
   try {
@@ -62,17 +60,26 @@ export async function POST(req: NextRequest): Promise<Response> {
       );
     }
 
-    const targetConnectionString =
-      payload.type === "demo" ? undefined : payload.connectionString;
-    const tested = await testConnection(targetConnectionString);
+    const targetConnectionString = payload.type === "demo"
+      ? process.env.DEMO_DATABASE_URL
+      : payload.connectionString;
+    if (!targetConnectionString) {
+      return Response.json(
+        { error: "Database connection is not configured." },
+        { status: 503, headers: LEGACY_PRIVATE_HEADERS },
+      );
+    }
+    const tested = await getDataSourceAdapter("postgresql").testConnection({
+      connectionString: targetConnectionString,
+    });
 
     if (!tested.success) {
       const response: ConnectResponse = {
         success: false,
         name: payload.type === "demo" ? "QueryWise Demo (Ecommerce)" : "Custom PostgreSQL",
-        error: tested.error ?? "Failed to connect",
+        error: tested.errorCode ?? "Failed to connect",
       };
-      return Response.json(response, { status: 400 });
+      return Response.json(response, { status: 400, headers: LEGACY_PRIVATE_HEADERS });
     }
 
     const name =
@@ -91,10 +98,13 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
 
     const response: ConnectResponse = { success: true, name };
-    return Response.json(response);
+    return Response.json(response, { headers: LEGACY_PRIVATE_HEADERS });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal error";
     devLogError("api.legacy-connect.error", "Legacy connection API request failed.", error);
-    return Response.json({ error: message }, { status: 500 });
+    const status = error instanceof AppError && error.code === "DATA_SOURCE_TARGET_BLOCKED" ? 422 : 400;
+    return Response.json(
+      { error: error instanceof AppError ? error.message : "Connection test failed." },
+      { status, headers: LEGACY_PRIVATE_HEADERS },
+    );
   }
 }

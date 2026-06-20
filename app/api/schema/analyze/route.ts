@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { requireAuth } from "@/lib/auth";
+import { LEGACY_PRIVATE_HEADERS, requireLegacyUser } from "@/app/api/legacy-security";
 import { generateSchemaAnalysis } from "@/lib/llm/index";
 import { LLM_PROVIDER_IDS } from "@/lib/llm-config";
 import { devLogError } from "@/lib/v2/observability";
@@ -49,11 +49,8 @@ const SchemaAnalyzeRequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest): Promise<Response> {
-  // Auth disabled - uncomment to re-enable authentication
-  // const authError = await requireAuth();
-  // if (authError) {
-  //   return authError;
-  // }
+  const auth = await requireLegacyUser();
+  if (auth.error) return auth.error;
 
   let body: unknown;
   try {
@@ -79,7 +76,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
 
     const response: SchemaAnalysisResponse = { analysis };
-    return Response.json(response);
+    return Response.json(response, { headers: LEGACY_PRIVATE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal error";
     devLogError("api.legacy-schema-analysis.error", "Legacy schema analysis API request failed.", error);
