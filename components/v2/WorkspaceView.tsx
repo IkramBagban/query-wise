@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -984,15 +984,26 @@ export function ConversationView({ conversationId }: { conversationId: string })
     () => conversation.data?.connectionId ? connectionsApi.get(conversation.data.connectionId) : Promise.resolve(null),
     [conversation.data?.connectionId],
   );
-  const messages = useApiResource(() => conversationsApi.messages(conversationId, 100), [conversationId]);
+  const [messageState, setMessageState] = useState<{
+    items: ConversationMessageDto[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({ items: [], nextCursor: null, hasMore: false });
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [messagesError, setMessagesError] = useState<Error | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const dashboards = useApiResource(() => dashboardsApi.list(100), []);
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const olderScrollPosition = useRef<{ height: number; top: number } | null>(null);
 
-  const ordered = useMemo(() => messages.data?.items.slice().sort((a, b) => a.sequence - b.sequence) ?? [], [messages.data]);
+  const ordered = useMemo(
+    () => messageState.items.slice().sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id)),
+    [messageState.items],
+  );
   const latestRun = useMemo(() => ordered.slice().reverse().find((message) => message.queryRun)?.queryRun ?? null, [ordered]);
   const dashboardOptions = useMemo(
     () => dashboards.data?.items.filter((item) => item.access === "owner").map((item) => ({ value: item.id, label: item.name })) ?? [],
@@ -1002,8 +1013,90 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const refreshConnection = connection.refresh;
   const composerDisabledReason = conversation.data && connection.data && !ingestion.ready ? ingestion.description : null;
 
+  const refreshMessages = useCallback(async () => {
+    setMessagesLoading(true);
+    setMessagesError(null);
+    try {
+      const page = await conversationsApi.messages(conversationId, 100);
+      setMessageState((current) => {
+        const byId = new Map(current.items.map((message) => [message.id, message]));
+        for (const message of page.items) byId.set(message.id, message);
+        return {
+          items: [...byId.values()],
+          nextCursor: page.pageInfo.nextCursor,
+          hasMore: page.pageInfo.hasMore,
+        };
+      });
+    } catch (reason) {
+      setMessagesError(reason instanceof Error ? reason : new Error("Unable to load messages"));
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [conversationId]);
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    let active = true;
+    setMessageState({ items: [], nextCursor: null, hasMore: false });
+    setMessagesLoading(true);
+    setMessagesError(null);
+    void conversationsApi.messages(conversationId, 100).then(
+      (page) => {
+        if (!active) return;
+        setMessageState({
+          items: page.items,
+          nextCursor: page.pageInfo.nextCursor,
+          hasMore: page.pageInfo.hasMore,
+        });
+        setMessagesLoading(false);
+      },
+      (reason) => {
+        if (!active) return;
+        setMessagesError(reason instanceof Error ? reason : new Error("Unable to load messages"));
+        setMessagesLoading(false);
+      },
+    );
+    return () => { active = false; };
+  }, [conversationId]);
+
+  async function loadOlderMessages() {
+    if (!messageState.nextCursor || loadingOlder) return;
+    if (scrollRef.current) {
+      olderScrollPosition.current = {
+        height: scrollRef.current.scrollHeight,
+        top: scrollRef.current.scrollTop,
+      };
+    }
+    setLoadingOlder(true);
+    setMessagesError(null);
+    try {
+      const page = await conversationsApi.messages(conversationId, 100, messageState.nextCursor);
+      setMessageState((current) => {
+        const byId = new Map(current.items.map((message) => [message.id, message]));
+        for (const message of page.items) byId.set(message.id, message);
+        return {
+          items: [...byId.values()],
+          nextCursor: page.pageInfo.nextCursor,
+          hasMore: page.pageInfo.hasMore,
+        };
+      });
+    } catch (reason) {
+      olderScrollPosition.current = null;
+      setMessagesError(reason instanceof Error ? reason : new Error("Unable to load older messages"));
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) return;
+    if (olderScrollPosition.current) {
+      const previous = olderScrollPosition.current;
+      olderScrollPosition.current = null;
+      scrollContainer.scrollTo({ top: previous.top + scrollContainer.scrollHeight - previous.height });
+      return;
+    }
+    scrollContainer.scrollTo({ top: scrollContainer.scrollHeight });
   }, [ordered.length, submitting]);
 
   useEffect(() => {
@@ -1034,7 +1127,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     try {
       await conversationsApi.submitStream({ conversationId, question: question.trim(), provider, model, apiKey }, handleQueryEvent);
       setQuestion("");
-      await messages.refresh();
+      await refreshMessages();
       await conversation.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to submit query");
@@ -1101,10 +1194,10 @@ export function ConversationView({ conversationId }: { conversationId: string })
           </div>
         </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
-          {messages.loading ? (
+          {messagesLoading ? (
             <LoadingState label="Loading messages" />
-          ) : messages.error ? (
-            <ErrorState error={messages.error} onRetry={() => void messages.refresh()} />
+          ) : messagesError && !ordered.length ? (
+            <ErrorState error={messagesError} onRetry={() => void refreshMessages()} />
           ) : !ordered.length ? (
             <div className="mx-auto max-w-2xl pt-10 text-center">
               <span className="mx-auto inline-flex size-12 items-center justify-center rounded-2xl bg-accent-dim text-accent-2"><Sparkles className="size-6" /></span>
@@ -1124,6 +1217,14 @@ export function ConversationView({ conversationId }: { conversationId: string })
             </div>
           ) : (
             <div className="mx-auto max-w-6xl space-y-6">
+              {messageState.hasMore ? (
+                <div className="flex justify-center">
+                  <Button type="button" variant="ghost" size="sm" loading={loadingOlder} onClick={() => void loadOlderMessages()}>
+                    Load older messages
+                  </Button>
+                </div>
+              ) : null}
+              {messagesError ? <p role="alert" className="text-center text-xs text-danger">{messagesError.message}</p> : null}
               {ordered.map((message) =>
                 message.role === "user" ? (
                   <UserMessage key={message.id} message={message} />

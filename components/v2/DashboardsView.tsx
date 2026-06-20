@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
-import { BarChart3, Plus, Share2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useId, useState } from "react";
+import { BarChart3, Pencil, Plus, Share2, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardGrid, EditLayoutButton, WidgetCardSkeleton } from "@/components/v2/DashboardGrid";
@@ -14,7 +16,103 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceSt
 import { ShareDashboardModal } from "@/components/v2/ShareDashboardModal";
 import { useApiResource } from "@/hooks/v2";
 import { dashboardsApi } from "@/lib/v2/api-client";
-import type { WidgetLayout } from "@/types/v2";
+
+function DashboardOwnerActions({
+  dashboardId,
+  dashboardName,
+  onChanged,
+  onDeleted,
+}: {
+  dashboardId: string;
+  dashboardName: string;
+  onChanged: () => Promise<unknown>;
+  onDeleted: () => Promise<unknown> | void;
+}) {
+  const titleId = useId();
+  const [mode, setMode] = useState<"rename" | "delete" | null>(null);
+  const [name, setName] = useState(dashboardName);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function open(nextMode: "rename" | "delete") {
+    setName(dashboardName);
+    setError(null);
+    setMode(nextMode);
+  }
+
+  async function rename(event: FormEvent) {
+    event.preventDefault();
+    const nextName = name.trim();
+    if (!nextName || nextName === dashboardName) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await dashboardsApi.update(dashboardId, nextName);
+      await onChanged();
+      setMode(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to rename dashboard");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await dashboardsApi.remove(dashboardId);
+      await onDeleted();
+      setMode(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to delete dashboard");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Button type="button" variant="ghost" size="sm" aria-label={`Rename ${dashboardName}`} onClick={() => open("rename")}>
+        <Pencil className="h-3.5 w-3.5" />
+        Rename
+      </Button>
+      <Button type="button" variant="danger" size="sm" aria-label={`Delete ${dashboardName}`} onClick={() => open("delete")}>
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete
+      </Button>
+      <Dialog open={mode !== null} onOpenChange={(openState) => { if (!openState && !busy) setMode(null); }} panelClassName="sm:max-w-md">
+        <div role="dialog" aria-modal="true" aria-labelledby={titleId}>
+          <h2 id={titleId} className="font-syne text-xl font-semibold">
+            {mode === "rename" ? "Rename dashboard" : "Delete dashboard"}
+          </h2>
+          {mode === "rename" ? (
+            <form className="mt-4 space-y-4" onSubmit={rename}>
+              <div>
+                <label htmlFor={`${titleId}-name`} className="mb-1.5 block text-sm font-medium">Dashboard name</label>
+                <Input id={`${titleId}-name`} autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} />
+              </div>
+              {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" disabled={busy} onClick={() => setMode(null)}>Cancel</Button>
+                <Button type="submit" loading={busy} disabled={!name.trim() || name.trim() === dashboardName}>Save</Button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <p className="text-sm text-text-2">Delete “{dashboardName}” and all of its widgets? This cannot be undone.</p>
+              {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" disabled={busy} onClick={() => setMode(null)}>Cancel</Button>
+                <Button type="button" variant="danger" loading={busy} onClick={() => void remove()}>Delete dashboard</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Dialog>
+    </>
+  );
+}
 
 function DashboardPageSkeleton() {
   return (
@@ -100,8 +198,8 @@ export function DashboardsListView() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {resource.data.items.map((dashboard) => (
-            <Link key={dashboard.id} href={`/dashboards/${dashboard.id}`}>
-              <Card hoverable className="p-4">
+              <Card key={dashboard.id} hoverable className="p-4">
+                <Link href={`/dashboards/${dashboard.id}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                 <div className="flex items-center justify-between">
                   <BarChart3 className="h-5 w-5 text-accent-2" />
                   <span className="text-xs capitalize text-text-3">{dashboard.access}</span>
@@ -111,8 +209,18 @@ export function DashboardsListView() {
                   {dashboard.widgetCount ?? 0} widgets · updated{" "}
                   {new Date(dashboard.updatedAt).toLocaleDateString()}
                 </p>
+                </Link>
+                {dashboard.access === "owner" ? (
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+                    <DashboardOwnerActions
+                      dashboardId={dashboard.id}
+                      dashboardName={dashboard.name}
+                      onChanged={resource.refresh}
+                      onDeleted={resource.refresh}
+                    />
+                  </div>
+                ) : null}
               </Card>
-            </Link>
           ))}
         </div>
       )}
@@ -127,6 +235,7 @@ export function DashboardDetailView({
   dashboardId: string;
   editor?: boolean;
 }) {
+  const router = useRouter();
   const resource = useApiResource(() => dashboardsApi.get(dashboardId), [dashboardId]);
   const [shareOpen, setShareOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(editor);
@@ -172,6 +281,17 @@ export function DashboardDetailView({
               <EditLayoutButton
                 isEditing={isEditing}
                 onToggle={() => setIsEditing((v) => !v)}
+              />
+            ) : null}
+            {owner ? (
+              <DashboardOwnerActions
+                dashboardId={dashboardId}
+                dashboardName={dashboard.name}
+                onChanged={resource.refresh}
+                onDeleted={() => {
+                  router.replace("/dashboards");
+                  router.refresh();
+                }}
               />
             ) : null}
             {owner ? (

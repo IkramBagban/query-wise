@@ -4,7 +4,6 @@ import { Prisma } from "@prisma/client";
 import type { Conversation, Message } from "@prisma/client";
 import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
 import { requireUser } from "@/lib/v2/auth";
-import { requireOwnedConnection } from "@/lib/v2/dal/authorization";
 import {
   AppError,
   decodeCursor,
@@ -189,10 +188,11 @@ export async function listMessages(input: {
     where: {
       conversationId: input.conversationId,
       ...(sequence != null && id
-        ? { OR: [{ sequence: { gt: sequence } }, { sequence, id: { gt: id } }] }
+        ? { OR: [{ sequence: { lt: sequence } }, { sequence, id: { lt: id } }] }
         : {}),
     },
-    orderBy: [{ sequence: "asc" }, { id: "asc" }],
+    // Fetch newest-first so the initial bounded page always contains the current conversation tail.
+    orderBy: [{ sequence: "desc" }, { id: "desc" }],
     take: limit + 1,
   });
   const page = records.slice(0, limit);
