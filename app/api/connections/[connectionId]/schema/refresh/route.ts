@@ -9,7 +9,7 @@ type Context = { params: Promise<{ connectionId: string }> };
 export async function POST(request: Request, context: Context) {
   return handle(async () => {
     const { connectionId } = await context.params;
-    await parseJson(request, idempotencySchema);
-    return json(await refreshConnectionSchema(resourceIdSchema.parse(connectionId)), 202);
+    const { idempotencyKey } = await parseJson(request, idempotencySchema);
+    return json(await refreshConnectionSchema(resourceIdSchema.parse(connectionId), idempotencyKey), 202);
   });
 }

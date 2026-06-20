@@ -6,20 +6,38 @@ export type QueryStreamEmitter = (type: QueryStreamType, data: unknown) => void;
 export function querySseResponse(queryRunId: string, execute: (emit: QueryStreamEmitter) => Promise<void>): Response {
   const encoder = new TextEncoder();
   let sequence = 0;
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const emit: QueryStreamEmitter = (type, data) => {
+        if (closed) return;
         sequence += 1;
-        controller.enqueue(encoder.encode(`event: ${type}\ndata: ${JSON.stringify({
-          contractVersion: "querywise.v2",
-          queryRunId,
-          sequence,
-          type,
-          occurredAt: new Date().toISOString(),
-          data,
-        })}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`event: ${type}\ndata: ${JSON.stringify({
+            contractVersion: "querywise.v2",
+            queryRunId,
+            sequence,
+            type,
+            occurredAt: new Date().toISOString(),
+            data,
+          })}\n\n`));
+        } catch {
+          // Disconnecting the transport must not turn durable query execution into a failure.
+          closed = true;
+        }
       };
-      void execute(emit).finally(() => controller.close());
+      void execute(emit).catch(() => undefined).finally(() => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // The consumer may have cancelled between the closed check and close call.
+        }
+      });
+    },
+    cancel() {
+      closed = true;
     },
   });
   return new Response(stream, {

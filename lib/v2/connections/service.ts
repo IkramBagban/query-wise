@@ -12,6 +12,7 @@ import { encryptSecret } from "@/lib/v2/security/encryption";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { parsePostgresUrl } from "@/lib/v2/data-sources/postgresql/url";
 import { enqueueSchemaIngestion } from "@/lib/v2/ingestion";
+import { executeIdempotently, idempotencyFingerprint } from "@/lib/v2/idempotency";
 import { getConnectionSecret } from "./credentials";
 import { devLog, devLogError } from "@/lib/v2/observability";
 
@@ -161,17 +162,25 @@ export async function updateConnection(connectionId: ResourceId, input: { name?:
   return dto(record);
 }
 
-export async function testSavedConnection(connectionId: ResourceId) {
+export async function testSavedConnection(connectionId: ResourceId, idempotencyKey: string) {
   const record = await requireOwnedConnection(connectionId);
-  const adapter = getDataSourceAdapter(record.providerId);
-  requireCapability(adapter, "connection-test");
-  const { secret } = await getConnectionSecret(connectionId);
-  const result = await adapter.testConnection(secret);
-  await getAppDb().databaseConnection.update({
-    where: { id: connectionId },
-    data: { status: result.success ? "connected" : "error", lastTestedAt: new Date(), lastTestErrorCode: result.errorCode },
+  return executeIdempotently({
+    ownerUserId: record.ownerUserId,
+    operation: "connection.test",
+    idempotencyKey,
+    requestFingerprint: idempotencyFingerprint([connectionId, record.credentialVersion]),
+    execute: async () => {
+      const adapter = getDataSourceAdapter(record.providerId);
+      requireCapability(adapter, "connection-test");
+      const { secret } = await getConnectionSecret(connectionId);
+      const result = await adapter.testConnection(secret);
+      await getAppDb().databaseConnection.update({
+        where: { id: connectionId },
+        data: { status: result.success ? "connected" : "error", lastTestedAt: new Date(), lastTestErrorCode: result.errorCode },
+      });
+      return { contractVersion: CONTRACT_VERSION, ...result };
+    },
   });
-  return { contractVersion: CONTRACT_VERSION, ...result };
 }
 
 export async function deleteConnection(connectionId: ResourceId): Promise<void> {

@@ -106,7 +106,12 @@ const defaultDependencies: QueryRuntimeDependencies = {
       if (!(error instanceof AppError) || error.code !== "SCHEMA_SNAPSHOT_UNAVAILABLE") {
         throw error;
       }
-      await refreshConnectionSchema(context.connectionId);
+      // A stable internal key prevents repeated query attempts from enqueueing
+      // duplicate repair jobs for the same credential generation.
+      await refreshConnectionSchema(
+        context.connectionId,
+        `query-runtime-missing-snapshot-v${connection.credentialVersion}`,
+      );
       snapshot = await getLatestConnectionSchema(context.connectionId);
     }
     const schema = toLegacySchema(snapshot.metadata as unknown as CanonicalDataSourceMetadata, snapshot.summary);

@@ -38,13 +38,13 @@ function deterministicJobRowId(idempotencyKey: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-export function schemaIngestionJobId(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint" | "requestedAt">): string {
-  const dedupeKey = input.schemaFingerprint ?? `${input.intent}:${input.requestedAt}`;
+export function schemaIngestionJobId(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "requestIdempotencyKey" | "schemaFingerprint" | "requestedAt">): string {
+  const dedupeKey = input.requestIdempotencyKey ?? input.schemaFingerprint ?? `${input.intent}:${input.requestedAt}`;
   const dedupeHash = createHash("sha256").update(dedupeKey).digest("hex").slice(0, 16);
   return `schema-ingestion-${input.connectionId}-${dedupeHash}`;
 }
 
-export function schemaIngestionIdempotencyKey(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "schemaFingerprint" | "requestedAt">): string {
+export function schemaIngestionIdempotencyKey(input: Pick<SchemaIngestionJobData, "connectionId" | "intent" | "requestIdempotencyKey" | "schemaFingerprint" | "requestedAt">): string {
   return createHash("sha256").update(schemaIngestionJobId(input)).digest("hex");
 }
 
@@ -110,12 +110,14 @@ export async function enqueueSchemaIngestion(input: {
   connectionId: ResourceId;
   ownerUserId?: string;
   intent: SchemaIngestionIntent;
+  requestIdempotencyKey?: string;
   schemaFingerprint?: string;
 }): Promise<{ jobId: string; published: boolean }> {
   const data: SchemaIngestionJobData = {
     connectionId: input.connectionId,
     ownerUserId: input.ownerUserId,
     intent: input.intent,
+    requestIdempotencyKey: input.requestIdempotencyKey,
     schemaFingerprint: input.schemaFingerprint,
     requestedAt: new Date().toISOString(),
   };

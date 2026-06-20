@@ -10,6 +10,7 @@ import { createResourceId } from "@/lib/v2/domain/ids";
 import { getDataSourceAdapter, requireCapability } from "@/lib/v2/data-sources";
 import { getConnectionSecret } from "@/lib/v2/connections/credentials";
 import { enqueueSchemaIngestion } from "@/lib/v2/ingestion";
+import { executeIdempotently, idempotencyFingerprint } from "@/lib/v2/idempotency";
 import { devLog, devLogError } from "@/lib/v2/observability";
 
 const DEFAULT_OPTIONS = {
@@ -17,10 +18,23 @@ const DEFAULT_OPTIONS = {
   maxRelationships: 10_000, timeoutMs: 30_000,
 };
 
-export async function refreshConnectionSchema(connectionId: ResourceId) {
+export async function refreshConnectionSchema(connectionId: ResourceId, idempotencyKey: string) {
   const record = await requireOwnedConnection(connectionId);
-  await enqueueSchemaIngestion({ connectionId, ownerUserId: record.ownerUserId, intent: "manual-refresh" });
-  return { contractVersion: CONTRACT_VERSION, connectionId, status: "queued" as const, summary: "Schema ingestion queued." };
+  return executeIdempotently({
+    ownerUserId: record.ownerUserId,
+    operation: "connection.schema-refresh",
+    idempotencyKey,
+    requestFingerprint: idempotencyFingerprint([connectionId, record.credentialVersion]),
+    execute: async () => {
+      await enqueueSchemaIngestion({
+        connectionId,
+        ownerUserId: record.ownerUserId,
+        intent: "manual-refresh",
+        requestIdempotencyKey: idempotencyKey,
+      });
+      return { contractVersion: CONTRACT_VERSION, connectionId, status: "queued" as const, summary: "Schema ingestion queued." };
+    },
+  });
 }
 
 export async function refreshConnectionSchemaInline(connectionId: ResourceId) {

@@ -12,6 +12,7 @@ export interface SchemaIngestionJobData {
   ownerUserId?: string;
   intent: SchemaIngestionIntent;
   requestedAt: string;
+  requestIdempotencyKey?: string;
   schemaFingerprint?: string;
 }
 

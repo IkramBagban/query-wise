@@ -290,6 +290,22 @@ model AuditLog {
   @@map("v2_audit_logs")
 }
 
+model IdempotencyRecord {
+  id                 String   @id @db.Uuid
+  ownerUserId        String   @map("owner_user_id")
+  operation          String   @db.VarChar(100)
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(200)
+  requestFingerprint String   @map("request_fingerprint") @db.Char(64)
+  response           Json?
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([ownerUserId, operation, idempotencyKey], name: "ownerUserId_operation_idempotencyKey", map: "v2_idempotency_owner_operation_key")
+  @@index([expiresAt], map: "v2_idempotency_expiry_idx")
+  @@map("v2_idempotency_records")
+}
+
 model DurableJob {
   id             String    @id @db.Uuid
   type           String
