@@ -1384,3 +1384,15 @@ Why this is the right approach:
   2. Confirm the completed chat receives a short descriptive title that is not a direct copy of the prompt.
   3. Rename or pre-title a conversation and confirm later responses do not overwrite it.
   4. Simulate title-generation failure and confirm the assistant response still persists.
+
+## 53) Review remediation: legacy isolation, public caching, idempotency, and durable streaming
+
+- What changed: Legacy connection/schema/dashboard/share mutations now require Clerk identity; raw-credential schema introspection is retired; legacy connection tests use the v2 SSRF/TLS adapter; and legacy dashboards are owner-scoped with bounded payloads. Public dashboard widgets execute with concurrency four under one 30-second budget and cache bounded public DTOs in Redis for up to 30 seconds using versioned, non-secret keys, distributed locks, and process-local single-flight. SSE disconnects no longer fail durable query runs. Connection-test and schema-refresh mutations now persist fingerprinted idempotency claims/responses, while schema jobs derive stable IDs from the client key. Conversation messages load the newest page and paginate backward, and dashboard owners can rename/delete from list/detail views.
+- Why: These changes close the reviewed SSRF/ownership/availability gaps, prevent duplicate expensive mutations, keep durable execution independent from its HTTP transport, and complete required conversation/dashboard lifecycle behavior.
+- Tradeoffs and risks: Redis failure intentionally falls back to uncached public execution; cache entries can be stale for at most 30 seconds but authorization/expiry/revocation/password checks still run first. Concurrent duplicates of an unfinished idempotent operation receive a retryable conflict rather than waiting. The idempotency table requires the new migration before deploying the updated routes.
+- How to test:
+  1. Apply Prisma migrations, then repeat connection-test and schema-refresh requests with the same key; verify one external operation/job and the same response, and verify a changed credential version returns `IDEMPOTENCY_KEY_REUSED` for the old key.
+  2. Disconnect an SSE client mid-query and verify the durable run continues to its actual terminal state without enqueue/close errors changing it to failed.
+  3. Load a public dashboard twice with Redis enabled; verify bounded parallel execution on the first request, a cache hit on the second, per-request view counts, and immediate rejection after revoke/expiry/password failure.
+  4. Attempt unauthenticated legacy mutations, unsafe database targets, cross-owner dashboard IDs, oversized dashboard bodies, and ownerless historical records; verify they are rejected without leaking credentials or owner IDs.
+  5. Open a conversation with more than 100 messages, confirm the newest messages render, load older pages without scroll jumps, then rename/delete owned dashboards from list and detail views.

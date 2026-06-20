@@ -22,11 +22,14 @@ prerendered or shared-cached.
 - Durable schema snapshots live in the application database.
 - Optional distributed metadata cache keys are
   `schema:{connectionId}:{schemaVersion}`. They never contain credentials.
-- Public share DTO caching, if added, is keyed by a non-secret internal share
-  record/version and invalidated on revoke/update. Password-gated responses are
-  never shared-cached.
-- Query results, credentials, LLM API keys, decrypted secrets, authorization
-  decisions, and raw samples are not placed in framework or distributed caches.
+- Public share DTO caching is keyed by a non-secret internal share/version plus
+  dashboard/widget versions and invalidated naturally on revoke/update. Token,
+  expiry, revocation, and password-unlock checks always run before cache access;
+  unlock decisions and credentials are never cached.
+- Private query results, credentials, LLM API keys, decrypted secrets,
+  authorization decisions, and raw samples are not placed in framework or
+  distributed caches. A bounded public-dashboard DTO may cache its already-safe
+  widget previews for up to 30 seconds after authorization succeeds.
 - Process-local maps may only be bounded best-effort accelerators with correct
   cache-miss behavior. They cannot be authoritative.
 
