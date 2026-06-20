@@ -29,6 +29,14 @@ import {
   verifyUnlockCredential,
 } from "./crypto";
 import { clearPasswordAttempts, consumePasswordAttempts } from "./rate-limit";
+import {
+  getOrCreatePublicDashboard,
+  publicDashboardCacheKey,
+} from "./public-dashboard-cache";
+
+const PUBLIC_WIDGET_CONCURRENCY = 4;
+const PUBLIC_DASHBOARD_EXECUTION_BUDGET_MS = 30_000;
+const PUBLIC_DASHBOARD_CACHE_TTL_SECONDS = 30;
 
 const CreateShareSchema = z.discriminatedUnion("type", [
   z
@@ -306,6 +314,7 @@ async function activeShare(token: string): Promise<DashboardShareLink> {
 async function executePublicWidget(
   widget: DashboardWidget,
   dashboardOwnerUserId: string,
+  deadline: number,
 ): Promise<PublicDashboardDto["dashboard"]["widgets"][number]> {
   const chartConfig = ChartConfigSchema.parse(widget.chartConfig);
   const layout = WidgetLayoutSchema.parse(widget.layout);
@@ -323,6 +332,16 @@ async function executePublicWidget(
       error: {
         code: "WIDGET_QUERY_UNAVAILABLE",
         message: "This chart cannot be refreshed because its saved query is unavailable.",
+      },
+    };
+  }
+  if (Date.now() >= deadline) {
+    return {
+      ...base,
+      result: null,
+      error: {
+        code: "WIDGET_QUERY_BUDGET_EXCEEDED",
+        message: "This chart could not be refreshed within the shared dashboard time budget.",
       },
     };
   }
@@ -368,12 +387,27 @@ async function executePublicWidget(
     const adapter = getDataSourceAdapter(record.providerId);
     requireCapability(adapter, "sql-validation");
     requireCapability(adapter, "read-sql-execution");
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return {
+        ...base,
+        result: null,
+        error: {
+          code: "WIDGET_QUERY_BUDGET_EXCEEDED",
+          message: "This chart could not be refreshed within the shared dashboard time budget.",
+        },
+      };
+    }
     const result = await adapter.executeReadQuery(
       record.id,
       record.credentialVersion,
       secret,
       query.data as ProviderQuery,
-      { timeoutMs: 15_000, maxRows: 500, maxBytes: 2 * 1024 * 1024 },
+      {
+        timeoutMs: Math.min(15_000, remainingMs),
+        maxRows: 500,
+        maxBytes: 2 * 1024 * 1024,
+      },
     );
     return { ...base, result: createResultPreview(result), error: null };
   } catch (error) {
@@ -390,6 +424,49 @@ async function executePublicWidget(
       },
     };
   }
+}
+
+async function executePublicWidgets(
+  widgets: DashboardWidget[],
+  dashboardOwnerUserId: string,
+): Promise<PublicDashboardDto["dashboard"]["widgets"]> {
+  const results = new Array<PublicDashboardDto["dashboard"]["widgets"][number]>(widgets.length);
+  const deadline = Date.now() + PUBLIC_DASHBOARD_EXECUTION_BUDGET_MS;
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < widgets.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = await executePublicWidget(
+          widgets[index],
+          dashboardOwnerUserId,
+          deadline,
+        );
+      } catch (error) {
+        const chartConfig = ChartConfigSchema.safeParse(widgets[index].chartConfig);
+        const layout = WidgetLayoutSchema.safeParse(widgets[index].layout);
+        // Invalid persisted presentation data cannot satisfy the public DTO contract.
+        if (!chartConfig.success || !layout.success) throw error;
+        results[index] = {
+          id: widgets[index].id,
+          title: widgets[index].title,
+          chartConfig: chartConfig.data,
+          layout: layout.data,
+          result: null,
+          error: {
+            code: "WIDGET_QUERY_EXECUTION_FAILED",
+            message: "This chart could not be refreshed.",
+          },
+        };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(PUBLIC_WIDGET_CONCURRENCY, widgets.length) }, () => worker()),
+  );
+  return results;
 }
 
 export async function getPublicDashboard(
@@ -415,22 +492,39 @@ export async function getPublicDashboard(
   if (widgets.length > 50) {
     throw new AppError("RESULT_LIMIT_EXCEEDED", "Shared dashboard exceeds the widget limit.");
   }
-  const publicWidgets: PublicDashboardDto["dashboard"]["widgets"] = [];
-  for (const widget of widgets) {
-    publicWidgets.push(await executePublicWidget(widget, dashboard.ownerUserId));
-  }
-  const dto: PublicDashboardDto = {
-    contractVersion: "querywise.v2",
-    dashboard: {
-      name: dashboard.name,
-      updatedAt: iso(dashboard.updatedAt),
-      widgets: publicWidgets,
+  const widgetsUpdatedAt = widgets.reduce<Date | null>(
+    (latest, widget) => (!latest || widget.updatedAt > latest ? widget.updatedAt : latest),
+    null,
+  );
+  const cacheKey = publicDashboardCacheKey({
+    shareId: share.id,
+    shareVersion: share.version,
+    dashboardUpdatedAt: dashboard.updatedAt,
+    widgetsUpdatedAt,
+  });
+  const secondsUntilExpiry = share.expiresAt
+    ? Math.max(1, Math.floor((share.expiresAt.getTime() - Date.now()) / 1_000))
+    : PUBLIC_DASHBOARD_CACHE_TTL_SECONDS;
+  const dto = await getOrCreatePublicDashboard(
+    cacheKey,
+    Math.min(PUBLIC_DASHBOARD_CACHE_TTL_SECONDS, secondsUntilExpiry),
+    async () => {
+      const publicWidgets = await executePublicWidgets(widgets, dashboard.ownerUserId);
+      const generated: PublicDashboardDto = {
+        contractVersion: "querywise.v2",
+        dashboard: {
+          name: dashboard.name,
+          updatedAt: iso(dashboard.updatedAt),
+          widgets: publicWidgets,
+        },
+        share: { expiresAt: share.expiresAt?.toISOString() ?? null },
+      };
+      if (Buffer.byteLength(JSON.stringify(generated), "utf8") > 2 * 1024 * 1024) {
+        throw new AppError("RESULT_LIMIT_EXCEEDED", "Shared dashboard exceeds the response limit.");
+      }
+      return generated;
     },
-    share: { expiresAt: share.expiresAt?.toISOString() ?? null },
-  };
-  if (Buffer.byteLength(JSON.stringify(dto), "utf8") > 2 * 1024 * 1024) {
-    throw new AppError("RESULT_LIMIT_EXCEEDED", "Shared dashboard exceeds the response limit.");
-  }
+  );
   await getAppDb().dashboardShareLink.update({
     where: { id: share.id },
     data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
