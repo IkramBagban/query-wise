@@ -1,8 +1,8 @@
 # QueryWise Codebase Review
 
-**Date:** 2026-06-20  
-**Commit reviewed:** `ecd8807` (`feature/v2-workspace-shell`)  
-**Mode:** Review remediation in progress.  
+**Date:** 2026-06-20
+**Commit reviewed:** `ecd8807` (`feature/v2-workspace-shell`)
+**Mode:** Review remediation in progress.
 **Result:** 7 resolved findings; 20 remain open.
 
 > **Tracking instruction:** After a finding is fixed and verified, complete its 2–3 line resolution notes, then change the checkbox from `[ ]` to `[x]`.
@@ -33,7 +33,7 @@ Each finding below was traced through its callers, persistence model, API contra
 - **Change:** Authenticated legacy DB routes, retired raw schema introspection, and routed connection tests through the v2 SSRF/TLS adapter with one-shot cleanup.
 - **Verification:** Targeted lint and production build cover the changed routes; unsafe targets and raw-schema access are rejected by the new boundaries.
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `app/api/connect/route.ts:33-38,55-75`, `app/api/schema/route.ts:16-21,38-56`, `lib/db.ts:14-27,135-149`, `lib/schema/pool.ts:13-24`, `lib/schema/introspect.ts:121-208`
 
 Both legacy routes leave their authentication checks commented out. `/api/connect` opens a caller-supplied PostgreSQL URL, while `/api/schema` introspects it and returns metadata, sample rows, ranges, and top values. The legacy pool code applies no destination IP/DNS/port policy, disables TLS certificate verification, keys global pools by raw credential-bearing URLs, and does not evict them.
@@ -50,7 +50,7 @@ Both legacy routes leave their authentication checks commented out. `/api/connec
 - **Change:** Added Clerk ownership to legacy dashboard persistence/read/share flows, stripped owner IDs from DTOs, rejected ownerless records, and bounded request/widget/result sizes.
 - **Verification:** Production build/type checking and targeted route lint validate the scoped storage and API changes.
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `app/api/dashboard/route.ts:10-74`, `app/api/dashboard/store.ts:58-72`, `app/api/share/route.ts:15-28`, `app/api/share/[shareId]/route.ts:6-16`
 
 Authentication is commented out on legacy dashboard save/share routes. A caller supplies the dashboard ID and full dashboard payload; the global store overwrites records by that ID. Any known dashboard ID can then be published, and the public share response contains stored SQL and result data. Widget and row arrays are not bounded.
@@ -67,7 +67,7 @@ Authentication is commented out on legacy dashboard save/share routes. A caller 
 - **Change:** Added concurrency-four widget execution, one 30-second budget, Redis DTO caching, distributed locking, local single-flight, and versioned invalidation keys.
 - **Verification:** Targeted cache/service lint passes; production build validates the Redis integration and public DTO types.
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/v2/sharing/service.ts:306-379,395-421`
 
 Loading a public dashboard executes every saved widget query sequentially. A dashboard can have 50 widgets, and each query can consume up to its own 15-second execution window and return up to the configured row/byte caps. Password attempts are rate-limited, but ordinary public-share reads are not.
@@ -84,7 +84,7 @@ Loading a public dashboard executes every saved widget query sequentially. A das
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `app/api/query/route.ts:40-63`
 
 Every newly accepted idempotency key immediately starts the complete LLM and database pipeline. No distributed per-user or per-connection lease/rate limit is acquired before execution.
@@ -101,7 +101,7 @@ Every newly accepted idempotency key immediately starts the complete LLM and dat
 - **Change:** SSE emit/close now tolerate cancellation and closed controllers, while stream transport failures are kept outside durable execution state.
 - **Verification:** Production build validates the Web Stream implementation; disconnect handling is guarded at emit, close, and cancel boundaries.
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/v2/query/sse.ts:6-24`
 
 The stream emitter directly calls `controller.enqueue`, and the durable execution promise is coupled to the stream controller. If the client disconnects, later enqueue/close operations can throw into the query execution path.
@@ -118,7 +118,7 @@ The stream emitter directly calls `controller.enqueue`, and the durable executio
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/v2/query/cancellation.ts:3-16`
 
 Active `AbortController` instances live in a process-local `Map`. In multi-instance/serverless deployment, a cancel request handled by one instance cannot abort work running on another.
@@ -135,7 +135,7 @@ Active `AbortController` instances live in a process-local `Map`. In multi-insta
 - **Change:** Message APIs now return the newest bounded page and paginate backward; the UI merges/dedupes pages and preserves scroll position while loading older messages.
 - **Verification:** Production build validates API/client contracts; manual verification should use a conversation exceeding 100 messages.
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/v2/WorkspaceView.tsx:987,995,1037`, `lib/v2/conversations/service.ts:188-228`
 
 The conversation view requests exactly one 100-message page and never follows `pageInfo.nextCursor`. The server returns pages in oldest-first order.
@@ -152,7 +152,7 @@ The conversation view requests exactly one 100-message page and never follows `p
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/v2/WorkspaceView.tsx:1091-1099,1161-1166`
 
 The context toggle remains available below the desktop breakpoint, but the panel container is always hidden below `lg`.
@@ -169,7 +169,7 @@ The context toggle remains available below the desktop breakpoint, but the panel
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `hooks/v2/use-api-resource.ts:10-24`
 
 The hook starts asynchronous loaders without cancellation or a request-generation guard. When dependencies change, an older request can resolve after the newer request and still update `data`, `error`, and `loading`.
@@ -186,7 +186,7 @@ The hook starts asynchronous loaders without cancellation or a request-generatio
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/v2/ShareDashboardModal.tsx:170-204,359-442`, `lib/v2/api-client/resources.ts:129-169`
 
 The modal only creates and revokes link shares. The API types/resources support grant operations, and the dashboard-sharing specification requires direct-email sharing.
@@ -203,7 +203,7 @@ The modal only creates and revokes link shares. The API types/resources support 
 - **Change:** Added owner-only rename/delete actions to dashboard list/detail views with confirmation, loading/errors, refresh, and redirect after detail deletion.
 - **Verification:** Production build validates API usage and component types; targeted lint reports only pre-existing project warnings/errors outside these actions.
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/v2/DashboardsView.tsx:48-120,123-225`, `lib/v2/api-client/resources.ts:129-169`
 
 The dashboard UI supports listing, creation, opening, sharing, and layout editing, but exposes neither rename nor delete despite available API methods and spec requirements.
@@ -220,7 +220,7 @@ The dashboard UI supports listing, creation, opening, sharing, and layout editin
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/v2/ConnectionsView.tsx:618-628`, `lib/v2/api-client/resources.ts:25-48`
 
 Connection detail/settings expose test, refresh, and delete actions only. The API already supports update, but the UI has no form for renaming or replacing credentials; settings and schema routes currently render the same view.
@@ -237,7 +237,7 @@ Connection detail/settings expose test, refresh, and delete actions only. The AP
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 8/10  
+**Confidence:** 8/10
 **Evidence:** `app/share/[shareId]/page.tsx:8-14`
 
 The server-rendered page constructs an internal fetch origin from `x-forwarded-proto`, `x-forwarded-host`, or `host`, all of which require trusted-proxy enforcement to be safe.
@@ -256,7 +256,7 @@ The server-rendered page constructs an internal fetch origin from `x-forwarded-p
 - **Change:** Added persisted fingerprinted idempotency records and replay semantics; schema refresh also derives the durable ingestion job ID from the client key.
 - **Verification:** Prisma schema/client validation and production build cover the new model, migration, routes, and services.
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `app/api/connections/[connectionId]/test/route.ts:8-12`, `app/api/connections/[connectionId]/schema/refresh/route.ts:9-13`, `lib/v2/schema/service.ts:20-23`, `lib/v2/connections/service.ts:164-174`
 
 Both routes parse a required `idempotencyKey` but do not pass it to the service. Schema refresh creates a timestamp-derived job and connection test always reconnects.
@@ -273,7 +273,7 @@ Both routes parse a required `idempotencyKey` but do not pass it to the service.
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/v2/connections/service.ts:68-75`
 
 Connection creation persists encrypted credentials before testing. Exceptions thrown by network policy, DNS, or adapter setup can bypass the later status update.
@@ -290,7 +290,7 @@ Connection creation persists encrypted credentials before testing. Exceptions th
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/v2/dashboards/service.ts:73-80,213-225`, `lib/v2/sharing/service.ts:410-416`
 
 Widget creation performs count-then-insert under default transaction isolation without locking or a database-enforced capacity rule. Concurrent requests can both observe 49 and insert.
@@ -307,7 +307,7 @@ Widget creation performs count-then-insert under default transaction isolation w
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `prisma/schema.prisma:278-290`
 
 The `AuditLog` model exists, but no audit-log writes were found in application, library, or worker code for connection changes/tests, schema refreshes, sharing changes, or authorization failures.
@@ -324,7 +324,7 @@ The `AuditLog` model exists, but no audit-log writes were found in application, 
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `lib/v2/sharing/rate-limit.ts`; affected routes include dashboard share creation, connection test, and schema refresh.
 
 Only share-password attempts have rate limiting. Share/link creation, connection tests, and schema refresh/job creation have no distributed per-user/global limits.
@@ -341,7 +341,7 @@ Only share-password attempts have rate limiting. Share/link creation, connection
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `lib/v2/query-runs/service.ts:73-99`
 
 Stale-run recovery is checked only when the exact `(conversationId, idempotencyKey)` is submitted again. Normal fresh submissions use new UUIDs.
@@ -358,7 +358,7 @@ Stale-run recovery is checked only when the exact `(conversationId, idempotencyK
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `lib/v2/query/orchestrator.ts:175-184`, `lib/v2/data-sources/postgresql/adapter.ts:45-50`
 
 The orchestrator transitions to `executing` and emits an SQL preview with `validation: "pending"`. Actual validation occurs only inside `executeReadQuery`, so clients never receive a durable `valid` or `blocked` validation state before execution.
@@ -375,7 +375,7 @@ The orchestrator transitions to `executing` and emits an SQL preview with `valid
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `lib/v2/data-sources/postgresql/validation.ts:38-49`
 
 The AST walker checks string-valued `node.name` but does not inspect the `schema` field of qualified relation names. `SELECT * FROM information_schema.tables` is parsed with a qualified name and passes despite `blockSystemCatalogs: true`.
@@ -392,7 +392,7 @@ The AST walker checks string-valued `node.name` but does not inspect the `schema
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/export.ts:10-26,73-85`
 
 Database cell values are written to CSV/clipboard TSV without neutralizing formula-leading characters such as `=`, `+`, `-`, and `@`.
@@ -409,7 +409,7 @@ Database cell values are written to CSV/clipboard TSV without neutralizing formu
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `lib/v2/data-sources/postgresql/metadata.ts:23-68`
 
 Three sequential introspection queries can each consume a 30-second statement timeout, excluding connection setup.
@@ -426,7 +426,7 @@ Three sequential introspection queries can each consume a 30-second statement ti
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/ui/dialog.tsx:28-45`, `components/ui/sheet.tsx:22-44`
 
 The primitives lack complete dialog semantics, accessible labelling, initial focus, focus trapping/restoration, and background inert/scroll-lock handling.
@@ -443,7 +443,7 @@ The primitives lack complete dialog semantics, accessible labelling, initial foc
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `components/ui/select.tsx:64-117`
 
 The custom control lacks combobox/listbox roles, expanded/active-descendant state, and Arrow/Home/End/typeahead interaction.
@@ -460,7 +460,7 @@ The custom control lacks combobox/listbox roles, expanded/active-descendant stat
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 9/10  
+**Confidence:** 9/10
 **Evidence:** `components/v2/DashboardGrid.tsx:74-85`
 
 The debounced layout mutation is fire-and-forget with no rejection handling, rollback, or error state.
@@ -479,7 +479,7 @@ The debounced layout mutation is fire-and-forget with no rejection handling, rol
 - **Change:** _Describe the implemented fix and key files changed._
 - **Verification:** _Record the tests/checks run and their result._
 
-**Confidence:** 10/10  
+**Confidence:** 10/10
 **Evidence:** `lib/v2/data-sources/postgresql/metadata.ts:90`
 
 The metadata code marks a table's columns as truncated when the returned count is `>= maxColumnsPerEntity`. A table with exactly the configured maximum is therefore reported as incomplete without evidence of an additional column.
