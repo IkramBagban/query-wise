@@ -13,7 +13,7 @@ import { publicSharesApi, V2ApiError } from "@/lib/v2/api-client";
 
 export function PublicShareView({ token }: { token: string }) {
   const [password, setPassword] = useState(""); const [unlockError, setUnlockError] = useState<string | null>(null); const [unlocking, setUnlocking] = useState(false);
-  const resource = useApiResource(() => publicSharesApi.get(token), [token]);
+  const resource = useApiResource((signal) => publicSharesApi.get(token, signal), token);
   const apiError = resource.error instanceof V2ApiError ? resource.error : null;
   const passwordRequired = apiError?.requiresPassword || apiError?.code === "SHARE_PASSWORD_REQUIRED";
   async function unlock(event: FormEvent) { event.preventDefault(); setUnlocking(true); setUnlockError(null); try { await publicSharesApi.unlock(token, password); setPassword(""); await resource.refresh(); } catch (reason) { const error = reason instanceof V2ApiError && reason.code === "SHARE_PASSWORD_INVALID" ? new Error("Incorrect password") : reason; setUnlockError(error instanceof Error ? error.message : "Unable to unlock share"); } finally { setUnlocking(false); } }

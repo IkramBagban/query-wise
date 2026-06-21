@@ -23,9 +23,9 @@ import type {
 const pageQuery = (limit = 25, cursor?: string) => ({ limit, cursor });
 
 export const connectionsApi = {
-  list: (limit = 25, cursor?: string) =>
-    apiRequest<CursorPage<ConnectionListItem>>("/api/connections", { query: pageQuery(limit, cursor) }),
-  get: (id: string) => apiRequest<ConnectionDto>(`/api/connections/${id}`),
+  list: (limit = 25, cursor?: string, signal?: AbortSignal) =>
+    apiRequest<CursorPage<ConnectionListItem>>("/api/connections", { query: pageQuery(limit, cursor), signal }),
+  get: (id: string, signal?: AbortSignal) => apiRequest<ConnectionDto>(`/api/connections/${id}`, { signal }),
   create: (input: CreateConnectionInput) =>
     apiRequest<ConnectionDto>("/api/connections", { method: "POST", body: input }),
   createDemo: () =>
@@ -38,7 +38,7 @@ export const connectionsApi = {
       `/api/connections/${id}/test`,
       { method: "POST", body: { idempotencyKey: createIdempotencyKey() } },
     ),
-  schema: (id: string) => apiRequest<SchemaDto>(`/api/connections/${id}/schema`),
+  schema: (id: string, signal?: AbortSignal) => apiRequest<SchemaDto>(`/api/connections/${id}/schema`, { signal }),
   refreshSchema: (id: string) =>
     apiRequest<{ status: string }>(`/api/connections/${id}/schema/refresh`, {
       method: "POST",
@@ -47,9 +47,9 @@ export const connectionsApi = {
 };
 
 export const conversationsApi = {
-  list: (limit = 25, cursor?: string) =>
-    apiRequest<CursorPage<ConversationListItem>>("/api/conversations", { query: pageQuery(limit, cursor) }),
-  get: (id: string) => apiRequest<ConversationDto>(`/api/conversations/${id}`),
+  list: (limit = 25, cursor?: string, signal?: AbortSignal) =>
+    apiRequest<CursorPage<ConversationListItem>>("/api/conversations", { query: pageQuery(limit, cursor), signal }),
+  get: (id: string, signal?: AbortSignal) => apiRequest<ConversationDto>(`/api/conversations/${id}`, { signal }),
   create: (connectionId: string) =>
     apiRequest<ConversationDto>("/api/conversations", { method: "POST", body: { connectionId } }),
   messages: (id: string, limit = 100, cursor?: string) =>
@@ -127,9 +127,9 @@ async function streamQuerySubmission(input: SubmitQueryInput, onEvent: (event: Q
 }
 
 export const dashboardsApi = {
-  list: (limit = 25, cursor?: string) =>
-    apiRequest<CursorPage<DashboardListItem>>("/api/dashboards", { query: pageQuery(limit, cursor) }),
-  get: (id: string) => apiRequest<DashboardDto>(`/api/dashboards/${id}`),
+  list: (limit = 25, cursor?: string, signal?: AbortSignal) =>
+    apiRequest<CursorPage<DashboardListItem>>("/api/dashboards", { query: pageQuery(limit, cursor), signal }),
+  get: (id: string, signal?: AbortSignal) => apiRequest<DashboardDto>(`/api/dashboards/${id}`, { signal }),
   create: (name: string) => apiRequest<DashboardDto>("/api/dashboards", { method: "POST", body: { name } }),
   update: (id: string, name: string) =>
     apiRequest<{ id: string; updatedAt: string }>(`/api/dashboards/${id}`, {
@@ -137,7 +137,7 @@ export const dashboardsApi = {
       body: { name },
     }),
   remove: (id: string) => apiRequest<void>(`/api/dashboards/${id}`, { method: "DELETE" }),
-  shares: (id: string) => apiRequest<ShareCollection>(`/api/dashboards/${id}/shares`),
+  shares: (id: string, signal?: AbortSignal) => apiRequest<ShareCollection>(`/api/dashboards/${id}/shares`, { signal }),
   createShare: (id: string, input: CreateShareInput) =>
     apiRequest<CreateShareResult>(`/api/dashboards/${id}/shares`, {
       method: "POST",
@@ -168,7 +168,7 @@ export const dashboardsApi = {
 };
 
 export const publicSharesApi = {
-  get: (token: string) => apiRequest<PublicDashboardDto>(`/api/public/shares/${encodeURIComponent(token)}`),
+  get: (token: string, signal?: AbortSignal) => apiRequest<PublicDashboardDto>(`/api/public/shares/${encodeURIComponent(token)}`, { signal }),
   unlock: (token: string, password: string) =>
     apiRequest<ShareUnlockResult>(`/api/public/shares/${encodeURIComponent(token)}/unlock`, {
       method: "POST",

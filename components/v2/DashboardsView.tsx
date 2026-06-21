@@ -144,7 +144,7 @@ function DashboardPageSkeleton() {
 }
 
 export function DashboardsListView() {
-  const resource = useApiResource(() => dashboardsApi.list(50), []);
+  const resource = useApiResource((signal) => dashboardsApi.list(50, undefined, signal));
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +236,7 @@ export function DashboardDetailView({
   editor?: boolean;
 }) {
   const router = useRouter();
-  const resource = useApiResource(() => dashboardsApi.get(dashboardId), [dashboardId]);
+  const resource = useApiResource((signal) => dashboardsApi.get(dashboardId, signal), dashboardId);
   const [shareOpen, setShareOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(editor);
   const [busyWidget, setBusyWidget] = useState<string | null>(null);
@@ -324,6 +324,7 @@ export function DashboardDetailView({
         />
       ) : (
         <DashboardGrid
+          key={`${dashboardId}:${dashboard.widgets.map((widget) => widget.id).join(",")}`}
           widgets={dashboard.widgets}
           dashboardId={dashboardId}
           isEditing={isEditing && owner}

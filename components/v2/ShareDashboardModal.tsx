@@ -305,7 +305,7 @@ export function ShareDashboardModal({
   onOpenChange: (open: boolean) => void;
   onActiveLinksChange?: (hasActive: boolean) => void;
 }) {
-  const shares = useApiResource(() => dashboardsApi.shares(dashboardId), [dashboardId]);
+  const shares = useApiResource((signal) => dashboardsApi.shares(dashboardId, signal), dashboardId);
   const { pushToast } = useToast();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [busyShareId, setBusyShareId] = useState<string | null>(null);

@@ -481,7 +481,7 @@ function ConnectionCard({
 }
 
 export function ConnectionsListView() {
-  const resource = useApiResource(() => connectionsApi.list(50), []);
+  const resource = useApiResource((signal) => connectionsApi.list(50, undefined, signal));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -617,8 +617,8 @@ export function NewConnectionView() {
 
 export function ConnectionDetailView({ connectionId }: { connectionId: string }) {
   const router = useRouter();
-  const connection = useApiResource(() => connectionsApi.get(connectionId), [connectionId]);
-  const schema = useApiResource(() => connectionsApi.schema(connectionId), [connectionId]);
+  const connection = useApiResource((signal) => connectionsApi.get(connectionId, signal), connectionId);
+  const schema = useApiResource((signal) => connectionsApi.schema(connectionId, signal), connectionId);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   if (connection.loading) return <LoadingState label="Loading connection" />;

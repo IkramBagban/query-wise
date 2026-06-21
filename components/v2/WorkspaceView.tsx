@@ -85,7 +85,7 @@ interface ConnectionPickerProps {
 
 function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) {
   const router = useRouter();
-  const connections = useApiResource(() => connectionsApi.list(100), []);
+  const connections = useApiResource((signal) => connectionsApi.list(100, undefined, signal));
 
   if (connections.loading) {
     return (
@@ -319,7 +319,7 @@ function DataSourceStatusPicker({
 /* ---------------------------------- Home ---------------------------------- */
 
 export function WorkspaceHomeView() {
-  const conversations = useApiResource(() => conversationsApi.list(50), []);
+  const conversations = useApiResource((signal) => conversationsApi.list(50, undefined, signal));
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <PageHeader
@@ -357,7 +357,7 @@ export function WorkspaceHomeView() {
 
 export function NewConversationView() {
   const router = useRouter();
-  const connections = useApiResource(() => connectionsApi.list(100), []);
+  const connections = useApiResource((signal) => connectionsApi.list(100, undefined, signal));
   const [connectionId, setConnectionId] = useState("");
   const [creating, setCreating] = useState(false);
   const [creatingDemo, setCreatingDemo] = useState(false);
@@ -636,7 +636,7 @@ function CursorRevealBackground() {
 
 export function EmptyWorkspaceView() {
   const router = useRouter();
-  const connections = useApiResource(() => connectionsApi.list(100), []);
+  const connections = useApiResource((signal) => connectionsApi.list(100, undefined, signal));
   const [connectionId, setConnectionId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return window.sessionStorage.getItem(STORAGE_KEYS.connection) ?? null;
@@ -652,8 +652,8 @@ export function EmptyWorkspaceView() {
     [connectionId, connectionItems],
   );
   const selectedSchema = useApiResource(
-    () => connectionId && connectionId !== "__demo__" ? connectionsApi.schema(connectionId) : Promise.resolve(null),
-    [connectionId],
+    (signal) => connectionId && connectionId !== "__demo__" ? connectionsApi.schema(connectionId, signal) : Promise.resolve(null),
+    connectionId,
   );
   const selectedIngestion = getIngestionStatusView(selectedConnection?.schemaSyncStatus);
   const schemaSyncWarning = connectionId && connectionId !== "__demo__" && !selectedIngestion.terminal && selectedConnection
@@ -934,8 +934,8 @@ function Composer({
 /* ------------------------------ Context panel ----------------------------- */
 
 function ContextPanel({ connectionId, latestRun }: { connectionId: string; latestRun: ConversationMessageDto["queryRun"] | null }) {
-  const connection = useApiResource(() => connectionsApi.get(connectionId), [connectionId]);
-  const schema = useApiResource(() => connectionsApi.schema(connectionId), [connectionId]);
+  const connection = useApiResource((signal) => connectionsApi.get(connectionId, signal), connectionId);
+  const schema = useApiResource((signal) => connectionsApi.schema(connectionId, signal), connectionId);
   const [tab, setTab] = useState<"schema" | "sql" | "summary">("schema");
   const ingestion = getIngestionStatusView(connection.data?.schemaSyncStatus);
   return (
@@ -979,10 +979,10 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
 export function ConversationView({ conversationId }: { conversationId: string }) {
   const { bumpDashboardVersion } = useAppState();
   const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>("querywise.contextPanel.open", false);
-  const conversation = useApiResource(() => conversationsApi.get(conversationId), [conversationId]);
+  const conversation = useApiResource((signal) => conversationsApi.get(conversationId, signal), conversationId);
   const connection = useApiResource(
-    () => conversation.data?.connectionId ? connectionsApi.get(conversation.data.connectionId) : Promise.resolve(null),
-    [conversation.data?.connectionId],
+    (signal) => conversation.data?.connectionId ? connectionsApi.get(conversation.data.connectionId, signal) : Promise.resolve(null),
+    conversation.data?.connectionId,
   );
   const [messageState, setMessageState] = useState<{
     items: ConversationMessageDto[];
@@ -992,7 +992,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [messagesError, setMessagesError] = useState<Error | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const dashboards = useApiResource(() => dashboardsApi.list(100), []);
+  const dashboards = useApiResource((signal) => dashboardsApi.list(100, undefined, signal));
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -73,6 +73,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   };
 
   if (method !== "GET" || body !== undefined) return request();
+  // An abortable request belongs to one consumer and must not share another consumer's signal.
+  if (init.signal) return request();
 
   const existing = inFlightGetRequests.get(url) as Promise<T> | undefined;
   if (existing) return existing;

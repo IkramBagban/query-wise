@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, LayoutGrid, Trash2 } from "lucide-react";
+import { AlertCircle, Check, LayoutGrid, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 
@@ -51,6 +51,10 @@ function widgetsToLayout(widgets: DashboardWidget[]): Layout {
   );
 }
 
+function copyLayout(layout: Layout): Layout {
+  return layout.map((item) => ({ ...item }));
+}
+
 export function DashboardGrid({
   widgets,
   dashboardId,
@@ -61,38 +65,106 @@ export function DashboardGrid({
 }: DashboardGridProps) {
   const { containerRef, width, mounted } = useContainerWidth({ initialWidth: 1280 });
   const [layout, setLayout] = useState<Layout>(() => widgetsToLayout(widgets));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmedLayoutRef = useRef<Layout>(widgetsToLayout(widgets));
+  const pendingLayoutRef = useRef<Layout | null>(null);
+  const failedLayoutRef = useRef<Layout | null>(null);
+  const savingRef = useRef(false);
+  const scopeRef = useRef(0);
+  const previousEditingRef = useRef(isEditing);
 
-  useEffect(() => {
-    setLayout(widgetsToLayout(widgets));
-  }, [widgets]);
+  const drainSaveQueue = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    const scope = scopeRef.current;
+
+    // Serialize writes and consume the latest queued layout so an older response cannot win.
+    while (scope === scopeRef.current && pendingLayoutRef.current) {
+      const nextLayout = pendingLayoutRef.current;
+      pendingLayoutRef.current = null;
+      setSaveState("saving");
+      setSaveError(null);
+
+      try {
+        await dashboardsApi.updateWidgetLayouts(
+          dashboardId,
+          nextLayout.map((item) => ({
+            id: item.i,
+            layout: {
+              schemaVersion: 1 as const,
+              x: item.x,
+              y: item.y,
+              w: item.w,
+              h: item.h,
+            },
+          })),
+        );
+        if (scope !== scopeRef.current) break;
+        confirmedLayoutRef.current = copyLayout(nextLayout);
+        failedLayoutRef.current = null;
+      } catch (reason) {
+        if (scope === scopeRef.current) {
+          failedLayoutRef.current = copyLayout(nextLayout);
+          pendingLayoutRef.current = null;
+          setLayout(copyLayout(confirmedLayoutRef.current));
+          setSaveState("error");
+          setSaveError(reason instanceof Error ? reason.message : "Unable to save the layout.");
+        }
+        break;
+      }
+    }
+
+    savingRef.current = false;
+    if (scope === scopeRef.current && !failedLayoutRef.current && !pendingLayoutRef.current) {
+      setSaveState("saved");
+      onLayoutSaved?.();
+    }
+  }, [dashboardId, onLayoutSaved]);
 
   const handleLayoutChange = useCallback(
     (newLayout: Layout) => {
-      setLayout(newLayout);
+      const nextLayout = copyLayout(newLayout);
+      setLayout(nextLayout);
+      pendingLayoutRef.current = nextLayout;
+      failedLayoutRef.current = null;
+      setSaveState("idle");
+      setSaveError(null);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        void dashboardsApi
-          .updateWidgetLayouts(
-            dashboardId,
-            newLayout.map((l) => ({
-              id: l.i,
-              layout: { schemaVersion: 1 as const, x: l.x, y: l.y, w: l.w, h: l.h },
-            })),
-          )
-          .then(() => {
-            onLayoutSaved?.();
-          });
+        debounceRef.current = null;
+        void drainSaveQueue();
       }, 800);
     },
-    [dashboardId, onLayoutSaved],
+    [drainSaveQueue],
   );
+
+  useEffect(() => {
+    if (previousEditingRef.current && !isEditing && pendingLayoutRef.current) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      queueMicrotask(() => void drainSaveQueue());
+    }
+    previousEditingRef.current = isEditing;
+  }, [drainSaveQueue, isEditing]);
 
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      scopeRef.current += 1;
+      pendingLayoutRef.current = null;
     };
   }, []);
+
+  const retrySave = useCallback(() => {
+    if (!failedLayoutRef.current) return;
+    const retryLayout = copyLayout(failedLayoutRef.current);
+    failedLayoutRef.current = null;
+    pendingLayoutRef.current = retryLayout;
+    setLayout(retryLayout);
+    void drainSaveQueue();
+  }, [drainSaveQueue]);
 
   const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
 
@@ -104,11 +176,40 @@ export function DashboardGrid({
   return (
     <div className="space-y-2">
       {isEditing && (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm text-text-3">
-          <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-accent-2" />
-          <span>Drag widgets to rearrange · Resize from any edge or corner</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm text-text-3">
+          <div className="flex items-center gap-2">
+            <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-accent-2" />
+            <span>Drag widgets to rearrange · Resize from any edge or corner</span>
+          </div>
+          <div aria-live="polite" aria-atomic="true">
+            {saveState === "saving" ? (
+              <span className="flex items-center gap-1.5 text-text-2">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Saving layout…
+              </span>
+            ) : saveState === "saved" ? (
+              <span className="flex items-center gap-1.5 text-success">
+                <Check className="h-3.5 w-3.5" /> Layout saved
+              </span>
+            ) : null}
+          </div>
         </div>
       )}
+
+      {saveState === "error" ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger"
+        >
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Layout save failed; the last saved layout was restored.
+            {saveError ? ` ${saveError}` : ""}
+          </span>
+          <Button type="button" size="sm" variant="ghost" onClick={retrySave}>
+            <RotateCcw className="h-3.5 w-3.5" /> Retry
+          </Button>
+        </div>
+      ) : null}
 
       <style>{`
         .react-resizable-handle {
