@@ -12,6 +12,7 @@ import { getConnectionSecret } from "@/lib/v2/connections/credentials";
 import { enqueueSchemaIngestion } from "@/lib/v2/ingestion";
 import { executeIdempotently, idempotencyFingerprint } from "@/lib/v2/idempotency";
 import { devLog, devLogError } from "@/lib/v2/observability";
+import { writeAuditLog } from "@/lib/v2/audit";
 
 const DEFAULT_OPTIONS = {
   enableSampling: false, maxNamespaces: 100, maxEntities: 2_000, maxColumnsPerEntity: 500,
@@ -31,6 +32,14 @@ export async function refreshConnectionSchema(connectionId: ResourceId, idempote
         ownerUserId: record.ownerUserId,
         intent: "manual-refresh",
         requestIdempotencyKey: idempotencyKey,
+      });
+      await writeAuditLog({
+        actorUserId: record.ownerUserId,
+        action: "schema.refresh.enqueue",
+        resourceType: "connection",
+        resourceId: connectionId,
+        outcome: "succeeded",
+        metadata: { credentialVersion: record.credentialVersion },
       });
       return { contractVersion: CONTRACT_VERSION, connectionId, status: "queued" as const, summary: "Schema ingestion queued." };
     },
@@ -72,6 +81,14 @@ export async function refreshConnectionSchemaInline(connectionId: ResourceId) {
           where: { id: connectionId }, data: { schemaSyncStatus: "ready", lastSchemaSyncAt: new Date() },
         });
       }
+      await writeAuditLog({
+        actorUserId: record.ownerUserId,
+        action: "schema.refresh.execute",
+        resourceType: "schema-snapshot",
+        resourceId: snapshotId,
+        outcome: "succeeded",
+        metadata: { connectionId, snapshotVersion },
+      }, tx);
     });
     devLog("info", "schema.refresh.succeeded", "Schema refresh completed.", {
       connectionId,
@@ -94,6 +111,14 @@ export async function refreshConnectionSchemaInline(connectionId: ResourceId) {
       if (latest?.id === snapshotId) {
         await tx.databaseConnection.update({ where: { id: connectionId }, data: { schemaSyncStatus: "error" } });
       }
+      await writeAuditLog({
+        actorUserId: record.ownerUserId,
+        action: "schema.refresh.execute",
+        resourceType: "schema-snapshot",
+        resourceId: snapshotId,
+        outcome: "failed",
+        metadata: { connectionId, snapshotVersion, errorCode: code },
+      }, tx);
     });
     throw error;
   }

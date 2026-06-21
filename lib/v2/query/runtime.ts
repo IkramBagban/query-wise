@@ -9,6 +9,7 @@ import type {
   BoundedQueryResult,
   CanonicalDataSourceMetadata,
   ProviderQuery,
+  QueryValidationResult,
 } from "@/types/v2";
 
 export interface QueryRuntimeContext {
@@ -20,6 +21,7 @@ export interface QueryRuntimeContext {
 
 export interface QueryRuntimeDependencies {
   loadGenerationSchema(context: QueryRuntimeContext): Promise<SchemaInfo>;
+  validateReadQuery(context: QueryRuntimeContext, query: ProviderQuery): Promise<QueryValidationResult>;
   executeValidatedReadQuery(context: QueryRuntimeContext, query: ProviderQuery, signal?: AbortSignal): Promise<BoundedQueryResult>;
 }
 
@@ -117,6 +119,20 @@ const defaultDependencies: QueryRuntimeDependencies = {
     const schema = toLegacySchema(snapshot.metadata as unknown as CanonicalDataSourceMetadata, snapshot.summary);
     schema.connectionId = context.connectionId;
     return schema;
+  },
+  async validateReadQuery(context, query) {
+    const connection = await requireOwnedConnection(context.connectionId);
+    const adapter = getDataSourceAdapter(connection.providerId);
+    requireCapability(adapter, "sql-validation");
+    return adapter.validateQuery(query, {
+      schemaVersion: 1,
+      readOnly: true,
+      singleStatement: true,
+      blockComments: true,
+      blockSystemCatalogs: true,
+      maxExecutionMs: 15_000,
+      maxReturnedRows: 500,
+    });
   },
   async executeValidatedReadQuery(context, query, signal) {
     const { record, secret } = await getConnectionSecret(context.connectionId);

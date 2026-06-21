@@ -15,6 +15,7 @@ import {
 } from "@/lib/v2/dal/core";
 import type { ResourceId } from "@/types/v2";
 import { claimPendingEmailGrants } from "@/lib/v2/sharing/grants";
+import { writeAuditLogBestEffort } from "@/lib/v2/audit";
 
 export type ConnectionSecretRecord = DatabaseConnection;
 export type AuthorizedConversationRecord = Conversation;
@@ -29,6 +30,15 @@ export async function requireOwnedConnection(
     where: activeOwnedResourceWhere(userId, connectionId),
   });
 
+  if (!connection) {
+    await writeAuditLogBestEffort({
+      actorUserId: userId,
+      action: "authorization.connection",
+      resourceType: "connection",
+      resourceId: connectionId,
+      outcome: "denied",
+    });
+  }
   return requireFound(connection);
 }
 
@@ -40,6 +50,15 @@ export async function requireConversationAccess(
     where: activeOwnedResourceWhere(userId, conversationId),
   });
 
+  if (!conversation) {
+    await writeAuditLogBestEffort({
+      actorUserId: userId,
+      action: "authorization.conversation",
+      resourceType: "conversation",
+      resourceId: conversationId,
+      outcome: "denied",
+    });
+  }
   return requireFound(conversation);
 }
 
@@ -59,6 +78,14 @@ export async function requireDashboardAccess(
   }
 
   if (permission === "edit") {
+    await writeAuditLogBestEffort({
+      actorUserId: userId,
+      action: "authorization.dashboard",
+      resourceType: "dashboard",
+      resourceId: dashboardId,
+      outcome: "denied",
+      metadata: { permission },
+    });
     throw resourceNotFound();
   }
 
@@ -80,5 +107,15 @@ export async function requireDashboardAccess(
     LIMIT 1
   `);
 
+  if (!grantedDashboard) {
+    await writeAuditLogBestEffort({
+      actorUserId: userId,
+      action: "authorization.dashboard",
+      resourceType: "dashboard",
+      resourceId: dashboardId,
+      outcome: "denied",
+      metadata: { permission },
+    });
+  }
   return requireFound(grantedDashboard);
 }

@@ -15,6 +15,7 @@ import { enqueueSchemaIngestion } from "@/lib/v2/ingestion";
 import { executeIdempotently, idempotencyFingerprint } from "@/lib/v2/idempotency";
 import { getConnectionSecret } from "./credentials";
 import { devLog, devLogError } from "@/lib/v2/observability";
+import { writeAuditLog } from "@/lib/v2/audit";
 
 function dto(record: DatabaseConnection): ConnectionDto {
   const adapter = getDataSourceAdapter(record.providerId);
@@ -66,13 +67,8 @@ export async function createConnection(input: { name: string; providerId: "postg
   });
   const encryptedSecret = await encryptSecret(parsed.connectionString);
   const id = createResourceId();
-  let record = await getAppDb().databaseConnection.create({
-    data: {
-      id, ownerUserId: userId, providerId: adapter.providerId, dialectId: adapter.dialectId, name: input.name,
-      hostDisplay: parsed.hostDisplay, port: parsed.port, databaseName: parsed.databaseName,
-      encryptedSecret: encryptedSecret as unknown as Prisma.InputJsonValue,
-    },
-  });
+  // Test before persistence so DNS/network-policy failures cannot strand an
+  // unreachable pending record containing credentials.
   const result = await adapter.testConnection({ connectionString: parsed.connectionString });
   devLog(result.success ? "info" : "warn", "connection.test.completed", "Connection test completed.", {
     connectionId: id,
@@ -80,11 +76,25 @@ export async function createConnection(input: { name: string; providerId: "postg
     latencyMs: result.latencyMs,
     errorCode: result.errorCode,
   });
-  record = await getAppDb().databaseConnection.update({
-    where: { id }, data: {
-      status: result.success ? "connected" : "error", lastTestedAt: new Date(),
-      lastTestErrorCode: result.errorCode, schemaSyncStatus: result.success ? "queued" : "never",
-    },
+  let record = await withAppDbTransaction(async (tx) => {
+    const created = await tx.databaseConnection.create({
+      data: {
+        id, ownerUserId: userId, providerId: adapter.providerId, dialectId: adapter.dialectId, name: input.name,
+        hostDisplay: parsed.hostDisplay, port: parsed.port, databaseName: parsed.databaseName,
+        encryptedSecret: encryptedSecret as unknown as Prisma.InputJsonValue,
+        status: result.success ? "connected" : "error", lastTestedAt: new Date(),
+        lastTestErrorCode: result.errorCode, schemaSyncStatus: result.success ? "queued" : "never",
+      },
+    });
+    await writeAuditLog({
+      actorUserId: userId,
+      action: "connection.create",
+      resourceType: "connection",
+      resourceId: id,
+      outcome: "succeeded",
+      metadata: { providerId: adapter.providerId, initialTestSucceeded: result.success },
+    }, tx);
+    return created;
   });
   if (result.success) {
     await enqueueSchemaIngestion({ connectionId: id, ownerUserId: userId, intent: "initial-connect" }).catch((error) => {
@@ -146,10 +156,19 @@ export async function updateConnection(connectionId: ResourceId, input: { name?:
         data: { status: "superseded" },
       });
     }
-    return tx.databaseConnection.update({
+    const updated = await tx.databaseConnection.update({
       where: { id: connectionId },
       data: { ...credentialData, ...(input.name ? { name: input.name } : {}) },
     });
+    await writeAuditLog({
+      actorUserId: current.ownerUserId,
+      action: "connection.update",
+      resourceType: "connection",
+      resourceId: connectionId,
+      outcome: "succeeded",
+      metadata: { renamed: Boolean(input.name), credentialsReplaced: Boolean(input.connectionString) },
+    }, tx);
+    return updated;
   });
   if (input.connectionString) {
     await enqueueSchemaIngestion({ connectionId, ownerUserId: current.ownerUserId, intent: "credential-refresh" }).catch((error) => {
@@ -174,9 +193,19 @@ export async function testSavedConnection(connectionId: ResourceId, idempotencyK
       requireCapability(adapter, "connection-test");
       const { secret } = await getConnectionSecret(connectionId);
       const result = await adapter.testConnection(secret);
-      await getAppDb().databaseConnection.update({
-        where: { id: connectionId },
-        data: { status: result.success ? "connected" : "error", lastTestedAt: new Date(), lastTestErrorCode: result.errorCode },
+      await withAppDbTransaction(async (tx) => {
+        await tx.databaseConnection.update({
+          where: { id: connectionId },
+          data: { status: result.success ? "connected" : "error", lastTestedAt: new Date(), lastTestErrorCode: result.errorCode },
+        });
+        await writeAuditLog({
+          actorUserId: record.ownerUserId,
+          action: "connection.test",
+          resourceType: "connection",
+          resourceId: connectionId,
+          outcome: result.success ? "succeeded" : "failed",
+          metadata: { errorCode: result.errorCode, latencyMs: result.latencyMs },
+        }, tx);
       });
       return { contractVersion: CONTRACT_VERSION, ...result };
     },
@@ -193,6 +222,13 @@ export async function deleteConnection(connectionId: ResourceId): Promise<void> 
       data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.JsonNull },
     });
     if (deleted.count !== 1) throw new AppError("CONFLICT", "The connection changed while it was being deleted.");
+    await writeAuditLog({
+      actorUserId: record.ownerUserId,
+      action: "connection.delete",
+      resourceType: "connection",
+      resourceId: connectionId,
+      outcome: "succeeded",
+    }, tx);
   });
   await getDataSourceAdapter(record.providerId).dispose(connectionId);
 }

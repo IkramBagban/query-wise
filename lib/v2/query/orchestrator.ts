@@ -5,6 +5,7 @@ import {
   completeQueryRun,
   failQueryRun,
   getOwnedQueryRun,
+  recordQueryValidation,
   transitionQueryRun,
 } from "@/lib/v2/query-runs";
 import { needsGeneratedConversationTitle, recentConversationHistory } from "@/lib/v2/conversations";
@@ -176,12 +177,35 @@ export async function executeDurableQueryRun(input: {
         generatedQuery: providerQuery as unknown as Prisma.InputJsonValue,
         generatedAt: new Date(),
       });
-      emit?.("sql-preview", { dialectId: "postgresql", language: "sql", text: providerQuery.text, validation: "pending" });
+      emit?.("status", statusEvent(run.status, run.statusVersion));
+      throwIfQueryRunAborted(abortSignal);
+      const validation = await runtime.validateReadQuery(context, providerQuery);
+      run = await recordQueryValidation(run.id, {
+        schemaVersion: 1,
+        valid: validation.valid,
+        violations: validation.violations,
+      } as unknown as Prisma.InputJsonValue);
+      emit?.("sql-preview", {
+        dialectId: "postgresql",
+        language: "sql",
+        text: providerQuery.text,
+        validation: validation.valid ? "valid" : "blocked",
+      });
+      if (!validation.valid || !validation.normalizedQuery) {
+        throw new AppError(
+          "QUERY_VALIDATION_BLOCKED",
+          "The generated SQL violates the read-only safety policy.",
+        );
+      }
       run = await transitionQueryRun(run.id, "executing");
       throwIfQueryRunAborted(abortSignal);
       emit?.("status", statusEvent(run.status, run.statusVersion));
       const executionStartedAt = Date.now();
-      const completedResult: BoundedQueryResult = await runtime.executeValidatedReadQuery(context, providerQuery, abortSignal);
+      const completedResult: BoundedQueryResult = await runtime.executeValidatedReadQuery(
+        context,
+        validation.normalizedQuery,
+        abortSignal,
+      );
       devLog("info", "query.run.sql-executed", "Query run SQL execution completed.", {
         queryRunId: run.id,
         connectionId: run.connectionId,

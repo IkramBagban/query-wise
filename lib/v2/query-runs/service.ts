@@ -8,8 +8,14 @@ import { AppError, requireFound } from "@/lib/v2/dal/core";
 import type { QueryRunDto, QueryRunStatus } from "@/types/v2";
 import { TERMINAL_QUERY_RUN_STATUSES, type QuerySubmission } from "./types";
 import { abortActiveQueryRun } from "@/lib/v2/query/cancellation";
+import { writeAuditLog } from "@/lib/v2/audit";
 
 const STALE_QUERY_RUN_MS = 5 * 60_000;
+const DEFAULT_RECOVERY_BATCH_SIZE = 25;
+const MAX_RECOVERY_BATCH_SIZE = 100;
+const RECOVERY_ERROR_CODE = "QUERY_EXECUTION_FAILED";
+const RECOVERY_ASSISTANT_MESSAGE =
+  "The query run expired before it could complete. Submit the question again to retry.";
 
 export function queryRunDto(run: QueryRun): QueryRunDto {
   return {
@@ -70,32 +76,6 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
       if (existing.requestFingerprint !== requestFingerprint) {
         throw new AppError("IDEMPOTENCY_KEY_REUSED", "The idempotency key was already used for a different request.");
       }
-      if (
-        !TERMINAL_QUERY_RUN_STATUSES.has(existing.status) &&
-        existing.updatedAt.getTime() <= Date.now() - STALE_QUERY_RUN_MS
-      ) {
-        const response = await appendMessage(tx, {
-          conversationId: existing.conversationId,
-          role: "assistant",
-          content: "The previous query run expired before it could complete. Submit the question again to retry.",
-          queryRunId: existing.id,
-          metadata: { schemaVersion: 1, errorCode: "QUERY_EXECUTION_FAILED" },
-        });
-        return {
-          run: await tx.queryRun.update({
-            where: { id: existing.id },
-            data: {
-              status: "expired",
-              statusVersion: { increment: 1 },
-              responseMessageId: response.id,
-              errorCode: "QUERY_EXECUTION_FAILED",
-              errorMessage: "The query run expired before completion.",
-              finishedAt: new Date(),
-            },
-          }),
-          created: false,
-        };
-      }
       return { run: existing, created: false };
     }
 
@@ -130,6 +110,14 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
         lastActivityAt: new Date(),
       },
     });
+    await writeAuditLog({
+      actorUserId: userId,
+      action: "query-run.accept",
+      resourceType: "query-run",
+      resourceId: run.id,
+      outcome: "succeeded",
+      metadata: { conversationId: run.conversationId, providerId: run.providerId },
+    }, tx);
     return { run, created: true };
   });
 }
@@ -163,6 +151,116 @@ export async function transitionQueryRun(
   return requireFound(await getAppDb().queryRun.findFirst({
     where: { id: current.id, ownerUserId: current.ownerUserId },
   }));
+}
+
+export async function recordQueryValidation(
+  queryRunId: string,
+  validationResult: Prisma.InputJsonValue,
+): Promise<QueryRun> {
+  const current = await getOwnedQueryRun(queryRunId);
+  if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
+  if (current.status !== "validating") {
+    throw new AppError("CONFLICT", "The query run is not awaiting validation.");
+  }
+  const updated = await getAppDb().queryRun.updateMany({
+    where: {
+      id: current.id,
+      ownerUserId: current.ownerUserId,
+      status: "validating",
+      statusVersion: current.statusVersion,
+    },
+    data: {
+      validationResult,
+      statusVersion: { increment: 1 },
+    },
+  });
+  if (updated.count !== 1) {
+    throw new AppError("CONFLICT", "The query run changed while validation was being recorded.");
+  }
+  return requireFound(await getAppDb().queryRun.findFirst({
+    where: { id: current.id, ownerUserId: current.ownerUserId },
+  }));
+}
+
+export async function recoverStaleQueryRuns(input: {
+  staleBefore?: Date;
+  limit?: number;
+} = {}): Promise<{ recovered: number; queryRunIds: string[] }> {
+  const staleBefore = input.staleBefore ?? new Date(Date.now() - STALE_QUERY_RUN_MS);
+  const limit = Math.max(
+    1,
+    Math.min(Math.trunc(input.limit ?? DEFAULT_RECOVERY_BATCH_SIZE), MAX_RECOVERY_BATCH_SIZE),
+  );
+
+  const recoveredIds: string[] = [];
+  for (let index = 0; index < limit; index += 1) {
+    const recoveredId = await withAppDbTransaction(async (tx) => {
+      const candidates = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT id
+      FROM v2_query_runs
+      WHERE status IN (
+        'accepted'::v2_query_run_status,
+        'preparing'::v2_query_run_status,
+        'generating'::v2_query_run_status,
+        'validating'::v2_query_run_status,
+        'executing'::v2_query_run_status,
+        'persisting'::v2_query_run_status
+      )
+        AND updated_at <= ${staleBefore}
+      ORDER BY updated_at ASC, id ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `);
+      const candidate = candidates[0];
+      if (!candidate) return null;
+      const run = await tx.queryRun.findUnique({ where: { id: candidate.id } });
+      if (!run || TERMINAL_QUERY_RUN_STATUSES.has(run.status)) return null;
+      const response = await appendMessage(tx, {
+        conversationId: run.conversationId,
+        role: "assistant",
+        content: RECOVERY_ASSISTANT_MESSAGE,
+        queryRunId: run.id,
+        metadata: { schemaVersion: 1, errorCode: RECOVERY_ERROR_CODE },
+      });
+      const recovered = await tx.queryRun.updateMany({
+        where: {
+          id: run.id,
+          status: run.status,
+          statusVersion: run.statusVersion,
+          updatedAt: { lte: staleBefore },
+        },
+        data: {
+          status: "expired",
+          statusVersion: { increment: 1 },
+          responseMessageId: response.id,
+          errorCode: RECOVERY_ERROR_CODE,
+          errorMessage: "The query run expired before completion.",
+          finishedAt: new Date(),
+        },
+      });
+      // The row lock makes this zero-count path defensive; fail the transaction
+      // rather than leave an orphan assistant message if the invariant changes.
+      if (recovered.count !== 1) {
+        throw new AppError("CONFLICT", "A stale query run changed during recovery.");
+      }
+      await tx.conversation.update({
+        where: { id: run.conversationId },
+        data: { lastActivityAt: new Date() },
+      });
+      await writeAuditLog({
+        actorUserId: run.ownerUserId,
+        action: "query-run.recover",
+        resourceType: "query-run",
+        resourceId: run.id,
+        outcome: "failed",
+        metadata: { priorStatus: run.status, reason: "stale" },
+      }, tx);
+      return run.id;
+    });
+    if (!recoveredId) break;
+    recoveredIds.push(recoveredId);
+  }
+  return { recovered: recoveredIds.length, queryRunIds: recoveredIds };
 }
 
 export async function completeQueryRun(input: {
@@ -227,6 +325,14 @@ export async function completeQueryRun(input: {
         data: { lastActivityAt: now },
       });
     }
+    await writeAuditLog({
+      actorUserId: fresh.ownerUserId,
+      action: "query-run.complete",
+      resourceType: "query-run",
+      resourceId: fresh.id,
+      outcome: "succeeded",
+      metadata: { conversationId: fresh.conversationId },
+    }, tx);
     return run;
   });
 }
@@ -263,6 +369,14 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
       where: { id: fresh.conversationId },
       data: { lastActivityAt: new Date() },
     });
+    await writeAuditLog({
+      actorUserId: fresh.ownerUserId,
+      action: "query-run.complete",
+      resourceType: "query-run",
+      resourceId: fresh.id,
+      outcome: "failed",
+      metadata: { errorCode: code },
+    }, tx);
     return run;
   });
 }
@@ -276,7 +390,7 @@ export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
       where: { id: current.id, ownerUserId: current.ownerUserId },
     }));
     if (TERMINAL_QUERY_RUN_STATUSES.has(fresh.status)) return fresh;
-    return tx.queryRun.update({
+    const run = await tx.queryRun.update({
       where: { id: fresh.id },
       data: {
         status: "cancelled",
@@ -284,6 +398,14 @@ export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
         finishedAt: new Date(),
       },
     });
+    await writeAuditLog({
+      actorUserId: fresh.ownerUserId,
+      action: "query-run.cancel",
+      resourceType: "query-run",
+      resourceId: fresh.id,
+      outcome: "cancelled",
+    }, tx);
+    return run;
   });
   abortActiveQueryRun(queryRunId);
   return cancelled;

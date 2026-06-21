@@ -184,6 +184,7 @@ model QueryRun {
   providerId          String         @default("postgresql") @map("provider_id")
   dialectId           String         @default("postgresql") @map("dialect_id")
   generatedQuery      Json?          @map("generated_query")
+  validationResult    Json?          @map("validation_result")
   resultPreview       Json?          @map("result_preview")
   returnedRowCount    Int?           @map("returned_row_count")
   totalRowCount       BigInt?        @map("total_row_count")

@@ -4,7 +4,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import type { DashboardShareLink, DashboardWidget } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { getAppDb } from "@/lib/v2/app-db";
+import { getAppDb, withAppDbTransaction } from "@/lib/v2/app-db";
 import { getConnectionSecretForOwner } from "@/lib/v2/connections";
 import { requireDashboardAccess } from "@/lib/v2/dal/authorization";
 import { AppError, resourceNotFound } from "@/lib/v2/dal/core";
@@ -33,6 +33,7 @@ import {
   getOrCreatePublicDashboard,
   publicDashboardCacheKey,
 } from "./public-dashboard-cache";
+import { writeAuditLog } from "@/lib/v2/audit";
 
 const PUBLIC_WIDGET_CONCURRENCY = 4;
 const PUBLIC_DASHBOARD_EXECUTION_BUDGET_MS = 30_000;
@@ -162,24 +163,35 @@ export async function listShares(dashboardId: string, baseUrl: string) {
 export async function createShare(dashboardId: string, input: unknown, baseUrl: string) {
   const parsed = CreateShareSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
 
   if (parsed.data.type === "grant") {
     const recipient = await resolveGrantRecipient(parsed.data);
-    const grant = await getAppDb().dashboardAccessGrant.upsert({
-      where: {
-        dashboardId_recipientUserId: {
+    const grant = await withAppDbTransaction(async (tx) => {
+      const created = await tx.dashboardAccessGrant.upsert({
+        where: {
+          dashboardId_recipientUserId: {
+            dashboardId,
+            recipientUserId: recipient.key,
+          },
+        },
+        create: {
+          id: createResourceId(),
           dashboardId,
           recipientUserId: recipient.key,
+          permission: "view",
         },
-      },
-      create: {
-        id: createResourceId(),
-        dashboardId,
-        recipientUserId: recipient.key,
-        permission: "view",
-      },
-      update: { permission: "view" },
+        update: { permission: "view" },
+      });
+      await writeAuditLog({
+        actorUserId: dashboard.ownerUserId,
+        action: "dashboard.share.create",
+        resourceType: "dashboard-access-grant",
+        resourceId: created.id,
+        outcome: "succeeded",
+        metadata: { dashboardId, shareType: "grant", recipientKind: recipient.kind },
+      }, tx);
+      return created;
     });
     return {
       type: "grant" as const,
@@ -201,17 +213,35 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
     throw validationError();
   }
   const token = createShareToken();
-  const link = await getAppDb().dashboardShareLink.create({
-    data: {
-      id: createResourceId(),
-      dashboardId,
-      tokenHash: hashShareToken(token),
-      encryptedToken: await encryptShareToken(token) as unknown as Prisma.InputJsonValue,
-      passwordHash: parsed.data.password
-        ? await hashSharePassword(parsed.data.password)
-        : null,
-      expiresAt,
-    },
+  const encryptedToken = await encryptShareToken(token);
+  const passwordHash = parsed.data.password
+    ? await hashSharePassword(parsed.data.password)
+    : null;
+  const link = await withAppDbTransaction(async (tx) => {
+    const created = await tx.dashboardShareLink.create({
+      data: {
+        id: createResourceId(),
+        dashboardId,
+        tokenHash: hashShareToken(token),
+        encryptedToken: encryptedToken as unknown as Prisma.InputJsonValue,
+        passwordHash,
+        expiresAt,
+      },
+    });
+    await writeAuditLog({
+      actorUserId: dashboard.ownerUserId,
+      action: "dashboard.share.create",
+      resourceType: "dashboard-share-link",
+      resourceId: created.id,
+      outcome: "succeeded",
+      metadata: {
+        dashboardId,
+        shareType: "link",
+        passwordProtected: Boolean(passwordHash),
+        expires: Boolean(expiresAt),
+      },
+    }, tx);
+    return created;
   });
   return {
     type: "link" as const,
@@ -231,17 +261,28 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
 }
 
 export async function revokeShare(dashboardId: string, shareId: string): Promise<void> {
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
   await getAppDb().$transaction(async (tx) => {
     const link = await tx.dashboardShareLink.updateMany({
       where: { id: shareId, dashboardId, revokedAt: null },
       data: { revokedAt: new Date(), version: { increment: 1 } },
     });
-    if (link.count === 1) return;
-    const grant = await tx.dashboardAccessGrant.deleteMany({
-      where: { id: shareId, dashboardId },
-    });
-    if (grant.count !== 1) throw resourceNotFound();
+    let resourceType = "dashboard-share-link";
+    if (link.count !== 1) {
+      const grant = await tx.dashboardAccessGrant.deleteMany({
+        where: { id: shareId, dashboardId },
+      });
+      if (grant.count !== 1) throw resourceNotFound();
+      resourceType = "dashboard-access-grant";
+    }
+    await writeAuditLog({
+      actorUserId: dashboard.ownerUserId,
+      action: "dashboard.share.revoke",
+      resourceType,
+      resourceId: shareId,
+      outcome: "succeeded",
+      metadata: { dashboardId },
+    }, tx);
   });
 }
 
@@ -252,7 +293,7 @@ export async function updateShareLink(
 ) {
   const parsed = UpdateLinkSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
   const expiresAt =
     parsed.data.expiresAt === undefined
       ? undefined
@@ -260,22 +301,33 @@ export async function updateShareLink(
         ? null
         : new Date(parsed.data.expiresAt);
   if (expiresAt && expiresAt <= new Date()) throw validationError();
-  const result = await getAppDb().dashboardShareLink.updateMany({
-    where: { id: shareId, dashboardId, revokedAt: null },
-    data: {
-      passwordHash:
-        parsed.data.password === undefined
-          ? undefined
-          : parsed.data.password === null
-            ? null
-            : await hashSharePassword(parsed.data.password),
-      expiresAt,
-      version: { increment: 1 },
-    },
+  const passwordHash = parsed.data.password === undefined
+    ? undefined
+    : parsed.data.password === null
+      ? null
+      : await hashSharePassword(parsed.data.password);
+  const link = await withAppDbTransaction(async (tx) => {
+    const result = await tx.dashboardShareLink.updateMany({
+      where: { id: shareId, dashboardId, revokedAt: null },
+      data: { passwordHash, expiresAt, version: { increment: 1 } },
+    });
+    if (result.count !== 1) throw resourceNotFound();
+    const updated = await tx.dashboardShareLink.findUnique({ where: { id: shareId } });
+    if (!updated) throw resourceNotFound();
+    await writeAuditLog({
+      actorUserId: dashboard.ownerUserId,
+      action: "dashboard.share.update",
+      resourceType: "dashboard-share-link",
+      resourceId: shareId,
+      outcome: "succeeded",
+      metadata: {
+        dashboardId,
+        passwordChanged: parsed.data.password !== undefined,
+        expiryChanged: parsed.data.expiresAt !== undefined,
+      },
+    }, tx);
+    return updated;
   });
-  if (result.count !== 1) throw resourceNotFound();
-  const link = await getAppDb().dashboardShareLink.findUnique({ where: { id: shareId } });
-  if (!link) throw resourceNotFound();
   return {
     id: link.id,
     passwordProtected: Boolean(link.passwordHash),
