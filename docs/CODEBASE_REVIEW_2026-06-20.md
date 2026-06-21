@@ -3,7 +3,7 @@
 **Date:** 2026-06-20
 **Commit reviewed:** `ecd8807` (`feature/v2-workspace-shell`)
 **Mode:** Review remediation in progress.
-**Result:** 7 resolved findings; 20 remain open.
+**Result:** 16 resolved findings; 11 remain open.
 
 > **Tracking instruction:** After a finding is fixed and verified, complete its 2–3 line resolution notes, then change the checkbox from `[ ]` to `[x]`.
 
@@ -163,11 +163,11 @@ The context toggle remains available below the desktop breakpoint, but the panel
 
 ### P1-09 — Resource hook allows stale requests to overwrite current data
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Added effect-owned abort signals, request generations, awaitable refresh, and signal forwarding so stale loads cannot update current data/error/loading state.
+- **Verification:** Targeted React lint and TypeScript pass; rapid dependency changes abort or ignore earlier completions.
 
 **Confidence:** 9/10
 **Evidence:** `hooks/v2/use-api-resource.ts:10-24`
@@ -231,11 +231,11 @@ Connection detail/settings expose test, refresh, and delete actions only. The AP
 
 ### P1-13 — Legacy public-share page trusts forwarded host headers for server fetches
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Removed request-header-derived internal HTTP fetches; the server page now reads the legacy shared-dashboard store directly.
+- **Verification:** Targeted lint passes and the page no longer consumes Host or forwarded-origin headers.
 
 **Confidence:** 8/10
 **Evidence:** `app/share/[shareId]/page.tsx:8-14`
@@ -267,11 +267,11 @@ Both routes parse a required `idempotencyKey` but do not pass it to the service.
 
 ### P2-02 — Failed connection tests can leave orphaned pending records
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Connection creation now completes network/policy testing before encrypted credential persistence; ordinary negative results persist visibly as error records.
+- **Verification:** Targeted service lint passes; thrown setup/test paths execute before any connection row is created.
 
 **Confidence:** 9/10
 **Evidence:** `lib/v2/connections/service.ts:68-75`
@@ -284,11 +284,11 @@ Connection creation persists encrypted credentials before testing. Exceptions th
 
 ### P2-03 — Dashboard widget cap is raceable
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Widget creation acquires a transaction-scoped PostgreSQL advisory lock per dashboard before count validation and insert.
+- **Verification:** Targeted lint/type checking pass; concurrent writers serialize around the atomic capacity check.
 
 **Confidence:** 9/10
 **Evidence:** `lib/v2/dashboards/service.ts:73-80,213-225`, `lib/v2/sharing/service.ts:410-416`
@@ -301,11 +301,11 @@ Widget creation performs count-then-insert under default transaction isolation w
 
 ### P2-04 — Security audit logging is defined but unused
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Added bounded redacted audit writes for critical connection, schema, sharing, authorization, and query-run operations with explicit strict/best-effort semantics.
+- **Verification:** Prisma/type/lint checks pass; metadata is JSON-normalized, size-capped, and sensitive-key redacted before persistence.
 
 **Confidence:** 10/10
 **Evidence:** `prisma/schema.prisma:278-290`
@@ -335,11 +335,11 @@ Only share-password attempts have rate limiting. Share/link creation, connection
 
 ### P2-06 — Crashed query runs are not recovered unless the same key is retried
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Added bounded atomic stale-run recovery plus a CRON_SECRET-protected worker endpoint that expires runs and creates one safe assistant message.
+- **Verification:** Prisma/type/lint checks pass; `FOR UPDATE SKIP LOCKED` prevents concurrent recovery of the same run.
 
 **Confidence:** 10/10
 **Evidence:** `lib/v2/query-runs/service.ts:73-99`
@@ -352,11 +352,11 @@ Stale-run recovery is checked only when the exact `(conversationId, idempotencyK
 
 ### P2-07 — SQL execution begins without a persisted validation outcome
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Validation now runs and persists during the validating state, emits valid/blocked SQL preview, and blocks invalid SQL before execution while retaining adapter revalidation.
+- **Verification:** Prisma/type/lint checks pass; valid execution consumes the normalized validated query and blocked validation maps to the safe terminal error.
 
 **Confidence:** 10/10
 **Evidence:** `lib/v2/query/orchestrator.ts:175-184`, `lib/v2/data-sources/postgresql/adapter.ts:45-50`
@@ -454,11 +454,11 @@ The custom control lacks combobox/listbox roles, expanded/active-descendant stat
 
 ### P2-13 — Dashboard layout saves fail silently
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Added serialized debounced layout saves with latest-value queuing, edit-exit flush, confirmed-layout rollback, retry, and accessible status/error UI.
+- **Verification:** Targeted React lint and TypeScript pass; rejected saves are caught and restore the last server-confirmed layout.
 
 **Confidence:** 9/10
 **Evidence:** `components/v2/DashboardGrid.tsx:74-85`
@@ -473,11 +473,11 @@ The debounced layout mutation is fire-and-forget with no rejection handling, rol
 
 ### P3-01 — Exact column limit is incorrectly reported as truncated
 
-- [ ] **Resolved**
+- [x] **Resolved**
 
 **Resolution notes (required, 2–3 lines):**
-- **Change:** _Describe the implemented fix and key files changed._
-- **Verification:** _Record the tests/checks run and their result._
+- **Change:** Metadata introspection fetches limit-plus-one columns per entity, detects a true overflow, then slices returned columns to the configured limit.
+- **Verification:** Targeted lint/type checking pass; exactly-at-limit tables remain complete while limit-plus-one tables are marked truncated.
 
 **Confidence:** 10/10
 **Evidence:** `lib/v2/data-sources/postgresql/metadata.ts:90`
