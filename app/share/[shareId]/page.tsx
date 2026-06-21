@@ -1,22 +1,11 @@
 import { notFound } from "next/navigation";
-import { headers } from "next/headers";
 
 import { WidgetCard } from "@/components/dashboard/WidgetCard";
+import { getDashboardByShareId } from "@/app/api/dashboard/store";
 import type { Dashboard } from "@/types";
 
 async function fetchSharedDashboard(shareId: string): Promise<Dashboard | null> {
-  const headerList = await headers();
-  const proto = headerList.get("x-forwarded-proto") ?? "http";
-  const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3000";
-
-  const response = await fetch(`${proto}://${host}/api/share/${shareId}`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) return null;
-
-  const body = (await response.json()) as { dashboard?: Dashboard };
-  return body.dashboard ?? null;
+  return getDashboardByShareId(shareId);
 }
 
 export default async function SharedDashboardPage({

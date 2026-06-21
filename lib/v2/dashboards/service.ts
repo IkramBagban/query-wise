@@ -211,6 +211,9 @@ export async function createWidget(dashboardId: string, input: unknown) {
   if (!parsed.success) throw validationError(parsed.error);
   const dashboard = await requireDashboardAccess(dashboardId, "edit");
   return getAppDb().$transaction(async (tx) => {
+    // Serialize writers for this dashboard so the count and insert form one
+    // atomic capacity check across all application instances.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`dashboard-widgets:${dashboardId}`}))`;
     if (parsed.data.queryRunId) {
       const run = await tx.queryRun.findFirst({
         where: { id: parsed.data.queryRunId, ownerUserId: dashboard.ownerUserId },

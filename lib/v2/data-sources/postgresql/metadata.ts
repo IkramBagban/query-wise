@@ -52,9 +52,12 @@ export async function introspectPostgresMetadata(connectionString: string, optio
       SELECT namespace, entity_name, name, ordinal, native_type, nullable, primary_key, generated
       FROM columns WHERE namespace || '.' || entity_name = ANY($1::text[]) AND position <= $2
       ORDER BY namespace, entity_name, ordinal
-    `, [identities, options.maxColumnsPerEntity]);
+    `, [identities, options.maxColumnsPerEntity + 1]);
     const byEntity = new Map<string, ColumnRow[]>();
     for (const row of columnsResult.rows) byEntity.set(entityId(row.namespace, row.entity_name), [...(byEntity.get(entityId(row.namespace, row.entity_name)) ?? []), row]);
+    const columnsTruncated = [...byEntity.values()].some(
+      (columns) => columns.length > options.maxColumnsPerEntity,
+    );
 
     const relationshipsResult = await client.query<RelationshipRow>(`
       SELECT con.oid::text AS id, fn.nspname AS from_namespace, fc.relname AS from_entity,
@@ -72,7 +75,7 @@ export async function introspectPostgresMetadata(connectionString: string, optio
       namespace: row.namespace,
       name: row.name,
       kind: row.kind,
-      columns: (byEntity.get(entityId(row.namespace, row.name)) ?? []).map((column) => ({
+      columns: (byEntity.get(entityId(row.namespace, row.name)) ?? []).slice(0, options.maxColumnsPerEntity).map((column) => ({
         name: column.name, ordinal: column.ordinal, nativeType: column.native_type,
         canonicalType: canonicalType(column.native_type), nullable: column.nullable,
         primaryKey: column.primary_key, generated: column.generated,
@@ -87,7 +90,7 @@ export async function introspectPostgresMetadata(connectionString: string, optio
     const truncatedSections: MetadataSection[] = [];
     if (entitiesResult.rows.length > options.maxEntities || namespaceNames.length < new Set(entityRows.map((row) => row.namespace)).size) truncatedSections.push("entities" as const);
     if (relationshipsResult.rows.length > options.maxRelationships) truncatedSections.push("relationships" as const);
-    if (entities.some((entity) => entity.columns.length >= options.maxColumnsPerEntity)) truncatedSections.push("columns" as const);
+    if (columnsTruncated) truncatedSections.push("columns" as const);
     return {
       schemaVersion: 1, snapshotVersion: 0, partition: { index: 0, count: 1 }, providerId: "postgresql", dialectId: "postgresql",
       sourceName: parsed.databaseName, namespaces: namespaceNames.map((name) => ({ name })), entities, relationships,
