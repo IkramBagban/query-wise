@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { CheckCircle2, Database, Filter, RefreshCw, Search } from "lucide-react";
 
 import { CodeBlock } from "@/components/ui/code-block";
+import { Button } from "@/components/ui/button";
+import { SidebarRowsSkeleton } from "@/components/v2/LoadingSkeletons";
 import { TableItem } from "@/components/schema/TableItem";
 import type { ChatMessage, DbConnection, SchemaInfo } from "@/types";
 
@@ -88,7 +90,7 @@ export function WorkspaceContextPanel({
             </p>
             <div className="flex flex-col gap-1">
               {loadingSchema ? (
-                <p className="py-4 text-xs text-[#718178]">Loading schema...</p>
+                <SidebarRowsSkeleton rows={7} />
               ) : filteredTables.length > 0 ? (
                 filteredTables.map((table) => <TableItem key={table.name} table={table} />)
               ) : (
@@ -143,14 +145,16 @@ export function WorkspaceContextPanel({
             <dd className="font-medium text-[#263c32]">{schema?.tables.length ?? "—"}</dd>
           </div>
         </dl>
-        <button
+        <Button
+          variant="ghost"
+          loading={loadingSchema}
           onClick={onRefreshSchema}
           disabled={!connection || loadingSchema}
-          className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#d9e3dd] text-xs font-semibold text-[#344b3f] transition hover:bg-[#f4f8f5] disabled:opacity-50"
+          className="mt-4 w-full"
         >
-          <RefreshCw className={`size-4 ${loadingSchema ? "animate-spin" : ""}`} />
+          <RefreshCw className="size-4" />
           Refresh Schema
-        </button>
+        </Button>
       </div>
     </aside>
   );

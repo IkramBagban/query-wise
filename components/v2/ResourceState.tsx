@@ -1,12 +1,13 @@
-import { AlertTriangle, Inbox, LoaderCircle } from "lucide-react";
+import { AlertTriangle, Inbox } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 export function LoadingState({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="flex min-h-40 items-center justify-center gap-2 rounded-xl border border-border bg-surface text-sm text-text-2">
-      <LoaderCircle className="h-4 w-4 animate-spin" />
-      {label}
+    <div role="status" aria-live="polite" className="flex min-h-32 items-center justify-center gap-2 text-sm text-text-3">
+      <Spinner />
+      <span>{label}</span>
     </div>
   );
 }

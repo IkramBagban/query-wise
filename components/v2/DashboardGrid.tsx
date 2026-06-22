@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, LayoutGrid, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, Check, LayoutGrid, RotateCcw, Trash2 } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 
@@ -9,6 +9,7 @@ import { V2Chart } from "@/components/v2/V2Chart";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { dashboardsApi } from "@/lib/v2/api-client";
 import type { DashboardDto } from "@/lib/v2/api-client";
@@ -184,7 +185,7 @@ export function DashboardGrid({
           <div aria-live="polite" aria-atomic="true">
             {saveState === "saving" ? (
               <span className="flex items-center gap-1.5 text-text-2">
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Saving layout…
+                <Spinner size="sm" /> Saving layout…
               </span>
             ) : saveState === "saved" ? (
               <span className="flex items-center gap-1.5 text-success">

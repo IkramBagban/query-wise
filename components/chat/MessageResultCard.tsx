@@ -7,6 +7,7 @@ import { ChartRenderer } from "@/components/charts/ChartRenderer";
 import { TableView } from "@/components/charts/TableView";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Dialog } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { toChartTypeOptions } from "@/lib/chartTypeOptions";
 import { copyToClipboard, exportToCSV, exportToJSON, generateFilename } from "@/lib/export";
@@ -223,7 +224,7 @@ export function MessageResultCard({
                   className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-[#174128]/18 bg-white px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.14em]"
                 >
                   {saving ? (
-                    <span className="inline-flex h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#174128]/40 border-t-[#174128]" />
+                    <Spinner size="sm" label="Saving chart" />
                   ) : (
                     <Save className="h-3.5 w-3.5" />
                   )}

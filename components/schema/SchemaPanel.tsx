@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SchemaBrowserSkeleton } from "@/components/v2/LoadingSkeletons";
 import { ErDiagramModal } from "@/components/schema/ErDiagramModal";
 import { SchemaSummary } from "@/components/schema/SchemaSummary";
 import { TableItem } from "@/components/schema/TableItem";
@@ -84,11 +85,7 @@ export function SchemaPanel({
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
         {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-xl border border-[#164229]/10 bg-white" />
-            ))}
-          </div>
+          <SchemaBrowserSkeleton rows={6} />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#164229]/25 bg-white p-8 text-center">
             <p className="max-w-[160px] text-xs font-medium text-text-3">

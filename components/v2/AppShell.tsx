@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Database,
   Home,
-  LoaderCircle,
   Menu,
   MessageSquare,
   Pencil,
@@ -24,6 +23,8 @@ import { ChatSearchDialog } from "@/components/v2/ChatSearchDialog";
 import { ThemeToggle } from "@/components/v2/ThemeToggle";
 import { UserControl } from "@/components/v2/auth/UserControl";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Spinner } from "@/components/ui/spinner";
+import { SidebarRowsSkeleton } from "@/components/v2/LoadingSkeletons";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useAppState } from "@/store/app-state/provider";
 import { formatRelativeTime } from "@/lib/utils";
@@ -137,6 +138,7 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
         </Link>
       </div>
       <div className="space-y-0.5">
+        {loading && !items.length ? <SidebarRowsSkeleton rows={4} /> : null}
         {items.map((item) => (
           <SidebarChatLink
             key={item.id}
@@ -149,7 +151,7 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
         {!loading && !items.length && !error ? <p className="px-3 py-2 text-xs text-text-3">No conversations yet</p> : null}
         {error ? <button type="button" onClick={() => void loadMore()} className="w-full rounded-lg px-3 py-2 text-left text-xs text-danger hover:bg-surface-3">Retry loading chats</button> : null}
         <div ref={loadMoreRef} className="flex min-h-8 items-center justify-center">
-          {loading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin text-text-3" /> : null}
+          {loading && items.length ? <Spinner size="sm" className="text-text-3" label="Loading more chats" /> : null}
         </div>
       </div>
     </section>
@@ -327,7 +329,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
                 {item.widgetCount ? <span className="shrink-0 text-[10px] text-text-3">{item.widgetCount}</span> : null}
               </Link>
             ))}
-            {dashboardsLoading && !allDashboards.length ? <p className="px-3 py-2 text-xs text-text-3">Loading dashboards...</p> : null}
+            {dashboardsLoading && !allDashboards.length ? <SidebarRowsSkeleton rows={3} /> : null}
             {!dashboardsLoading && !allDashboards.length ? <Link href="/dashboards" onClick={onNavigate} className="block rounded-lg px-3 py-2 text-xs text-text-3 hover:bg-surface-3 hover:text-text-1">Create your first dashboard</Link> : null}
             {hasMoreDashboards ? (
               <Link href="/dashboards" onClick={onNavigate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-text-3 transition hover:text-text-1">

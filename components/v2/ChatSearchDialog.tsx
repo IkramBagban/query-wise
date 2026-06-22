@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LoaderCircle, MessageSquare, Search } from "lucide-react";
+import { MessageSquare, Search } from "lucide-react";
 
 import { Dialog } from "@/components/ui/dialog";
+import { SearchResultsSkeleton } from "@/components/v2/LoadingSkeletons";
 import { formatRelativeTime } from "@/lib/utils";
 import { conversationsApi, type ConversationListItem } from "@/lib/v2/api-client";
 
@@ -92,9 +93,7 @@ export function ChatSearchDialog({
 
       <div className="max-h-[60vh] overflow-y-auto p-2">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-3">
-            <LoaderCircle className="size-4 animate-spin" />Loading chats
-          </div>
+          <SearchResultsSkeleton />
         ) : error ? (
           <p className="px-3 py-8 text-center text-sm text-danger">{error}</p>
         ) : !results.length ? (

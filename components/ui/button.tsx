@@ -1,9 +1,9 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ButtonHTMLAttributes } from "react";
 
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -47,11 +47,13 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={cn(buttonVariants({ variant, size }), className)}
+      className={cn("relative", buttonVariants({ variant, size }), className)}
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
     >
-      {loading ? <LoaderCircle className="h-4 w-4 animate-spin-slow" /> : children}
+      <span className={cn("inline-flex items-center justify-center gap-2", loading && "invisible")}>{children}</span>
+      {loading ? <Spinner className="absolute" /> : null}
     </button>
   );
 }

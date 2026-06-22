@@ -1,5 +1,5 @@
-import { LoadingState } from "@/components/v2/ResourceState";
+import { AppPageSkeleton } from "@/components/v2/LoadingSkeletons";
 
 export default function Loading() {
-  return <div className="p-4 sm:p-6"><LoadingState label="Loading workspace" /></div>;
+  return <AppPageSkeleton />;
 }

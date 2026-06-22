@@ -11,8 +11,9 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardGrid, EditLayoutButton, WidgetCardSkeleton } from "@/components/v2/DashboardGrid";
+import { CardGridSkeleton } from "@/components/v2/LoadingSkeletons";
 import { PageHeader } from "@/components/v2/PageHeader";
-import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
+import { EmptyState, ErrorState } from "@/components/v2/ResourceState";
 import { ShareDashboardModal } from "@/components/v2/ShareDashboardModal";
 import { useApiResource } from "@/hooks/v2";
 import { dashboardsApi } from "@/lib/v2/api-client";
@@ -186,8 +187,8 @@ export function DashboardsListView() {
         </form>
         {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
       </Card>
-      {resource.loading ? (
-        <LoadingState label="Loading dashboards" />
+      {resource.loading && !resource.data ? (
+        <CardGridSkeleton />
       ) : resource.error ? (
         <ErrorState error={resource.error} onRetry={() => void resource.refresh()} />
       ) : !resource.data?.items.length ? (

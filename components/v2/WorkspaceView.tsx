@@ -8,7 +8,6 @@ import {
   ChevronDown,
   CheckCircle2,
   Database,
-  Loader2,
   MessageSquarePlus,
   PanelRightClose,
   PanelRightOpen,
@@ -25,10 +24,17 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/v2/ConversationResultCard";
+import {
+  ConnectionRowsSkeleton,
+  MessageListSkeleton,
+  SchemaBrowserSkeleton,
+} from "@/components/v2/LoadingSkeletons";
 import { PageHeader } from "@/components/v2/PageHeader";
-import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
+import { EmptyState, ErrorState } from "@/components/v2/ResourceState";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
 import { isBoundedResultPreview } from "@/components/v2/V2Chart";
 import { useApiResource } from "@/hooks/v2";
@@ -91,7 +97,7 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
     return (
       <div className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs text-text-3">
         <Database className="size-3.5 shrink-0 text-text-3" />
-        <Loader2 className="size-3.5 animate-spin" />
+        <Spinner size="sm" />
         <span>Loading…</span>
       </div>
     );
@@ -240,7 +246,7 @@ function DataSourceStatusPicker({
           <>
             <span className="hidden h-3 w-px bg-border sm:block" />
             <span className="inline-flex items-center gap-1.5">
-              {schemaLoading ? <Loader2 className="size-3.5 animate-spin text-text-3" /> : <Table2 className="size-3.5 text-text-3" />}
+              {schemaLoading ? <Spinner size="sm" className="text-text-3" /> : <Table2 className="size-3.5 text-text-3" />}
               {tableCount} tables
             </span>
           </>
@@ -328,8 +334,8 @@ export function WorkspaceHomeView() {
         description="Reopen a durable conversation or start a new analysis."
         actions={<Link href="/workspace/new" className="inline-flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium"><MessageSquarePlus className="h-4 w-4" />New chat</Link>}
       />
-      {conversations.loading ? (
-        <LoadingState label="Loading conversations" />
+      {conversations.loading && !conversations.data ? (
+        <ConnectionRowsSkeleton rows={5} />
       ) : conversations.error ? (
         <ErrorState error={conversations.error} onRetry={() => void conversations.refresh()} />
       ) : !conversations.data?.items.length ? (
@@ -412,8 +418,8 @@ export function NewConversationView() {
           <p className="mt-1 text-xs text-text-3">Connect to the server-managed pre-seeded database and start querying immediately.</p>
           <Button className="mt-3" variant="ghost" loading={creatingDemo} onClick={() => void connectDemo()}><Database className="h-4 w-4" />Use demo database</Button>
         </div>
-        {connections.loading ? (
-          <LoadingState label="Loading connections" />
+        {connections.loading && !connections.data ? (
+          <ConnectionRowsSkeleton rows={3} />
         ) : connections.error ? (
           <ErrorState error={connections.error} onRetry={() => void connections.refresh()} />
         ) : !connections.data?.items.length ? (
@@ -733,9 +739,8 @@ export function EmptyWorkspaceView() {
 
         <div className="mb-4 min-h-10">
           {connections.loading && !connections.data ? (
-            <div className="mx-auto flex w-fit items-center gap-2 rounded-lg border border-border bg-surface/80 px-4 py-2 text-xs text-text-3">
-              <Loader2 className="size-3.5 animate-spin" />
-              Loading data sources
+            <div role="status" aria-label="Loading data sources" className="mx-auto w-fit rounded-lg border border-border bg-surface/80 px-4 py-2">
+              <Skeleton className="h-5 w-72 max-w-[70vw]" />
             </div>
           ) : connections.error ? (
             <button
@@ -770,7 +775,7 @@ export function EmptyWorkspaceView() {
         />
         {streamStatus && submitting ? (
           <p className="mt-2 text-center text-xs text-text-3">
-            <Loader2 className="mr-1 inline size-3 animate-spin" />
+            <Spinner size="sm" className="mr-1" />
             {streamStatus}
           </p>
         ) : null}
@@ -957,7 +962,7 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {tab === "schema" ? (
-          schema.loading ? <LoadingState label="Loading schema" /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />
+          schema.loading && !schema.data ? <SchemaBrowserSkeleton /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />
         ) : null}
         {tab === "sql" ? (
           latestRun?.generatedQuery ? <CodeBlock sql={latestRun.generatedQuery.text} /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">Run a query to see its generated SQL.</p>
@@ -1166,8 +1171,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     }
   }
 
-  if (conversation.loading) return <div className="p-6"><LoadingState label="Loading conversation" /></div>;
-  if (conversation.error || !conversation.data) return <div className="p-6"><ErrorState error={conversation.error ?? new Error("Conversation not found")} onRetry={() => void conversation.refresh()} /></div>;
+  if (conversation.error || (!conversation.data && !conversation.loading)) return <div className="p-6"><ErrorState error={conversation.error ?? new Error("Conversation not found")} onRetry={() => void conversation.refresh()} /></div>;
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-h-[640px] lg:h-screen">
@@ -1176,7 +1180,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
           <div className="pointer-events-auto absolute left-0 flex h-14 min-w-0 max-w-[calc(100%-11rem)] items-center gap-2.5 rounded-br-xl border border-l-0 border-t-0 border-border/70 bg-surface/65 px-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
             <Database className="size-4 shrink-0 text-accent-2" />
-            <span className="truncate text-sm font-medium text-text-1">{connection.data?.name ?? "Loading source"}</span>
+            <span className="truncate text-sm font-medium text-text-1">{connection.data?.name ?? conversation.data?.title ?? ""}</span>
           </div>
           <div className="pointer-events-auto absolute right-0 flex h-14 shrink-0 items-center gap-1.5 rounded-bl-xl border border-r-0 border-t-0 border-border/70 bg-surface/65 px-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
             <button type="button" aria-label="Favorite chat" title="Favorite chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Star className="size-4" /></button>
@@ -1194,8 +1198,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
           </div>
         </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
-          {messagesLoading ? (
-            <LoadingState label="Loading messages" />
+          {conversation.loading || messagesLoading ? (
+            <MessageListSkeleton messages={4} />
           ) : messagesError && !ordered.length ? (
             <ErrorState error={messagesError} onRetry={() => void refreshMessages()} />
           ) : !ordered.length ? (
@@ -1242,7 +1246,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
                 <div className="flex items-center gap-3">
                   <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Sparkles className="size-4" /></span>
                   <span className="inline-flex items-center gap-2 rounded-2xl rounded-tl-sm border border-border bg-surface px-4 py-2.5 text-sm text-text-3">
-                    <Loader2 className="size-3.5 animate-spin" />{streamStatus ?? "Analyzing your data..."}
+                    <Spinner size="sm" />{streamStatus ?? "Analyzing your data..."}
                   </span>
                 </div>
               ) : null}

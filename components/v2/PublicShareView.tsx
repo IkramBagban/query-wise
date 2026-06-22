@@ -6,7 +6,8 @@ import { AlertTriangle, LockKeyhole, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ErrorState, LoadingState } from "@/components/v2/ResourceState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/v2/ResourceState";
 import { V2Chart } from "@/components/v2/V2Chart";
 import { useApiResource } from "@/hooks/v2";
 import { publicSharesApi, V2ApiError } from "@/lib/v2/api-client";
@@ -17,7 +18,7 @@ export function PublicShareView({ token }: { token: string }) {
   const apiError = resource.error instanceof V2ApiError ? resource.error : null;
   const passwordRequired = apiError?.requiresPassword || apiError?.code === "SHARE_PASSWORD_REQUIRED";
   async function unlock(event: FormEvent) { event.preventDefault(); setUnlocking(true); setUnlockError(null); try { await publicSharesApi.unlock(token, password); setPassword(""); await resource.refresh(); } catch (reason) { const error = reason instanceof V2ApiError && reason.code === "SHARE_PASSWORD_INVALID" ? new Error("Incorrect password") : reason; setUnlockError(error instanceof Error ? error.message : "Unable to unlock share"); } finally { setUnlocking(false); } }
-  if (resource.loading) return <main className="mx-auto max-w-7xl p-4 sm:p-8"><div className="mb-6 h-16 max-w-lg animate-pulse rounded-xl bg-surface-2" /><div className="grid gap-4 lg:grid-cols-2">{Array.from({ length: 4 }).map((_, index) => <Card key={index} className="overflow-hidden"><div className="h-12 border-b border-border bg-surface-2" /><div className="h-72 animate-pulse bg-surface-3" /></Card>)}</div></main>;
+  if (resource.loading) return <main className="mx-auto max-w-7xl p-4 sm:p-8"><Skeleton className="mb-6 h-16 max-w-lg" /><div className="grid gap-4 lg:grid-cols-2">{Array.from({ length: 4 }).map((_, index) => <Card key={index} className="overflow-hidden"><div className="border-b border-border p-4"><Skeleton className="h-4 w-2/5" /></div><div className="h-72 p-4"><Skeleton className="h-full w-full" /></div></Card>)}</div></main>;
   if (passwordRequired) return <main className="flex min-h-screen items-center justify-center p-5"><Card className="w-full max-w-md p-6"><LockKeyhole className="h-7 w-7 text-accent-2" /><h1 className="mt-4 font-syne text-2xl font-semibold">Password required</h1><p className="mt-1 text-sm text-text-3">Enter the password provided by the dashboard owner.</p><form onSubmit={unlock} className="mt-5 space-y-3"><Input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} label="Share password" />{unlockError ? <p className="text-sm text-danger">{unlockError}</p> : null}<Button className="w-full" type="submit" loading={unlocking}>Unlock dashboard</Button></form></Card></main>;
   if (resource.error || !resource.data) {
     const title = apiError?.code === "SHARE_EXPIRED" ? "This link has expired" : apiError?.code === "SHARE_REVOKED_OR_NOT_FOUND" ? "This link has been revoked" : "Shared dashboard unavailable";

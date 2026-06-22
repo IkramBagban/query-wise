@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { previewToQueryResult, V2Chart } from "@/components/v2/V2Chart";
 import { useToast } from "@/hooks/useToast";
 import { exportToCSV, exportToJSON, exportToXLSX, generateFilename } from "@/lib/export";
@@ -170,7 +171,7 @@ function DashboardMenu({
             {dashboardOptions.map((dashboard) => (
               <button key={dashboard.value} type="button" disabled={busyId !== null} onClick={() => void save(dashboard.value)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-xs font-medium hover:bg-surface-2 disabled:opacity-60">
                 <span className="truncate">{dashboard.label}</span>
-                {busyId === dashboard.value ? <span className="size-3 animate-spin rounded-full border-2 border-border-2 border-t-accent" /> : null}
+                {busyId === dashboard.value ? <Spinner size="sm" label={`Saving to ${dashboard.label}`} /> : null}
               </button>
             ))}
             {!dashboardOptions.length ? <p className="px-2 py-3 text-xs text-text-3">No dashboards yet.</p> : null}

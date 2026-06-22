@@ -12,7 +12,6 @@ import {
   Database,
   ExternalLink,
   Layers,
-  Loader2,
   Plus,
   RefreshCw,
   Table2,
@@ -28,7 +27,10 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { EmptyState, ErrorState, LoadingState } from "@/components/v2/ResourceState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { ConnectionRowsSkeleton, PageHeaderSkeleton, SchemaBrowserSkeleton } from "@/components/v2/LoadingSkeletons";
+import { EmptyState, ErrorState } from "@/components/v2/ResourceState";
 import { PageHeader } from "@/components/v2/PageHeader";
 import { SchemaBrowser } from "@/components/v2/SchemaBrowser";
 import { useApiResource } from "@/hooks/v2";
@@ -140,7 +142,7 @@ function TestConnectionButton({
         className="self-start"
       >
         {testState.status === "testing" ? (
-          <Loader2 className="size-4 animate-spin" />
+          <Spinner label="Testing connection" />
         ) : (
           <TestTube2 className="size-4" />
         )}
@@ -480,6 +482,55 @@ function ConnectionCard({
   );
 }
 
+function ConnectionsPageSkeleton() {
+  return (
+    <div className="min-h-screen">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+        <PageHeaderSkeleton actions={1} announce={false} />
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="flex h-[94px] items-center gap-3 p-4">
+              <Skeleton className="size-11 shrink-0 rounded-xl" />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-6 w-12" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </Card>
+          ))}
+        </div>
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+        <ConnectionRowsSkeleton />
+      </div>
+    </div>
+  );
+}
+
+function ConnectionDetailSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeaderSkeleton actions={3} announce={false} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="flex flex-col gap-5 p-5">
+          <Skeleton className="h-5 w-48" />
+          <div className="grid gap-5 sm:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="flex flex-col gap-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-4 w-36" />
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card className="p-4"><SchemaBrowserSkeleton rows={5} /></Card>
+      </div>
+    </div>
+  );
+}
+
 export function ConnectionsListView() {
   const resource = useApiResource((signal) => connectionsApi.list(50, undefined, signal));
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -532,7 +583,7 @@ export function ConnectionsListView() {
     }
   }
 
-  if (resource.loading && !resource.data) return <div className="p-4 sm:p-6"><LoadingState label="Loading connections" /></div>;
+  if (resource.loading && !resource.data) return <ConnectionsPageSkeleton />;
   if (resource.error && !resource.data) return <div className="p-4 sm:p-6"><ErrorState error={resource.error} onRetry={() => void resource.refresh()} /></div>;
 
   return (
@@ -621,9 +672,9 @@ export function ConnectionDetailView({ connectionId }: { connectionId: string })
   const schema = useApiResource((signal) => connectionsApi.schema(connectionId, signal), connectionId);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  if (connection.loading) return <LoadingState label="Loading connection" />;
+  if (connection.loading) return <ConnectionDetailSkeleton />;
   if (connection.error || !connection.data) return <ErrorState error={connection.error ?? new Error("Connection not found")} onRetry={() => void connection.refresh()} />;
   const item = connection.data;
   const act = async (key: string, action: () => Promise<unknown>, message: string) => { setBusy(key); setNotice(null); try { await action(); setNotice(message); await connection.refresh(); await schema.refresh(); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Action failed"); } finally { setBusy(null); } };
-  return <div className="space-y-6"><PageHeader eyebrow="Connection" title={item.name} description={`${item.hostDisplay}${item.port ? `:${item.port}` : ""} / ${item.databaseName}`} actions={<><Button variant="ghost" loading={busy === "test"} onClick={() => void act("test", () => connectionsApi.test(connectionId), "Connection test completed.")}><TestTube2 className="h-4 w-4" />Test</Button><Button variant="ghost" loading={busy === "refresh"} onClick={() => void act("refresh", () => connectionsApi.refreshSchema(connectionId), "Schema refresh queued.")}><RefreshCw className="h-4 w-4" />Refresh schema</Button><Button variant="danger" loading={busy === "delete"} onClick={() => void act("delete", async () => { await connectionsApi.remove(connectionId); router.push("/connections"); }, "Connection deleted.")}><Trash2 className="h-4 w-4" />Delete</Button></>} />{notice ? <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><Card className="p-5"><h2 className="font-syne text-lg font-semibold">Safe connection metadata</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2">{[["Provider", item.providerId], ["Status", item.status], ["Schema sync", item.schemaSyncStatus], ["Last tested", item.lastTestedAt ? new Date(item.lastTestedAt).toLocaleString() : "Never"], ["Last schema sync", item.lastSchemaSyncAt ? new Date(item.lastSchemaSyncAt).toLocaleString() : "Never"], ["Capabilities", item.capabilities.join(", ") || "None reported"]].map(([label, value]) => <div key={label}><dt className="text-xs uppercase tracking-wide text-text-3">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>)}</dl></Card><Card className="p-4"><h2 className="mb-3 font-syne text-lg font-semibold">Schema</h2>{schema.loading ? <LoadingState label="Loading schema" /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />}</Card></div></div>;
+  return <div className="space-y-6"><PageHeader eyebrow="Connection" title={item.name} description={`${item.hostDisplay}${item.port ? `:${item.port}` : ""} / ${item.databaseName}`} actions={<><Button variant="ghost" loading={busy === "test"} onClick={() => void act("test", () => connectionsApi.test(connectionId), "Connection test completed.")}><TestTube2 className="h-4 w-4" />Test</Button><Button variant="ghost" loading={busy === "refresh"} onClick={() => void act("refresh", () => connectionsApi.refreshSchema(connectionId), "Schema refresh queued.")}><RefreshCw className="h-4 w-4" />Refresh schema</Button><Button variant="danger" loading={busy === "delete"} onClick={() => void act("delete", async () => { await connectionsApi.remove(connectionId); router.push("/connections"); }, "Connection deleted.")}><Trash2 className="h-4 w-4" />Delete</Button></>} />{notice ? <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><Card className="p-5"><h2 className="font-syne text-lg font-semibold">Safe connection metadata</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2">{[["Provider", item.providerId], ["Status", item.status], ["Schema sync", item.schemaSyncStatus], ["Last tested", item.lastTestedAt ? new Date(item.lastTestedAt).toLocaleString() : "Never"], ["Last schema sync", item.lastSchemaSyncAt ? new Date(item.lastSchemaSyncAt).toLocaleString() : "Never"], ["Capabilities", item.capabilities.join(", ") || "None reported"]].map(([label, value]) => <div key={label}><dt className="text-xs uppercase tracking-wide text-text-3">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>)}</dl></Card><Card className="p-4"><h2 className="mb-3 font-syne text-lg font-semibold">Schema</h2>{schema.loading && !schema.data ? <SchemaBrowserSkeleton rows={5} /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />}</Card></div></div>;
 }
