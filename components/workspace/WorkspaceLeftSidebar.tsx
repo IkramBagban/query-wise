@@ -14,6 +14,7 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { BrandMark } from "@/components/brand/BrandMark";
 import type { Dashboard, QueryHistoryEntry } from "@/types";
 
 interface WorkspaceLeftSidebarProps {
@@ -42,11 +43,7 @@ export function WorkspaceLeftSidebar({
   return (
     <aside className="hidden h-full w-[270px] shrink-0 flex-col border-r border-[#dfe7e2] bg-white lg:flex">
       <div className="flex h-[72px] items-center gap-3 border-b border-[#e5ebe7] px-7">
-        <span className="flex size-7 items-end justify-center gap-[3px]" aria-hidden="true">
-          <span className="h-3 w-1.5 rounded-sm bg-[#10a957]" />
-          <span className="h-5 w-1.5 rounded-sm bg-[#10a957]" />
-          <span className="h-7 w-1.5 rounded-sm bg-[#10a957]" />
-        </span>
+        <BrandMark className="size-9" />
         <span className="font-syne text-[22px] font-bold tracking-[-0.04em]">QueryWise</span>
       </div>
 

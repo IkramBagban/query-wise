@@ -14,12 +14,12 @@ import {
   Plus,
   Send,
   Share2,
-  Sparkles,
   Star,
   Table2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -730,9 +730,7 @@ export function EmptyWorkspaceView() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(46,213,46,0.16),transparent_34%),linear-gradient(180deg,rgba(9,12,10,0),rgba(9,12,10,0.24))]" />
       <div className="relative z-10 w-full">
         <div className="mx-auto mb-5 flex max-w-3xl flex-col items-center text-center">
-          <span className="inline-flex size-14 items-center justify-center rounded-full border border-accent/20 bg-accent-dim text-accent-2 shadow-[0_0_60px_rgba(46,213,46,0.18)]">
-            <Sparkles className="size-6" />
-          </span>
+          <BrandMark className="size-14 rounded-2xl shadow-[0_0_60px_rgba(46,213,46,0.22)]" />
           <h1 className="mt-4 font-syne text-4xl font-semibold tracking-normal text-text-1 sm:text-5xl">Ask your data</h1>
           <p className="mt-2 text-base text-text-2">Get instant insights from your connected databases.</p>
         </div>
@@ -821,7 +819,7 @@ function AssistantMessage({
   const hasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
   return (
     <div className="flex items-start gap-3">
-      <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm"><Sparkles className="size-4" /></span>
+      <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
@@ -1204,7 +1202,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             <ErrorState error={messagesError} onRetry={() => void refreshMessages()} />
           ) : !ordered.length ? (
             <div className="mx-auto max-w-2xl pt-10 text-center">
-              <span className="mx-auto inline-flex size-12 items-center justify-center rounded-2xl bg-accent-dim text-accent-2"><Sparkles className="size-6" /></span>
+              <BrandMark className="mx-auto size-12 rounded-2xl" />
               <h2 className="mt-4 font-syne text-2xl font-semibold">Ask a question about your data</h2>
               <p className="mt-1 text-sm text-text-3">Try one of these to get started.</p>
               <div className="mt-5 grid gap-2 sm:grid-cols-3">
@@ -1244,7 +1242,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               )}
               {submitting ? (
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Sparkles className="size-4" /></span>
+                  <BrandMark className="size-8" />
                   <span className="inline-flex items-center gap-2 rounded-2xl rounded-tl-sm border border-border bg-surface px-4 py-2.5 text-sm text-text-3">
                     <Spinner size="sm" />{streamStatus ?? "Analyzing your data..."}
                   </span>

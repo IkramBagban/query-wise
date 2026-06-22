@@ -15,10 +15,10 @@ import {
   Plus,
   Search,
   Settings,
-  Sparkles,
   X,
 } from "lucide-react";
 
+import { BrandMark } from "@/components/brand/BrandMark";
 import { ChatSearchDialog } from "@/components/v2/ChatSearchDialog";
 import { ThemeToggle } from "@/components/v2/ThemeToggle";
 import { UserControl } from "@/components/v2/auth/UserControl";
@@ -236,7 +236,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
             onClick={onToggleCollapse}
             className="group mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm transition hover:bg-surface-3 hover:text-text-1"
           >
-            <Sparkles className="h-4 w-4 group-hover:hidden" />
+            <BrandMark className="size-9 rounded-lg group-hover:hidden" />
             <ChevronRight className="hidden h-4 w-4 group-hover:block" />
           </button>
         </Tooltip>
@@ -279,7 +279,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
     <aside className="flex h-full flex-col bg-bg p-3">
       <div className="flex items-center justify-between px-2 py-3">
         <Link href="/workspace/new" onClick={onNavigate} className="flex min-w-0 items-center gap-2.5 font-syne text-lg font-semibold tracking-tight">
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm"><Sparkles className="h-4 w-4" /></span>
+          <BrandMark className="size-8 shadow-sm" />
           <span className="truncate">QueryWise</span>
         </Link>
         <button
@@ -384,7 +384,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0 flex-1">
         <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/90 px-3 backdrop-blur lg:hidden">
           <button aria-label="Open navigation" onClick={() => setNavOpen(true)} className="rounded-lg border border-border p-2"><Menu className="h-4 w-4" /></button>
-          <span className="font-syne font-semibold">QueryWise</span>
+          <span className="flex items-center gap-2 font-syne font-semibold"><BrandMark className="size-7" />QueryWise</span>
           <span className="h-9 w-9" />
         </div>
         <main className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen">{children}</main>

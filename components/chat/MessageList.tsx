@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Boxes, CircleDollarSign, LayoutDashboard, Sparkles, UsersRound } from "lucide-react";
+import { Boxes, CircleDollarSign, LayoutDashboard, UsersRound } from "lucide-react";
 
+import { BrandMark } from "@/components/brand/BrandMark";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import type { ChartType, ChatMessage } from "@/types";
 
@@ -36,9 +37,7 @@ export function MessageList({
       <div className="mx-auto w-full max-w-[1080px]">
         {messages.length === 0 ? (
           <div className="mx-auto flex min-h-[360px] max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
-            <span className="flex size-16 items-center justify-center rounded-2xl border border-[#b8dcc8] bg-[#f2faf5] text-[#078943] shadow-[0_8px_24px_rgba(18,115,66,0.08)]">
-              <Sparkles className="size-7" />
-            </span>
+            <BrandMark className="size-16 rounded-2xl shadow-[0_8px_24px_rgba(18,115,66,0.12)]" />
             <h1 className="mt-5 font-syne text-3xl font-bold tracking-[-0.04em] text-[#111b16] sm:text-4xl">
               Ask anything about <span className="text-[#078943]">your data</span>
             </h1>

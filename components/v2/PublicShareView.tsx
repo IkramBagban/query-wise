@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { AlertTriangle, LockKeyhole, Sparkles } from "lucide-react";
+import { AlertTriangle, LockKeyhole } from "lucide-react";
 
+import { BrandMark } from "@/components/brand/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,5 +27,5 @@ export function PublicShareView({ token }: { token: string }) {
     return <div className="mx-auto max-w-4xl p-6"><ErrorState title={title} error={new Error(message)} onRetry={() => void resource.refresh()} /></div>;
   }
   const data = resource.data;
-  return <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-8"><header className="flex items-start gap-3"><span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent"><Sparkles className="h-5 w-5" /></span><div><p className="text-xs uppercase tracking-[0.18em] text-text-3">Shared QueryWise dashboard</p><h1 className="font-syne text-3xl font-semibold">{data.dashboard.name}</h1><p className="text-xs text-text-3">Updated {new Date(data.dashboard.updatedAt).toLocaleString()}</p></div></header><div className="grid gap-4 lg:grid-cols-2">{data.dashboard.widgets.map((widget) => <Card key={widget.id} className="overflow-hidden"><h2 className="border-b border-border px-4 py-3 font-medium">{widget.title}</h2><div className="min-h-64 p-3">{widget.result ? <V2Chart preview={widget.result} config={widget.chartConfig} /> : <div className="flex min-h-64 flex-col items-center justify-center rounded-lg border border-warning/30 bg-warning/10 p-5 text-center"><AlertTriangle className="h-6 w-6 text-warning" /><p className="mt-2 text-sm font-medium">Chart unavailable</p><p className="mt-1 max-w-md text-xs text-text-3">{widget.error?.message ?? "This chart could not be refreshed."}</p></div>}</div></Card>)}</div></main>;
+  return <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-8"><header className="flex items-start gap-3"><BrandMark className="size-10 rounded-xl" /><div><p className="text-xs uppercase tracking-[0.18em] text-text-3">Shared QueryWise dashboard</p><h1 className="font-syne text-3xl font-semibold">{data.dashboard.name}</h1><p className="text-xs text-text-3">Updated {new Date(data.dashboard.updatedAt).toLocaleString()}</p></div></header><div className="grid gap-4 lg:grid-cols-2">{data.dashboard.widgets.map((widget) => <Card key={widget.id} className="overflow-hidden"><h2 className="border-b border-border px-4 py-3 font-medium">{widget.title}</h2><div className="min-h-64 p-3">{widget.result ? <V2Chart preview={widget.result} config={widget.chartConfig} /> : <div className="flex min-h-64 flex-col items-center justify-center rounded-lg border border-warning/30 bg-warning/10 p-5 text-center"><AlertTriangle className="h-6 w-6 text-warning" /><p className="mt-2 text-sm font-medium">Chart unavailable</p><p className="mt-1 max-w-md text-xs text-text-3">{widget.error?.message ?? "This chart could not be refreshed."}</p></div>}</div></Card>)}</div></main>;
 }
