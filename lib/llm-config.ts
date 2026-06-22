@@ -21,6 +21,18 @@ export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]
   ],
 };
 
+export function isLlmProvider(value: string): value is LlmProvider {
+  return LLM_PROVIDER_IDS.includes(value as LlmProvider);
+}
+
+export function isSupportedModel(provider: LlmProvider, model: string): boolean {
+  return SUPPORTED_MODELS_BY_PROVIDER[provider].includes(model);
+}
+
+export function defaultModelForProvider(provider: LlmProvider): string {
+  return SUPPORTED_MODELS_BY_PROVIDER[provider][0] ?? DEFAULT_LLM_MODEL;
+}
+
 export const LLM_MODEL_CATALOG = [
   {
     provider: "google" as const,

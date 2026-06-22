@@ -60,7 +60,7 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
   const shouldRotateTicks = result.rows.length > 8 || (!isDateLikeAxis && hasLongLabels);
   const tickInterval: number | "preserveStartEnd" = isVeryDenseAxis ? "preserveStartEnd" : 0;
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height="100%">
       <LineChart
         data={result.rows}
         margin={{ top: 8, right: 10, left: 6, bottom: shouldRotateTicks ? 52 : 16 }}
@@ -85,7 +85,7 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
         <Tooltip
           active={dragging ? false : undefined}
           cursor={dragging ? false : undefined}
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (

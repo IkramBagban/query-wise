@@ -12,9 +12,10 @@ const SQL_KEYWORDS = [
 
 interface CodeBlockProps {
   sql: string;
+  variant?: "default" | "dark";
 }
 
-export function CodeBlock({ sql }: CodeBlockProps) {
+export function CodeBlock({ sql, variant = "default" }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -23,7 +24,7 @@ export function CodeBlock({ sql }: CodeBlockProps) {
       const upper = part.toUpperCase();
       const keyword = SQL_KEYWORDS.includes(upper);
       return (
-        <span key={`${part}-${index}`} className={keyword ? "text-accent" : "text-text-2"}>
+        <span key={`${part}-${index}`} className={keyword ? "text-accent" : variant === "dark" ? "text-white/85" : "text-text-2"}>
           {part}
         </span>
       );
@@ -40,10 +41,10 @@ export function CodeBlock({ sql }: CodeBlockProps) {
   };
 
   return (
-    <div className="rounded-md border border-border bg-surface-2 p-3">
+    <div className={cn("rounded-md border p-3", variant === "dark" ? "border-white/10 bg-black/20" : "border-border bg-surface-2")}>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wide text-text-3">Generated SQL</span>
-        <Button variant="ghost" size="sm" onClick={handleCopy}>
+        <span className={cn("text-[11px] uppercase tracking-wide", variant === "dark" ? "text-white/55" : "text-text-3")}>SQL query</span>
+        <Button variant="ghost" size="sm" className={variant === "dark" ? "border-white/15 text-white hover:bg-white/10 hover:text-white" : ""} onClick={handleCopy}>
           {copied ? <Check className="h-3.5 w-3.5" /> : <Clipboard className="h-3.5 w-3.5" />} {copied ? "Copied" : "Copy"}
         </Button>
       </div>
@@ -51,7 +52,7 @@ export function CodeBlock({ sql }: CodeBlockProps) {
         <code>{highlighted}</code>
       </pre>
       {showCollapse ? (
-        <Button variant="ghost" size="sm" className="mt-2" onClick={() => setExpanded((prev) => !prev)}>
+        <Button variant="ghost" size="sm" className={cn("mt-2", variant === "dark" && "border-white/15 text-white hover:bg-white/10 hover:text-white")} onClick={() => setExpanded((prev) => !prev)}>
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           {expanded ? "Show less" : "Show more"}
         </Button>

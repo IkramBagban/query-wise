@@ -16,6 +16,7 @@ interface RunConstrainedAgentParams {
   executeQueryTool: (question: string) => Promise<ExecuteQueryToolResult>;
   onTextDelta?: (chunk: string) => void;
   onStage?: (label: string) => void;
+  abortSignal?: AbortSignal;
 }
 
 
@@ -54,6 +55,7 @@ interface RunAgentTurnParams {
   executeQueryTool: RunConstrainedAgentParams["executeQueryTool"];
   onTextDelta?: RunConstrainedAgentParams["onTextDelta"];
   onStage?: RunConstrainedAgentParams["onStage"];
+  abortSignal?: AbortSignal;
 }
 
 
@@ -128,6 +130,7 @@ async function runAgentTurn({
   executeQueryTool,
   onTextDelta,
   onStage,
+  abortSignal,
 }: RunAgentTurnParams): Promise<{ output: AgentOutput; toolResult: ExecuteQueryToolResult | null }> {
   let toolResult: ExecuteQueryToolResult | null = null;
 
@@ -161,6 +164,7 @@ async function runAgentTurn({
         stopWhen: stepCountIs(8),
         maxOutputTokens: 2000,
         temperature: 0.1,
+        abortSignal,
         experimental_onToolCallStart: () => {
           onStage?.("Calling execute_query");
         },
@@ -233,6 +237,7 @@ export async function runConstrainedAnalystAgent(
     executeQueryTool: params.executeQueryTool,
     onTextDelta: params.onTextDelta,
     onStage: params.onStage,
+    abortSignal: params.abortSignal,
   } satisfies Omit<RunAgentTurnParams, "forcedTool">;
 
   let { output, toolResult } = await runAgentTurn({

@@ -31,10 +31,10 @@ export function PieChartView({ result, nameKey, valueKey }: PieChartViewProps) {
     .filter((row) => Number(row[valueKey]) > 0);
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height="100%">
       <PieChart>
         <Tooltip
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         <Legend

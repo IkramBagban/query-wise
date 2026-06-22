@@ -43,6 +43,8 @@ export interface SchemaTable {
  * Full database schema context used by backend and LLM prompts.
  */
 export interface SchemaInfo {
+  connectionId?: string;
+  schemaFingerprint?: string | null;
   tables: SchemaTable[];
   relationships: Relationship[];
   summary: string; // Human-readable schema summary generated during introspection
@@ -222,6 +224,19 @@ export interface DashboardSaveRequest {
 export interface ShareResponse {
   shareId: string;
   url: string;
+}
+
+/**
+ * Single entry in the persistent query history.
+ */
+export interface QueryHistoryEntry {
+  id: string;
+  question: string;
+  sql: string;
+  timestamp: number;
+  rowCount: number;
+  executionTimeMs: number;
+  chartType: ChartType | null;
 }
 
 /**

@@ -29,4 +29,6 @@ export type AppStateContextValue = {
   dashboardInitialized: boolean;
   setDashboard: React.Dispatch<React.SetStateAction<Dashboard>>;
   addDashboardWidget: (widget: DashboardWidget) => void;
+  dashboardVersion: number;
+  bumpDashboardVersion: () => void;
 };

@@ -8,7 +8,7 @@ import type { LlmProvider } from "@/lib/llm-config";
 import { sendQuery } from "@/lib/chat/send-query";
 import { useAppState } from "@/store/app-state";
 import type { ChartType, ChatMessage } from "@/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface ChatPanelProps {
   isDatabaseConnected: boolean;
@@ -23,6 +23,8 @@ interface ChatPanelProps {
   onModelChange: (value: string) => void;
   apiKey: string;
   onSaveWidget: (message: ChatMessage) => Promise<void>;
+  externalQuestion?: string | null;
+  onExternalQuestionConsumed?: () => void;
 }
 
 export function ChatPanel({
@@ -38,6 +40,8 @@ export function ChatPanel({
   onModelChange,
   apiKey,
   onSaveWidget,
+  externalQuestion,
+  onExternalQuestionConsumed,
 }: ChatPanelProps) {
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
   const {
@@ -63,6 +67,14 @@ export function ChatPanel({
     });
   };
 
+  // Handle re-run from query history
+  useEffect(() => {
+    if (externalQuestion && !pendingQuery.isLoading) {
+      void handleSend(externalQuestion);
+      onExternalQuestionConsumed?.();
+    }
+  }, [externalQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleChartTypeChange = (messageId: string, type: ChartType) => {
     updateMessageChartType(messageId, type);
   };
@@ -79,7 +91,7 @@ export function ChatPanel({
   };
 
   return (
-    <section className="flex h-full min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,#f8fdf6_0%,#f2faee_55%,#eef7eb_100%)]">
+    <section className="flex h-full min-h-0 flex-1 flex-col bg-[#fbfdfc]">
       <MessageList
         messages={messages}
         isLoading={pendingQuery.isLoading}
@@ -89,15 +101,15 @@ export function ChatPanel({
         onChartTypeChange={handleChartTypeChange}
         onSaveWidget={onSaveWidget}
       />
-      <div className="sticky bottom-0 z-20 bg-gradient-to-t from-[#eef6ea] via-[#eef6ea]/95 to-transparent pl-2 pr-3 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
-        <div className="mx-auto w-full max-w-[980px]">
-          <div className="mb-2 flex items-center justify-end">
+      <div className="sticky bottom-0 z-20 bg-gradient-to-t from-[#fbfdfc] via-[#fbfdfc]/98 to-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4">
+        <div className="mx-auto w-full max-w-[900px]">
+          <div className="mb-1 flex items-center justify-end">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleClearChat}
               disabled={pendingQuery.isLoading || messages.length === 0}
-              className="border-danger/25 bg-white/80 text-danger hover:bg-danger/10"
+              className="h-7 border-0 bg-transparent px-2 text-[10px] text-[#718178] hover:bg-[#f2f6f3] hover:text-danger"
             >
               Clear chat
             </Button>
@@ -114,8 +126,8 @@ export function ChatPanel({
             onModelChange={onModelChange}
             onSubmit={handleSend}
           />
-          <p className="mt-2 px-1 text-[11px] text-text-3">
-            Chat history is temporary for this browser session and may reset when this tab is closed.
+          <p className="mt-3 text-center text-[10px] text-[#87968e]">
+            QueryWise can make mistakes. Please verify important results.
           </p>
         </div>
       </div>

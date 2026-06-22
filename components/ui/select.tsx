@@ -1,13 +1,18 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
 interface SelectOption {
   label: string;
   value: string;
+  separator?: boolean;
+}
+
+export function SelectSeparator({ className }: { className?: string }) {
+  return <div role="separator" className={cn("-mx-1 my-1 border-t border-border", className)} />;
 }
 
 interface SelectProps {
@@ -18,6 +23,8 @@ interface SelectProps {
   menuSide?: "top" | "bottom";
   menuAlign?: "left" | "right" | "mobile-right-desktop-left";
   menuMinWidthClassName?: string;
+  disabled?: boolean;
+  icon?: ReactNode;
 }
 
 export function Select({
@@ -28,6 +35,8 @@ export function Select({
   menuSide = "bottom",
   menuAlign = "left",
   menuMinWidthClassName,
+  disabled,
+  icon,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -56,13 +65,16 @@ export function Select({
     <div ref={rootRef} className={cn("relative inline-flex min-w-0 sm:min-w-40", className)}>
       <button
         type="button"
+        disabled={disabled}
         className={cn(
           "h-9 w-full cursor-pointer rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1",
           "inline-flex items-center justify-between gap-2 transition-colors",
           open ? "border-border-2" : "hover:border-border-2",
+          disabled && "cursor-not-allowed opacity-50",
         )}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => !disabled && setOpen((prev) => !prev)}
       >
+        {icon ? <span className="flex shrink-0 items-center text-text-3">{icon}</span> : null}
         <span className="truncate">{selected?.label ?? "Select"}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 text-text-3 transition-transform", open && "rotate-180")} />
       </button>
@@ -78,7 +90,10 @@ export function Select({
             menuMinWidthClassName,
           )}
         >
-          {options.map((option) => {
+          {options.map((option, index) => {
+            if (option.separator) {
+              return <SelectSeparator key={`sep-${index}`} />;
+            }
             const isActive = option.value === value;
             return (
               <button

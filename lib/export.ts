@@ -40,6 +40,34 @@ export function exportToJSON(result: QueryResult, filename = "query-results.json
 }
 
 /**
+ * Convert query results to a real Excel workbook.
+ */
+export async function exportToXLSX(result: QueryResult, filename = "query-results.xlsx"): Promise<void> {
+  const { Workbook } = await import("exceljs");
+  const workbook = new Workbook();
+  const worksheet = workbook.addWorksheet("Query Results");
+
+  worksheet.columns = result.columns.map((column) => ({
+    header: column,
+    key: column,
+    width: Math.min(40, Math.max(12, column.length + 4)),
+  }));
+  worksheet.addRows(
+    result.rows.map((row) =>
+      Object.fromEntries(result.columns.map((column) => [column, toSpreadsheetValue(row[column])])),
+    ),
+  );
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  downloadBlob(
+    new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    filename,
+  );
+}
+
+/**
  * Copy query results to clipboard as tab-separated values (Excel-friendly)
  */
 export async function copyToClipboard(result: QueryResult): Promise<void> {
@@ -87,11 +115,21 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function toSpreadsheetValue(value: unknown): string | number | boolean | Date {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date || typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 /**
  * Download file helper
  */
 function downloadFile(content: string, filename: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
+  downloadBlob(new Blob([content], { type: mimeType }), filename);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

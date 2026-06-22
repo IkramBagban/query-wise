@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MessagesSquare } from "lucide-react";
+import { Boxes, CircleDollarSign, LayoutDashboard, Sparkles, UsersRound } from "lucide-react";
 
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import type { ChartType, ChatMessage } from "@/types";
@@ -35,14 +35,32 @@ export function MessageList({
     <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-3 sm:px-6 sm:py-5">
       <div className="mx-auto w-full max-w-[1080px]">
         {messages.length === 0 ? (
-          <div className="mx-auto mt-3 max-w-xl rounded-2xl border border-dashed border-[#164229]/28 bg-white/90 p-4 text-[13px] text-text-2 shadow-[0_14px_30px_rgba(14,41,24,0.07)] sm:mt-8 sm:p-7 sm:text-sm">
-            <div className="mb-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#24593a] sm:text-[11px]">
-              <MessagesSquare className="h-4 w-4" />
-              Conversation
-            </div>
-            <p className="leading-relaxed">
-              Ask your first question to start analysis. Results, charts, and generated SQL will appear inline here.
+          <div className="mx-auto flex min-h-[360px] max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
+            <span className="flex size-16 items-center justify-center rounded-2xl border border-[#b8dcc8] bg-[#f2faf5] text-[#078943] shadow-[0_8px_24px_rgba(18,115,66,0.08)]">
+              <Sparkles className="size-7" />
+            </span>
+            <h1 className="mt-5 font-syne text-3xl font-bold tracking-[-0.04em] text-[#111b16] sm:text-4xl">
+              Ask anything about <span className="text-[#078943]">your data</span>
+            </h1>
+            <p className="mt-3 max-w-lg text-sm leading-6 text-[#718178]">
+              Get instant insights, create visualizations, and generate SQL all from a simple conversation.
             </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {[
+                [CircleDollarSign, "Revenue this month"],
+                [Boxes, "Top products"],
+                [UsersRound, "Retention analysis"],
+                [LayoutDashboard, "Create a dashboard"],
+              ].map(([Icon, label]) => (
+                <span
+                  key={label as string}
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-[#dce5df] bg-white px-4 text-xs font-medium text-[#405249] shadow-[0_3px_10px_rgba(25,58,40,0.03)]"
+                >
+                  <Icon className="size-4 text-[#078943]" />
+                  {label as string}
+                </span>
+              ))}
+            </div>
           </div>
         ) : null}
         <div className="flex flex-col gap-4 pb-2">

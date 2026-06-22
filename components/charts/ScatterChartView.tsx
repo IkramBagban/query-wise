@@ -29,13 +29,13 @@ export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartView
     result.rows.map((row) => ({ x: row[xKey], y: row[seriesKey] })),
   );
   return (
-    <ResponsiveContainer width="100%" height={320}>
+    <ResponsiveContainer width="100%" height="100%">
       <ScatterChart>
         <CartesianGrid stroke="var(--border)" />
         <XAxis dataKey="x" stroke="var(--text-3)" tick={{ fontSize: 12 }} />
         <YAxis dataKey="y" stroke="var(--text-3)" tick={{ fontSize: 12 }} />
         <Tooltip
-          contentStyle={{ background: "#ffffff", border: "1px solid var(--border)", borderRadius: 8 }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (
