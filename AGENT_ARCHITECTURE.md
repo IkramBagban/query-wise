@@ -20,7 +20,7 @@ The agent receives:
     - Conversation history 
     - Schema context
 
-write a good system prompt for agents, and tell it what to do, when to call tool, etc. also after getting the database from the tool, the agent will also decide which chart to select. you can understand context after reading [ASSIGNMENT.md](docs/ASSIGNMENT.md) and the code. 
+write a good system prompt for agents, and tell it what to do, when to call tool, etc. also after getting the database from the tool, the agent will also decide which chart to select.
 
 
 TONE:

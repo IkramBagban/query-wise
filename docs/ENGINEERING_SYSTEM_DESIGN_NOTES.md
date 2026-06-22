@@ -173,7 +173,7 @@ Prompts:
 - Deliberate non-choice:
   - No hardcoded `fallbackSqlForQuestion` map. If all model attempts fail, API now returns a clear rephrase/safety error.
 
-## 10) Query safety: layered defense (assignment-critical)
+## 10) Query safety: layered defense
 
 We use a 3-layer safety model instead of relying on one guard.
 
@@ -210,7 +210,7 @@ Why this is the right approach:
     - `unsafe`: return explicit read-only safety response without executing SQL.
 
 - Why:
-  - Matches assignment expectations for safe, production-quality behavior.
+  - Matches expectations for safe, production-quality behavior.
   - Reduces unnecessary DB load and confusing query outputs for non-query prompts.
 
 ## 12) Schema analysis quality upgrade (row counts, exact types, enums, presentation)
@@ -240,7 +240,6 @@ Why this is the right approach:
   - Column/table compact views now show formatted row counts and full type labels.
 
 - Why this decision:
-  - Assignment explicitly grades "Quality of schema analysis and presentation".
   - Plain `data_type` values and sample-only enum inference were too weak and sometimes misleading.
   - The previous summary block was hard to read and did not scale with larger schemas.
 
