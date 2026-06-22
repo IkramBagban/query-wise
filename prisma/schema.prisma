@@ -137,6 +137,8 @@ model SchemaSnapshot {
   @@map("v2_database_schema_snapshots")
 }
 
+/// A durable chat thread bound to one database connection. deletedAt implements
+/// user-visible soft deletion; dependent messages and runs remain until cleanup.
 model Conversation {
   id             String             @id @db.Uuid
   ownerUserId    String             @map("owner_user_id")
@@ -153,6 +155,8 @@ model Conversation {
   @@map("v2_conversations")
 }
 
+/// One ordered entry in a conversation. sequence is allocated by appendMessage
+/// under a per-conversation transaction lock to preserve deterministic ordering.
 model Message {
   id             String      @id @db.Uuid
   conversationId String      @map("conversation_id") @db.Uuid
@@ -170,6 +174,8 @@ model Message {
   @@map("v2_messages")
 }
 
+/// Durable execution ledger for one accepted user question. It links the triggering
+/// message to status transitions, validation evidence, result metadata, and response.
 model QueryRun {
   id                  String         @id @db.Uuid
   ownerUserId         String         @map("owner_user_id")
@@ -177,9 +183,12 @@ model QueryRun {
   connectionId        String         @map("connection_id") @db.Uuid
   triggeringMessageId String         @map("triggering_message_id") @db.Uuid
   responseMessageId   String?        @map("response_message_id") @db.Uuid
+  /// Client-generated retry identity, scoped by owner and conversation below.
   idempotencyKey      String         @map("idempotency_key")
+  /// Hash of the logical request; prevents one retry key from changing its payload.
   requestFingerprint  String         @map("request_fingerprint")
   status              QueryRunStatus @default(accepted)
+  /// Optimistic-concurrency counter used to reject stale status transitions.
   statusVersion       Int            @default(1) @map("status_version")
   providerId          String         @default("postgresql") @map("provider_id")
   dialectId           String         @default("postgresql") @map("dialect_id")

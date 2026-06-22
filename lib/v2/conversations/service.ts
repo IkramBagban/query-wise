@@ -152,6 +152,8 @@ export async function updateConversation(
 
 export async function deleteConversation(conversationId: string): Promise<void> {
   const { userId } = await requireUser();
+  // User-visible deletion is currently a soft delete: normal reads exclude the
+  // row immediately. Messages and query runs remain stored until separate cleanup.
   const result = await getAppDb().conversation.updateMany({
     where: { id: conversationId, ownerUserId: userId, deletedAt: null },
     data: { deletedAt: new Date(), status: "archived" },
@@ -245,10 +247,17 @@ export async function recentConversationHistory(conversationId: string, limit = 
   }));
 }
 
+/**
+ * Appends one message with a gap-free, conversation-local sequence number.
+ * The caller supplies an open transaction so the message and its surrounding
+ * query-run state change either commit together or roll back together.
+ */
 export async function appendMessage(
   tx: Parameters<Parameters<typeof withAppDbTransaction>[0]>[0],
   input: { conversationId: string; role: "user" | "assistant" | "system"; content: string; queryRunId?: string; metadata?: Prisma.InputJsonValue },
 ) {
+  // Without this transaction-scoped lock, two concurrent appends could both read
+  // the same maximum sequence and race on the unique (conversationId, sequence) key.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.conversationId}))`;
   const latest = await tx.message.aggregate({
     where: { conversationId: input.conversationId },
@@ -260,6 +269,8 @@ export async function appendMessage(
       conversationId: input.conversationId,
       sequence: (latest._max.sequence ?? 0) + 1,
       role: input.role,
+      // Bound persisted prompt/response content even when this helper is called
+      // outside request schemas (for example, recovery-generated messages).
       content: input.content.slice(0, 8000),
       queryRunId: input.queryRunId,
       metadata: input.metadata ?? { schemaVersion: 1 },

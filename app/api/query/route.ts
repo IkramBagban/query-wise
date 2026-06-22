@@ -37,11 +37,14 @@ export async function POST(request: Request) {
         ),
       );
     }
+    // Persist the user message and durable run before starting expensive LLM/SQL
+    // work. Network retries receive the existing run and must not execute it twice.
     const accepted = await acceptQuerySubmission(parsed.data);
     const wantsSse = request.headers.get("accept")?.includes("text/event-stream");
     if (!accepted.created) return jsonData(queryRunDto(accepted.run), 200);
 
     if (wantsSse) {
+      console.log( "SSE query run started", { queryRunId: accepted.run.id });
       return querySseResponse(accepted.run.id, async (emit) => {
         await executeDurableQueryRun({
           queryRunId: accepted.run.id,

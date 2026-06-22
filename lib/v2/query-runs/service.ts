@@ -47,6 +47,8 @@ export function queryRunDto(run: QueryRun): QueryRunDto {
 }
 
 function fingerprint(input: QuerySubmission): string {
+  // Bind an idempotency key to the logical request. The API key is deliberately
+  // excluded because it is a credential, not persisted request identity.
   return createHash("sha256").update(JSON.stringify({
     conversationId: input.conversationId,
     question: input.question.trim(),
@@ -55,6 +57,13 @@ function fingerprint(input: QuerySubmission): string {
   })).digest("hex");
 }
 
+/**
+ * Atomically accepts one logical query submission.
+ *
+ * A first submission appends the user's message and creates its durable QueryRun.
+ * A retry with the same key and payload returns that run without adding another
+ * message; reusing the key for a different payload is rejected.
+ */
 export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
   run: QueryRun;
   created: boolean;
@@ -62,6 +71,8 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
   const { userId } = await requireUser();
   const requestFingerprint = fingerprint(input);
   return withAppDbTransaction(async (tx) => {
+    // Serialize concurrent retries before the unique-key lookup. This transaction-
+    // scoped PostgreSQL lock is released automatically on commit or rollback.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${input.conversationId}:${input.idempotencyKey}`}))`;
     const existing = await tx.queryRun.findUnique({
       where: {
@@ -79,6 +90,8 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
       return { run: existing, created: false };
     }
 
+    // Ownership and soft-delete checks happen inside the same transaction as the
+    // message/run creation, so acceptance cannot produce a partial submission.
     const conversation = requireFound(await tx.conversation.findFirst({
       where: { id: input.conversationId, ownerUserId: userId, deletedAt: null },
     }));
@@ -102,6 +115,8 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
     });
     await tx.message.update({
       where: { id: triggeringMessage.id },
+      // appendMessage must run first to establish ordered conversation history;
+      // this back-reference then connects that message to the new execution ledger.
       data: { queryRunId: run.id },
     });
     await tx.conversation.update({
