@@ -61,11 +61,22 @@ function scoreTable(questionTokens: Set<string>, table: SchemaTable): number {
   return score / Math.sqrt(haystack.length) + exactNameBonus + keyColumnBonus;
 }
 
+export function adaptiveRetrievalLimit(totalTables: number): number | null {
+  if (totalTables <= 15) return null;
+  if (totalTables <= 25) return 10;
+  if (totalTables <= 50) return 20;
+  if (totalTables <= 100) return 25;
+  return 30;
+}
+
 export async function retrieveCandidateTables(params: {
   schema: SchemaInfo;
   question: string;
-  limit?: number;
+  limit?: number | null;
 }): Promise<TableCandidate[]> {
+  if (params.limit === null) {
+    return params.schema.tables.map((table) => toTableCandidate(params.schema, table, 1.0));
+  }
   const vectorCandidates = await retrieveVectorCandidateTables(params).catch(() => []);
   if (vectorCandidates.length > 0) return vectorCandidates;
   return retrieveLexicalCandidateTables(params);
@@ -74,7 +85,7 @@ export async function retrieveCandidateTables(params: {
 function retrieveLexicalCandidateTables(params: {
   schema: SchemaInfo;
   question: string;
-  limit?: number;
+  limit?: number | null;
 }): TableCandidate[] {
   const questionTokens = new Set(tokens(params.question));
   const limit = params.limit ?? 30;
@@ -90,7 +101,7 @@ function retrieveLexicalCandidateTables(params: {
 async function retrieveVectorCandidateTables(params: {
   schema: SchemaInfo;
   question: string;
-  limit?: number;
+  limit?: number | null;
 }): Promise<TableCandidate[]> {
   if (!params.schema.connectionId || !params.schema.schemaFingerprint) return [];
   const queryVector = toPgVector(hashEmbedding(params.question));

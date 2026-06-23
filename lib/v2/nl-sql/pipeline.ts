@@ -13,7 +13,7 @@ import {
   type ColumnPruning,
 } from "./schemas";
 import { compactHistory, type TableCandidate } from "./schema-context";
-import { retrieveCandidateTables } from "./retrieval";
+import { adaptiveRetrievalLimit, retrieveCandidateTables } from "./retrieval";
 import {
   STRUCTURED_PIPELINE_SYSTEM,
   columnPruningPrompt,
@@ -87,12 +87,16 @@ export async function planStagedNlSqlQuery(params: {
     };
   }
 
-  params.onStage?.("Retrieving candidate tables");
+  const totalTables = params.schema.tables.length;
+  const retrievalLimit = adaptiveRetrievalLimit(totalTables);
+  if (retrievalLimit !== null) {
+    params.onStage?.("Retrieving candidate tables");
+  }
   const retrievalStartedAt = Date.now();
   const candidates = await retrieveCandidateTables({
     schema: params.schema,
     question: rewrite.standaloneQuestion,
-    limit: 30,
+    limit: retrievalLimit,
   });
   devLog("info", "nl-sql.retrieval.completed", "NL-to-SQL retrieval stage completed.", {
     durationMs: elapsedMs(retrievalStartedAt),
