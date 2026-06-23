@@ -8,7 +8,7 @@ import {
   recordQueryValidation,
   transitionQueryRun,
 } from "@/lib/v2/query-runs";
-import { needsGeneratedConversationTitle, recentConversationHistory, updateConversation } from "@/lib/v2/conversations";
+import { recentConversationHistory, setGeneratedConversationTitle } from "@/lib/v2/conversations";
 import { beginExplainStream, planStagedNlSqlQuery } from "@/lib/v2/nl-sql";
 import { AppError } from "@/lib/v2/dal/core";
 import type { BoundedQueryResult, ChartConfig, ProviderQuery } from "@/types/v2";
@@ -56,10 +56,9 @@ async function generateAndPersistTitle(input: {
   queryRunId: string;
 }): Promise<void> {
   try {
-    if (!(await needsGeneratedConversationTitle(input.conversationId))) return;
     const title = await generateConversationTitle(input);
     if (title) {
-      await updateConversation(input.conversationId, { title });
+      await setGeneratedConversationTitle(input.conversationId, title);
     }
   } catch (error) {
     devLogError("conversation.title.generation-failed", "Conversation title generation failed.", error, {

@@ -170,6 +170,14 @@ export async function needsGeneratedConversationTitle(conversationId: string): P
   return record.title === DEFAULT_CONVERSATION_TITLE;
 }
 
+export async function setGeneratedConversationTitle(conversationId: string, title: string): Promise<void> {
+  const { userId } = await requireUser();
+  await getAppDb().conversation.updateMany({
+    where: { id: conversationId, ownerUserId: userId, deletedAt: null, title: DEFAULT_CONVERSATION_TITLE },
+    data: { title },
+  });
+}
+
 export async function listMessages(input: {
   conversationId: string;
   cursor?: string;

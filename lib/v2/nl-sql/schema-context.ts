@@ -153,6 +153,6 @@ export function buildPassthroughPruning(candidates: TableCandidate[]): ColumnPru
       tableName: c.tableName,
       columns: c.columns.map((col) => ({ name: col.name, reason: "passthrough" })),
     })),
-    joinPaths: candidates.flatMap((c) => c.relationshipHints),
+    joinPaths: [...new Set(candidates.flatMap((c) => c.relationshipHints))],
   };
 }

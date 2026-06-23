@@ -282,7 +282,6 @@ export async function recoverStaleQueryRuns(input: {
 export async function completeQueryRun(input: {
   queryRunId: string;
   assistantContent: string;
-  conversationTitle?: string;
   metadata?: Prisma.InputJsonValue;
   generatedQuery?: Prisma.InputJsonValue;
   resultPreview?: Prisma.InputJsonValue;
@@ -322,25 +321,10 @@ export async function completeQueryRun(input: {
       },
     });
     const now = new Date();
-    const title = input.conversationTitle?.trim();
-    const titled = title
-      ? await tx.conversation.updateMany({
-          where: {
-            id: fresh.conversationId,
-            title: DEFAULT_CONVERSATION_TITLE,
-          },
-          data: {
-            lastActivityAt: now,
-            title,
-          },
-        })
-      : { count: 0 };
-    if (titled.count === 0) {
-      await tx.conversation.update({
-        where: { id: fresh.conversationId },
-        data: { lastActivityAt: now },
-      });
-    }
+    await tx.conversation.update({
+      where: { id: fresh.conversationId },
+      data: { lastActivityAt: now },
+    });
     await writeAuditLog({
       actorUserId: fresh.ownerUserId,
       action: "query-run.complete",
