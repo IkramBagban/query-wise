@@ -31,4 +31,6 @@ export type AppStateContextValue = {
   addDashboardWidget: (widget: DashboardWidget) => void;
   dashboardVersion: number;
   bumpDashboardVersion: () => void;
+  chatVersion: number;
+  bumpChatVersion: () => void;
 };

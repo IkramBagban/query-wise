@@ -78,6 +78,7 @@ export async function executeDurableQueryRun(input: {
   emit?: QueryStreamEmitter;
 }) {
   const { emit } = input;
+  // this get's the queryRun from the db. the entry is created in 'acceptQuerySubmission' function on this same request
   let run = await getOwnedQueryRun(input.queryRunId);
   devLog("info", "query.run.started", "Durable query run started.", {
     queryRunId: run.id,
@@ -103,7 +104,7 @@ export async function executeDurableQueryRun(input: {
       ownerUserId: run.ownerUserId,
       connectionId: run.connectionId,
       providerId: run.providerId,
-      dialectId: run.dialectId,
+      dialectId: run.dialectId, // todo: add one ine comment what's this. 
     };
     const loadStartedAt = Date.now();
     const [schema, history] = await Promise.all([
@@ -128,6 +129,8 @@ export async function executeDurableQueryRun(input: {
       abortSignal,
     };
     const planningStartedAt = Date.now();
+
+    // planning query run. this is where the LLM generates the SQL query from the user question and the schema.
     const plan = await planStagedNlSqlQuery({
       question: input.question,
       history,

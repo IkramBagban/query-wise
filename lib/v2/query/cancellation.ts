@@ -1,4 +1,5 @@
 import "server-only";
+import { devLog } from "../observability";
 
 const activeRuns = new Map<string, AbortController>();
 
@@ -17,6 +18,7 @@ export function abortActiveQueryRun(queryRunId: string): void {
 }
 
 export function throwIfQueryRunAborted(signal: AbortSignal): void {
+  devLog("info", "query.run.check-abort", "Checking if query run was aborted.", { aborted: signal.aborted });
   if (signal.aborted) {
     throw new DOMException("The query run was cancelled.", "AbortError");
   }

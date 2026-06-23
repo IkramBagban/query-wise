@@ -102,6 +102,8 @@ export async function planStagedNlSqlQuery(params: {
 
   params.onStage?.("Selecting relevant tables");
   const selectionStartedAt = Date.now();
+  // this is where the LLM selects the relevant tables from the candidate tables.  
+  // reranker
   const selection = await generateStructuredObject({
     ...params.llm,
     schema: TableSelectionSchema,
@@ -120,6 +122,7 @@ export async function planStagedNlSqlQuery(params: {
 
   params.onStage?.("Pruning columns");
   const pruningStartedAt = Date.now();
+  // prune unnecessary columns from the selected tables. 
   const pruning = await generateStructuredObject({
     ...params.llm,
     schema: ColumnPruningSchema,

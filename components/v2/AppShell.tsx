@@ -80,6 +80,7 @@ const CHAT_PAGE_SIZE = 20;
 const DASHBOARD_PREVIEW_COUNT = 3;
 
 function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
+  const { chatVersion } = useAppState();
   const [items, setItems] = useState<ConversationListItem[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
@@ -106,9 +107,32 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
     }
   }, [cursor, hasMore, loading]);
 
+  const reload = useCallback(async () => {
+    setItems([]);
+    setCursor(undefined);
+    setHasMore(true);
+    setError(null);
+    setLoading(true);
+    try {
+      const page = await conversationsApi.list(CHAT_PAGE_SIZE);
+      setItems(page.items);
+      setCursor(page.pageInfo.nextCursor ?? undefined);
+      setHasMore(page.pageInfo.hasMore);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load chats");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadMore();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (chatVersion === 0) return;
+    void reload();
+  }, [chatVersion, reload]);
 
   useEffect(() => {
     const target = loadMoreRef.current;

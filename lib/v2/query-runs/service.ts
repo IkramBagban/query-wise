@@ -144,6 +144,7 @@ export async function getOwnedQueryRun(queryRunId: string): Promise<QueryRun> {
   }));
 }
 
+// todo: explain what this does. 
 export async function transitionQueryRun(
   queryRunId: string,
   status: QueryRunStatus,

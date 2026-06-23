@@ -54,6 +54,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [dashboard, setDashboard] = useState<Dashboard>(createFallbackDashboard);
   const [dashboardInitialized, setDashboardInitialized] = useState(false);
   const [dashboardVersion, setDashboardVersion] = useState(0);
+  const [chatVersion, setChatVersion] = useState(0);
   const pendingQueryReset: PendingQueryState = {
     isLoading: false,
     stage: null,
@@ -177,6 +178,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   };
 
   const bumpDashboardVersion = useCallback(() => setDashboardVersion((v) => v + 1), []);
+  const bumpChatVersion = useCallback(() => setChatVersion((v) => v + 1), []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
@@ -219,6 +221,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       addDashboardWidget,
       dashboardVersion,
       bumpDashboardVersion,
+      chatVersion,
+      bumpChatVersion,
     }),
     [
       connection,
@@ -236,6 +240,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       clearMessages,
       dashboardVersion,
       bumpDashboardVersion,
+      chatVersion,
+      bumpChatVersion,
     ],
   );
 

@@ -3,6 +3,7 @@ import { acceptQuerySubmission, queryRunDto } from "@/lib/v2/query-runs";
 import { apiError, executeDurableQueryRun, jsonData, querySseResponse } from "@/lib/v2/query";
 import { AppError } from "@/lib/v2/dal/core";
 import { SUPPORTED_MODELS_BY_PROVIDER } from "@/lib/llm-config";
+import { devLog } from "@/lib/v2/observability";
 
 export const runtime = "nodejs";
 
@@ -43,17 +44,18 @@ export async function POST(request: Request) {
     const wantsSse = request.headers.get("accept")?.includes("text/event-stream");
     if (!accepted.created) return jsonData(queryRunDto(accepted.run), 200);
 
+    devLog("info", "query_run_started", "SSE query run started", { queryRunId: accepted.run.id, wantsSse });
     if (wantsSse) {
       console.log( "SSE query run started", { queryRunId: accepted.run.id });
       return querySseResponse(accepted.run.id, async (emit) => {
-        await executeDurableQueryRun({
-          queryRunId: accepted.run.id,
-          question: parsed.data.question,
-          provider: parsed.data.provider,
-          model: parsed.data.model,
-          apiKey: parsed.data.apiKey,
-          emit,
-        });
+          await executeDurableQueryRun({
+            queryRunId: accepted.run.id,
+            question: parsed.data.question,
+            provider: parsed.data.provider,
+            model: parsed.data.model,
+            apiKey: parsed.data.apiKey,
+            emit,
+          });
       });
     }
 

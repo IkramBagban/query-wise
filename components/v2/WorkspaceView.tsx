@@ -647,6 +647,7 @@ function CursorRevealBackground() {
 
 export function EmptyWorkspaceView() {
   const router = useRouter();
+  const { bumpChatVersion } = useAppState();
   const connections = useApiResource((signal) => connectionsApi.list(100, undefined, signal));
   const [connectionId, setConnectionId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -705,6 +706,8 @@ export function EmptyWorkspaceView() {
       setError("Select a supported LLM provider and model, then add your API key in Settings.");
       return;
     }
+    const trimmed = question.trim();
+    setQuestion("");
     setSubmitting(true);
     setError(null);
     setStreamStatus("Queued");
@@ -716,11 +719,13 @@ export function EmptyWorkspaceView() {
       }
       const conversation = await conversationsApi.create(resolvedConnectionId);
       await conversationsApi.submitStream(
-        { conversationId: conversation.id, question: question.trim(), provider, model, apiKey },
+        { conversationId: conversation.id, question: trimmed, provider, model, apiKey },
         handleQueryEvent,
       );
+      bumpChatVersion();
       router.push(`/chats/${conversation.id}`);
     } catch (reason) {
+      setQuestion(trimmed);
       setError(reason instanceof Error ? reason.message : "Unable to start conversation");
       setSubmitting(false);
       setStreamStatus(null);
@@ -985,7 +990,7 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
 /* ------------------------------ Conversation ------------------------------ */
 
 export function ConversationView({ conversationId }: { conversationId: string }) {
-  const { bumpDashboardVersion } = useAppState();
+  const { bumpDashboardVersion, bumpChatVersion } = useAppState();
   const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>("querywise.contextPanel.open", false);
   const conversation = useApiResource((signal) => conversationsApi.get(conversationId, signal), conversationId);
   const connection = useApiResource(
@@ -1002,6 +1007,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [loadingOlder, setLoadingOlder] = useState(false);
   const dashboards = useApiResource((signal) => dashboardsApi.list(100, undefined, signal));
   const [question, setQuestion] = useState("");
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
@@ -1129,17 +1135,22 @@ export function ConversationView({ conversationId }: { conversationId: string })
       setError("Select a supported LLM provider and model, then add your API key in Settings.");
       return;
     }
+    const trimmed = question.trim();
+    setQuestion("");
+    setPendingQuestion(trimmed);
     setSubmitting(true);
     setError(null);
     setStreamStatus("Queued");
     try {
-      await conversationsApi.submitStream({ conversationId, question: question.trim(), provider, model, apiKey }, handleQueryEvent);
-      setQuestion("");
+      await conversationsApi.submitStream({ conversationId, question: trimmed, provider, model, apiKey }, handleQueryEvent);
       await refreshMessages();
       await conversation.refresh();
+      bumpChatVersion();
     } catch (reason) {
+      setQuestion(trimmed);
       setError(reason instanceof Error ? reason.message : "Unable to submit query");
     } finally {
+      setPendingQuestion(null);
       setSubmitting(false);
       setStreamStatus(null);
     }
@@ -1245,6 +1256,14 @@ export function ConversationView({ conversationId }: { conversationId: string })
                   />
                 ),
               )}
+              {pendingQuestion ? (
+                <div className="flex items-start justify-end gap-3">
+                  <div className="max-w-[78%] rounded-xl border border-success/20 bg-success/10 px-4 py-3 shadow-sm opacity-70">
+                    <p className="whitespace-pre-wrap text-sm text-text-1">{pendingQuestion}</p>
+                  </div>
+                  <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-semibold text-accent-foreground shadow-sm">N</span>
+                </div>
+              ) : null}
               {submitting ? (
                 <div className="flex items-center gap-3">
                   <BrandMark className="size-8" />
