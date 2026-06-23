@@ -337,7 +337,12 @@ export function WorkspaceHomeView() {
       {conversations.loading && !conversations.data ? (
         <ConnectionRowsSkeleton rows={5} />
       ) : conversations.error ? (
-        <ErrorState error={conversations.error} onRetry={() => void conversations.refresh()} />
+        <p className="py-6 text-center text-sm text-text-3">
+          Couldn't load conversations.{" "}
+          <button type="button" onClick={() => void conversations.refresh()} className="underline underline-offset-2 hover:text-text-1">
+            Retry
+          </button>
+        </p>
       ) : !conversations.data?.items.length ? (
         <EmptyState title="No conversations yet" description="Start a chat by choosing one of your saved connections." action={<Link href="/workspace/new" className="rounded-md bg-accent px-4 py-2 text-sm font-medium">Start new chat</Link>} />
       ) : (

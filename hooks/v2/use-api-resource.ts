@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { V2ApiError } from "@/lib/v2/api-client";
+
 type ApiResourceLoader<T> = (signal: AbortSignal) => Promise<T>;
 
 export function useApiResource<T>(loader: ApiResourceLoader<T>, dependencyKey?: unknown) {
@@ -22,7 +24,18 @@ export function useApiResource<T>(loader: ApiResourceLoader<T>, dependencyKey?: 
     setLoading(true);
     setError(null);
     try {
-      const nextData = await loader(controller.signal);
+      let nextData: T;
+      try {
+        nextData = await loader(controller.signal);
+      } catch (reason) {
+        // Retry once on 401 — Clerk's session token may not be ready on first render
+        if (reason instanceof V2ApiError && reason.status === 401 && !controller.signal.aborted) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          nextData = await loader(controller.signal);
+        } else {
+          throw reason;
+        }
+      }
       if (generation === generationRef.current && !controller.signal.aborted) {
         setData(nextData);
       }
