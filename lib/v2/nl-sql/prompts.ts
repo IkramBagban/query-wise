@@ -100,7 +100,7 @@ export function sqlPlanPrompt(params: {
   ].join("\n");
 }
 
-export function explanationPrompt(params: {
+export function explanationTextPrompt(params: {
   question: string;
   sql: string;
   result: BoundedQueryResult;
@@ -109,6 +109,7 @@ export function explanationPrompt(params: {
   return [
     "Explain the bounded query result for a BI user.",
     "Be concise and grounded only in the provided rows. Mention truncation if true.",
+    "Return plain prose only — no JSON, no structured output.",
     "",
     "Question:",
     params.question,
@@ -117,12 +118,32 @@ export function explanationPrompt(params: {
     params.sql,
     "",
     "Columns:",
-    params.result.columns.map((column) => `${column.name}:${column.canonicalType}`).join(", "),
+    params.result.columns.map((c) => `${c.name}:${c.canonicalType}`).join(", "),
     "",
     "Rows JSON:",
     JSON.stringify(rows),
     "",
     `Returned rows: ${params.result.returnedRowCount}`,
     `Truncated: ${params.result.truncated}`,
+  ].join("\n");
+}
+
+export function explanationChartHintPrompt(params: {
+  question: string;
+  sql: string;
+  result: BoundedQueryResult;
+}): string {
+  const rows = params.result.rows.slice(0, 10);
+  return [
+    "Suggest a chart type for this query result. Return null if a table is most appropriate.",
+    "",
+    "Question:",
+    params.question,
+    "",
+    "Columns:",
+    params.result.columns.map((c) => `${c.name}:${c.canonicalType}`).join(", "),
+    "",
+    "Sample rows (up to 10):",
+    JSON.stringify(rows),
   ].join("\n");
 }

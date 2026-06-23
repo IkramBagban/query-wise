@@ -1,12 +1,14 @@
 import "server-only";
 
+import { streamText } from "ai";
 import type { ChartHint, ChatMessage, SchemaInfo } from "@/types";
 import type { BoundedQueryResult } from "@/types/v2";
 import { generateStructuredObject, type Provider } from "@/lib/llm";
+import { getModel } from "@/lib/llm/client";
 import { devLog } from "@/lib/v2/observability";
 import {
+  ChartHintOnlySchema,
   ColumnPruningSchema,
-  ResultExplanationSchema,
   RewriteQuestionSchema,
   SqlPlanSchema,
   TableSelectionSchema,
@@ -17,7 +19,8 @@ import { adaptiveRetrievalLimit, retrieveCandidateTables } from "./retrieval";
 import {
   STRUCTURED_PIPELINE_SYSTEM,
   columnPruningPrompt,
-  explanationPrompt,
+  explanationChartHintPrompt,
+  explanationTextPrompt,
   rewritePrompt,
   sqlPlanPrompt,
   tableSelectionPrompt,
@@ -208,31 +211,42 @@ export async function planStagedNlSqlQuery(params: {
   };
 }
 
-export async function explainStagedNlSqlResult(params: {
+export function beginExplainStream(params: {
   question: string;
   sql: string;
   result: BoundedQueryResult;
   llm: PipelineModelConfig;
   onStage?: (label: string) => void;
-}): Promise<{ explanation: string; chartHint: ChartHint | null }> {
+}): [AsyncIterable<string>, Promise<ChartHint | null>] {
   params.onStage?.("Explaining result");
-  const explanation = await generateStructuredObject({
-    ...params.llm,
-    schema: ResultExplanationSchema,
-    schemaName: "ResultExplanation",
+
+  const textStream = streamText({
+    model: getModel(params.llm.provider, params.llm.model, params.llm.apiKey),
     system: STRUCTURED_PIPELINE_SYSTEM,
-    prompt: explanationPrompt({
+    prompt: explanationTextPrompt({
       question: params.question,
       sql: params.sql,
       result: params.result,
     }),
     maxOutputTokens: 1200,
+    temperature: 0.1,
+    abortSignal: params.llm.abortSignal,
   });
 
-  return {
-    explanation: explanation.explanation,
-    chartHint: explanation.chartHint,
-  };
+  const chartHintPromise = generateStructuredObject({
+    ...params.llm,
+    schema: ChartHintOnlySchema,
+    schemaName: "ChartHintOnly",
+    system: STRUCTURED_PIPELINE_SYSTEM,
+    prompt: explanationChartHintPrompt({
+      question: params.question,
+      sql: params.sql,
+      result: params.result,
+    }),
+    maxOutputTokens: 300,
+  }).then((r) => r.chartHint).catch(() => null);
+
+  return [textStream.textStream, chartHintPromise];
 }
 
 function selectedCandidateTables(candidates: TableCandidate[], selectedTableNames: string[]): TableCandidate[] {
