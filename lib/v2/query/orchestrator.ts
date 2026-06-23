@@ -8,8 +8,8 @@ import {
   recordQueryValidation,
   transitionQueryRun,
 } from "@/lib/v2/query-runs";
-import { needsGeneratedConversationTitle, recentConversationHistory } from "@/lib/v2/conversations";
-import { explainStagedNlSqlResult, planStagedNlSqlQuery } from "@/lib/v2/nl-sql";
+import { needsGeneratedConversationTitle, recentConversationHistory, updateConversation } from "@/lib/v2/conversations";
+import { beginExplainStream, planStagedNlSqlQuery } from "@/lib/v2/nl-sql";
 import { AppError } from "@/lib/v2/dal/core";
 import type { BoundedQueryResult, ChartConfig, ProviderQuery } from "@/types/v2";
 import { createResultPreview } from "./preview";
@@ -45,7 +45,8 @@ function elapsedMs(startedAt: number): number {
   return Date.now() - startedAt;
 }
 
-async function createInitialConversationTitle(input: {
+async function generateAndPersistTitle(input: {
+  conversationId: string;
   userMessage: string;
   assistantMessage: string;
   provider: "google" | "anthropic";
@@ -53,19 +54,17 @@ async function createInitialConversationTitle(input: {
   apiKey: string;
   abortSignal: AbortSignal;
   queryRunId: string;
-  conversationId: string;
-}): Promise<string | undefined> {
+}): Promise<void> {
   try {
-    if (!(await needsGeneratedConversationTitle(input.conversationId))) {
-      return undefined;
-    }
+    if (!(await needsGeneratedConversationTitle(input.conversationId))) return;
     const title = await generateConversationTitle(input);
-    return title || undefined;
+    if (title) {
+      await updateConversation(input.conversationId, { title });
+    }
   } catch (error) {
     devLogError("conversation.title.generation-failed", "Conversation title generation failed.", error, {
       queryRunId: input.queryRunId,
     });
-    return undefined;
   }
 }
 
@@ -148,18 +147,9 @@ export async function executeDurableQueryRun(input: {
       prunedTableCount: plan.retrieval.prunedTables.length,
     });
 
+    let explanationText = "";
     if (plan.mode === "conversation" || !plan.sql) {
       const assistantContent = plan.directAnswer ?? "I can help analyze your connected database when you ask a data question.";
-      const conversationTitle = await createInitialConversationTitle({
-        userMessage: input.question,
-        assistantMessage: assistantContent,
-        provider: input.provider,
-        model: input.model,
-        apiKey: input.apiKey,
-        abortSignal,
-        queryRunId: run.id,
-        conversationId: run.conversationId,
-      });
       const persistenceStartedAt = Date.now();
       run = await transitionQueryRun(run.id, "persisting");
       throwIfQueryRunAborted(abortSignal);
@@ -167,8 +157,17 @@ export async function executeDurableQueryRun(input: {
       run = await completeQueryRun({
         queryRunId: run.id,
         assistantContent,
-        conversationTitle,
         metadata: { schemaVersion: 1, nlSqlPipeline: plan.retrieval } as unknown as Prisma.InputJsonValue,
+      });
+      await generateAndPersistTitle({
+        conversationId: run.conversationId,
+        userMessage: input.question,
+        assistantMessage: assistantContent,
+        provider: input.provider,
+        model: input.model,
+        apiKey: input.apiKey,
+        abortSignal,
+        queryRunId: run.id,
       });
       devLog("info", "query.run.conversation-persisted", "Query run conversational response persisted.", {
         queryRunId: run.id,
@@ -222,46 +221,41 @@ export async function executeDurableQueryRun(input: {
         truncated: completedResult.truncated,
       });
       const explanationStartedAt = Date.now();
-      const explanation = await explainStagedNlSqlResult({
+      const [explanationStream, chartHintPromise] = beginExplainStream({
         question: plan.standaloneQuestion,
         sql: providerQuery.text,
         result: completedResult,
         llm,
         onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
       });
+
+      for await (const chunk of explanationStream) {
+        explanationText += chunk;
+        emit?.("text-delta", { chunk });
+      }
+      const chartHint = await chartHintPromise;
+
       devLog("info", "query.run.explanation-completed", "Query run explanation completed.", {
         queryRunId: run.id,
         durationMs: elapsedMs(explanationStartedAt),
-        explanationLength: explanation.explanation.length,
-        chartHintType: explanation.chartHint?.type ?? plan.chartHint?.type ?? null,
+        explanationLength: explanationText.length,
+        chartHintType: chartHint?.type ?? plan.chartHint?.type ?? null,
       });
-      emit?.("text-delta", { chunk: explanation.explanation });
       const resultForChart = {
         columns: completedResult.columns.map((column) => column.name),
         rows: completedResult.rows,
         rowCount: completedResult.returnedRowCount,
         executionTimeMs: completedResult.executionTimeMs,
       };
-      const chartConfig = toV2ChartConfig(resolveChartConfig(resultForChart, explanation.chartHint ?? plan.chartHint));
+      const chartConfig = toV2ChartConfig(resolveChartConfig(resultForChart, chartHint ?? plan.chartHint));
       const preview = createResultPreview(completedResult);
-      const conversationTitle = await createInitialConversationTitle({
-        userMessage: input.question,
-        assistantMessage: explanation.explanation,
-        provider: input.provider,
-        model: input.model,
-        apiKey: input.apiKey,
-        abortSignal,
-        queryRunId: run.id,
-        conversationId: run.conversationId,
-      });
       const persistenceStartedAt = Date.now();
       run = await transitionQueryRun(run.id, "persisting");
       throwIfQueryRunAborted(abortSignal);
       emit?.("status", statusEvent(run.status, run.statusVersion));
       run = await completeQueryRun({
         queryRunId: run.id,
-        assistantContent: explanation.explanation,
-        conversationTitle,
+        assistantContent: explanationText,
         metadata: { schemaVersion: 1, chartConfig, nlSqlPipeline: plan.retrieval } as unknown as Prisma.InputJsonValue,
         generatedQuery: providerQuery as unknown as Prisma.InputJsonValue,
         resultPreview: preview as unknown as Prisma.InputJsonValue,
@@ -278,6 +272,18 @@ export async function executeDurableQueryRun(input: {
       });
     }
     emit?.("completed", { status: run.status, statusVersion: run.statusVersion });
+    if (plan.mode !== "conversation" && plan.sql) {
+      void generateAndPersistTitle({
+        conversationId: run.conversationId,
+        userMessage: input.question,
+        assistantMessage: explanationText,
+        provider: input.provider,
+        model: input.model,
+        apiKey: input.apiKey,
+        abortSignal,
+        queryRunId: run.id,
+      });
+    }
     devLog("info", "query.run.succeeded", "Durable query run completed.", {
       queryRunId: run.id,
       status: run.status,
