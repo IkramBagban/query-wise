@@ -24,6 +24,8 @@ import {
 } from "./prompts";
 import { cleanGeneratedSql } from "./sql";
 
+const RERANKER_TABLE_THRESHOLD = 15;
+
 export interface PipelineModelConfig {
   provider: Provider;
   model: string;
@@ -46,6 +48,22 @@ export interface StagedPipelinePlan {
 
 function elapsedMs(startedAt: number): number {
   return Date.now() - startedAt;
+}
+
+async function runLlmTableSelection(
+  candidates: TableCandidate[],
+  question: string,
+  llm: PipelineModelConfig,
+): Promise<TableCandidate[]> {
+  const selection = await generateStructuredObject({
+    ...llm,
+    schema: TableSelectionSchema,
+    schemaName: "TableSelection",
+    system: STRUCTURED_PIPELINE_SYSTEM,
+    prompt: tableSelectionPrompt({ question, candidates }),
+    maxOutputTokens: 1200,
+  });
+  return selectedCandidateTables(candidates, selection.selectedTables.map((t) => t.tableName));
 }
 
 export async function planStagedNlSqlQuery(params: {
@@ -106,22 +124,15 @@ export async function planStagedNlSqlQuery(params: {
 
   params.onStage?.("Selecting relevant tables");
   const selectionStartedAt = Date.now();
-  // this is where the LLM selects the relevant tables from the candidate tables.  
-  // reranker
-  const selection = await generateStructuredObject({
-    ...params.llm,
-    schema: TableSelectionSchema,
-    schemaName: "TableSelection",
-    system: STRUCTURED_PIPELINE_SYSTEM,
-    prompt: tableSelectionPrompt({ question: rewrite.standaloneQuestion, candidates }),
-    maxOutputTokens: 1200,
-  });
-
-  const selectedCandidates = selectedCandidateTables(candidates, selection.selectedTables.map((table) => table.tableName));
+  const selectedCandidates =
+    candidates.length <= RERANKER_TABLE_THRESHOLD
+      ? candidates
+      : await runLlmTableSelection(candidates, rewrite.standaloneQuestion, params.llm);
   devLog("info", "nl-sql.table-selection.completed", "NL-to-SQL table selection stage completed.", {
     durationMs: elapsedMs(selectionStartedAt),
     selectedTableCount: selectedCandidates.length,
-    selectedTables: selectedCandidates.map((candidate) => candidate.tableName),
+    selectedTables: selectedCandidates.map((c: TableCandidate) => c.tableName),
+    skippedReranker: candidates.length <= RERANKER_TABLE_THRESHOLD,
   });
 
   params.onStage?.("Pruning columns");
