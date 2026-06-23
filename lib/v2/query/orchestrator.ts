@@ -234,6 +234,10 @@ export async function executeDurableQueryRun(input: {
       }
       const chartHint = await chartHintPromise;
 
+      if (!explanationText.trim()) {
+        throw new AppError("QUERY_GENERATION_FAILED", "The explanation model returned no content.");
+      }
+
       devLog("info", "query.run.explanation-completed", "Query run explanation completed.", {
         queryRunId: run.id,
         durationMs: elapsedMs(explanationStartedAt),
