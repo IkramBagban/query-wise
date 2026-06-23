@@ -12,7 +12,7 @@ import {
   TableSelectionSchema,
   type ColumnPruning,
 } from "./schemas";
-import { compactHistory, type TableCandidate } from "./schema-context";
+import { buildPassthroughPruning, compactHistory, type TableCandidate } from "./schema-context";
 import { adaptiveRetrievalLimit, retrieveCandidateTables } from "./retrieval";
 import {
   STRUCTURED_PIPELINE_SYSTEM,
@@ -25,6 +25,8 @@ import {
 import { cleanGeneratedSql } from "./sql";
 
 const RERANKER_TABLE_THRESHOLD = 15;
+const COLUMN_PRUNER_THRESHOLD = 15;
+const COLUMN_PRUNER_DISABLED = process.env.QUERYWISE_DISABLE_COLUMN_PRUNER === "true";
 
 export interface PipelineModelConfig {
   provider: Provider;
@@ -137,21 +139,38 @@ export async function planStagedNlSqlQuery(params: {
 
   params.onStage?.("Pruning columns");
   const pruningStartedAt = Date.now();
-  // prune unnecessary columns from the selected tables. 
-  const pruning = await generateStructuredObject({
-    ...params.llm,
-    schema: ColumnPruningSchema,
-    schemaName: "ColumnPruning",
-    system: STRUCTURED_PIPELINE_SYSTEM,
-    prompt: columnPruningPrompt({ question: rewrite.standaloneQuestion, selectedCandidates }),
-    maxOutputTokens: 2400,
-  });
 
-  const normalizedPruning = normalizePruning(params.schema, selectedCandidates, pruning);
+  const heavyTables = selectedCandidates.filter((c) => c.columns.length > COLUMN_PRUNER_THRESHOLD);
+  const lightTables = selectedCandidates.filter((c) => c.columns.length <= COLUMN_PRUNER_THRESHOLD);
+
+  let normalizedPruning: ColumnPruning;
+
+  if (COLUMN_PRUNER_DISABLED || heavyTables.length === 0) {
+    normalizedPruning = normalizePruning(params.schema, selectedCandidates, buildPassthroughPruning(selectedCandidates));
+  } else {
+    const pruning = await generateStructuredObject({
+      ...params.llm,
+      schema: ColumnPruningSchema,
+      schemaName: "ColumnPruning",
+      system: STRUCTURED_PIPELINE_SYSTEM,
+      prompt: columnPruningPrompt({ question: rewrite.standaloneQuestion, selectedCandidates: heavyTables }),
+      maxOutputTokens: 2400,
+    });
+
+    const lightPassthrough = buildPassthroughPruning(lightTables);
+    const mergedPruning: ColumnPruning = {
+      tables: [...pruning.tables, ...lightPassthrough.tables],
+      joinPaths: [...pruning.joinPaths, ...lightPassthrough.joinPaths],
+    };
+    normalizedPruning = normalizePruning(params.schema, selectedCandidates, mergedPruning);
+  }
+
   devLog("info", "nl-sql.column-prune.completed", "NL-to-SQL column pruning stage completed.", {
     durationMs: elapsedMs(pruningStartedAt),
     prunedTableCount: normalizedPruning.tables.length,
     prunedColumnCount: normalizedPruning.tables.reduce((sum, table) => sum + table.columns.length, 0),
+    skippedPruner: COLUMN_PRUNER_DISABLED || heavyTables.length === 0,
+    heavyTableCount: heavyTables.length,
   });
 
   params.onStage?.("Generating SQL");

@@ -1,4 +1,5 @@
 import type { ChatMessage, SchemaInfo, SchemaTable } from "@/types";
+import type { ColumnPruning } from "./schemas";
 
 const SAMPLE_ROWS_ENABLED = process.env.QUERYWISE_LLM_INCLUDE_SAMPLE_ROWS === "true";
 const SENSITIVE_COLUMN_PATTERN = /(^|_)(email|phone|password|secret|token|key|address|name|first_name|last_name|full_name|ip|ssn|dob)($|_)/i;
@@ -144,4 +145,14 @@ export function formatSkinnySchemaForPrompt(params: {
     ...sections,
     params.pruning.joinPaths.length > 0 ? `Join paths:\n${params.pruning.joinPaths.map((path) => `  - ${path}`).join("\n")}` : "Join paths: none provided",
   ].join("\n\n");
+}
+
+export function buildPassthroughPruning(candidates: TableCandidate[]): ColumnPruning {
+  return {
+    tables: candidates.map((c) => ({
+      tableName: c.tableName,
+      columns: c.columns.map((col) => ({ name: col.name, reason: "passthrough" })),
+    })),
+    joinPaths: candidates.flatMap((c) => c.relationshipHints),
+  };
 }
