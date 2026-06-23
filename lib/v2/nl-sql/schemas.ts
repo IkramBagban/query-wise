@@ -43,11 +43,6 @@ export const SqlPlanSchema = z.object({
   }).nullable().default(null),
 });
 
-export const ResultExplanationSchema = z.object({
-  explanation: z.string().trim().min(1).max(2000),
-  chartHint: SqlPlanSchema.shape.chartHint,
-});
-
 export const ChartHintOnlySchema = z.object({
   chartHint: SqlPlanSchema.shape.chartHint,
 });
@@ -56,5 +51,4 @@ export type RewriteQuestion = z.infer<typeof RewriteQuestionSchema>;
 export type TableSelection = z.infer<typeof TableSelectionSchema>;
 export type ColumnPruning = z.infer<typeof ColumnPruningSchema>;
 export type SqlPlan = z.infer<typeof SqlPlanSchema>;
-export type ResultExplanation = z.infer<typeof ResultExplanationSchema>;
 export type ChartHintOnly = z.infer<typeof ChartHintOnlySchema>;

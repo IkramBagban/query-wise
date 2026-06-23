@@ -130,7 +130,6 @@ export function explanationTextPrompt(params: {
 
 export function explanationChartHintPrompt(params: {
   question: string;
-  sql: string;
   result: BoundedQueryResult;
 }): string {
   const rows = params.result.rows.slice(0, 10);

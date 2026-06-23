@@ -240,7 +240,6 @@ export function beginExplainStream(params: {
     system: STRUCTURED_PIPELINE_SYSTEM,
     prompt: explanationChartHintPrompt({
       question: params.question,
-      sql: params.sql,
       result: params.result,
     }),
     maxOutputTokens: 300,
