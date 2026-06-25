@@ -176,7 +176,7 @@ export interface SchemaResponse {
  */
 export interface SchemaAnalysisRequest {
   schema: SchemaInfo;
-  provider: "google" | "anthropic";
+  provider: import("@/lib/llm-config").LlmProvider;
   model: string;
   apiKey: string;
 }
@@ -195,7 +195,7 @@ export interface QueryRequest {
   question: string;
   history: ChatMessage[];
   connectionString?: string; // undefined = demo db
-  provider: "google" | "anthropic";
+  provider: import("@/lib/llm-config").LlmProvider;
   model: string;
   apiKey: string;
 }

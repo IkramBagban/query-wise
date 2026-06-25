@@ -47,13 +47,9 @@ export function queryRunDto(run: QueryRun): QueryRunDto {
 }
 
 function fingerprint(input: QuerySubmission): string {
-  // Bind an idempotency key to the logical request. The API key is deliberately
-  // excluded because it is a credential, not persisted request identity.
   return createHash("sha256").update(JSON.stringify({
     conversationId: input.conversationId,
     question: input.question.trim(),
-    provider: input.provider,
-    model: input.model,
   })).digest("hex");
 }
 

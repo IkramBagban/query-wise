@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatSchemaTypeLabel } from "@/lib/schema-type-label";
 import type { SchemaAnalysisResponse, SchemaInfo } from "@/types";
+import type { LlmProvider } from "@/lib/llm-config";
 
 interface SchemaSummaryProps {
   schema: SchemaInfo | null;
   connectionString?: string;
-  provider: "google" | "anthropic";
+  provider: LlmProvider;
   model: string;
   apiKey: string;
 }

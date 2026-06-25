@@ -51,16 +51,6 @@ import {
   type QueryStreamEvent,
 } from "@/lib/v2/api-client";
 import type { ChartConfig } from "@/types/v2";
-import {
-  DEFAULT_LLM_MODEL,
-  DEFAULT_LLM_PROVIDER,
-  LLM_MODEL_CATALOG,
-  LLM_PROVIDER_OPTIONS,
-  defaultModelForProvider,
-  isLlmProvider,
-  isSupportedModel,
-  type LlmProvider,
-} from "@/lib/llm-config";
 
 const suggestions = [
   "What changed in the last 30 days?",
@@ -69,9 +59,6 @@ const suggestions = [
 ];
 
 const STORAGE_KEYS = {
-  provider: "querywise.v2.llmProvider",
-  model: "querywise.v2.llmModel",
-  apiKey: "querywise.v2.llmApiKey",
   connection: "querywise.v2.connectionId",
 } as const;
 
@@ -491,30 +478,6 @@ function HeroComposer({
   error: string | null;
   disabled?: boolean;
 }) {
-  const [provider, setProvider] = useState<LlmProvider>(() => {
-    if (typeof window === "undefined") return DEFAULT_LLM_PROVIDER;
-    const stored = window.localStorage.getItem(STORAGE_KEYS.provider);
-    return stored && isLlmProvider(stored) ? stored : DEFAULT_LLM_PROVIDER;
-  });
-  const [model, setModel] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_LLM_MODEL;
-    return window.localStorage.getItem(STORAGE_KEYS.model) ?? DEFAULT_LLM_MODEL;
-  });
-
-  function changeProvider(value: string) {
-    if (!isLlmProvider(value)) return;
-    const nextModel = isSupportedModel(value, model) ? model : defaultModelForProvider(value);
-    setProvider(value);
-    setModel(nextModel);
-    window.localStorage.setItem(STORAGE_KEYS.provider, value);
-    window.localStorage.setItem(STORAGE_KEYS.model, nextModel);
-  }
-
-  function changeModel(value: string) {
-    setModel(value);
-    window.localStorage.setItem(STORAGE_KEYS.model, value);
-  }
-
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (disabled) return;
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -522,10 +485,6 @@ function HeroComposer({
       onSubmit();
     }
   }
-
-  const modelOptions = LLM_MODEL_CATALOG
-    .filter((entry) => entry.provider === provider)
-    .map((entry) => ({ value: entry.model, label: entry.label }));
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -542,10 +501,6 @@ function HeroComposer({
         />
         <div className="border-t border-border px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="grid min-w-0 grid-cols-1 gap-2 sm:w-[27rem] sm:grid-cols-[10.5rem_15.5rem]">
-              <Select className="w-full sm:min-w-0" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
-              <Select className="w-full sm:min-w-0" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
-            </div>
             <Button
               type="button"
               loading={submitting}
@@ -699,13 +654,6 @@ export function EmptyWorkspaceView() {
 
   async function submit() {
     if (!question.trim() || !connectionId) return;
-    const apiKey = window.localStorage.getItem(STORAGE_KEYS.apiKey) ?? "";
-    const provider = window.localStorage.getItem(STORAGE_KEYS.provider) ?? "";
-    const model = window.localStorage.getItem(STORAGE_KEYS.model) ?? "";
-    if (!apiKey || !isLlmProvider(provider) || !isSupportedModel(provider, model)) {
-      setError("Select a supported LLM provider and model, then add your API key in Settings.");
-      return;
-    }
     const trimmed = question.trim();
     setQuestion("");
     setSubmitting(true);
@@ -719,7 +667,7 @@ export function EmptyWorkspaceView() {
       }
       const conversation = await conversationsApi.create(resolvedConnectionId);
       await conversationsApi.submitStream(
-        { conversationId: conversation.id, question: trimmed, provider, model, apiKey },
+        { conversationId: conversation.id, question: trimmed },
         handleQueryEvent,
       );
       bumpChatVersion();
@@ -871,29 +819,6 @@ function Composer({
   disabledReason,
   schemaSyncWarning,
 }: ComposerProps) {
-  const [provider, setProvider] = useState<LlmProvider>(() => {
-    if (typeof window === "undefined") return DEFAULT_LLM_PROVIDER;
-    const stored = window.localStorage.getItem(STORAGE_KEYS.provider);
-    return stored && isLlmProvider(stored) ? stored : DEFAULT_LLM_PROVIDER;
-  });
-  const [model, setModel] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_LLM_MODEL;
-    return window.localStorage.getItem(STORAGE_KEYS.model) ?? DEFAULT_LLM_MODEL;
-  });
-  function changeProvider(value: string) {
-    if (!isLlmProvider(value)) return;
-    const nextModel = isSupportedModel(value, model) ? model : defaultModelForProvider(value);
-    setProvider(value);
-    setModel(nextModel);
-    window.localStorage.setItem(STORAGE_KEYS.provider, value);
-    window.localStorage.setItem(STORAGE_KEYS.model, nextModel);
-  }
-
-  function changeModel(value: string) {
-    setModel(value);
-    window.localStorage.setItem(STORAGE_KEYS.model, value);
-  }
-
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (disabledReason) return;
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -902,7 +827,6 @@ function Composer({
     }
   }
 
-  const modelOptions = LLM_MODEL_CATALOG.filter((entry) => entry.provider === provider).map((entry) => ({ value: entry.model, label: entry.label }));
   const runDisabled = !question.trim() || Boolean(disabledReason);
 
   return (
@@ -920,11 +844,6 @@ function Composer({
             className="min-h-16 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-text-3 disabled:cursor-not-allowed"
           />
           <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center">
-            <div className="grid min-w-0 grid-cols-1 gap-2 sm:w-[27rem] sm:grid-cols-[10.5rem_15.5rem]">
-              <Select className="w-full sm:min-w-0" value={provider} onChange={changeProvider} options={LLM_PROVIDER_OPTIONS} menuSide="top" />
-              <Select className="w-full sm:min-w-0" value={model} onChange={changeModel} options={modelOptions} menuSide="top" />
-            </div>
-
             <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="ml-auto h-9 w-full px-5 sm:w-auto">
               <Send className="size-3.5" />Run
             </Button>
@@ -1128,13 +1047,6 @@ export function ConversationView({ conversationId }: { conversationId: string })
       setError(composerDisabledReason);
       return;
     }
-    const apiKey = window.localStorage.getItem(STORAGE_KEYS.apiKey) ?? "";
-    const provider = window.localStorage.getItem(STORAGE_KEYS.provider) ?? "";
-    const model = window.localStorage.getItem(STORAGE_KEYS.model) ?? "";
-    if (!apiKey || !isLlmProvider(provider) || !isSupportedModel(provider, model)) {
-      setError("Select a supported LLM provider and model, then add your API key in Settings.");
-      return;
-    }
     const trimmed = question.trim();
     setQuestion("");
     setPendingQuestion(trimmed);
@@ -1142,7 +1054,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     setError(null);
     setStreamStatus("Queued");
     try {
-      await conversationsApi.submitStream({ conversationId, question: trimmed, provider, model, apiKey }, handleQueryEvent);
+      await conversationsApi.submitStream({ conversationId, question: trimmed }, handleQueryEvent);
       await refreshMessages();
       await conversation.refresh();
       bumpChatVersion();

@@ -1,8 +1,10 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
 
 import {
-  LLM_MODEL_CATALOG,
+  DEFAULT_LLM_MODEL,
+  DEFAULT_LLM_PROVIDER,
   SUPPORTED_MODELS_BY_PROVIDER,
   type LlmProvider,
 } from "@/lib/llm-config";
@@ -10,14 +12,52 @@ import { sleep } from "../utils";
 
 export type Provider = LlmProvider;
 
-export const SUPPORTED_MODELS = LLM_MODEL_CATALOG;
-
 const PROVIDER_MODELS: Record<Provider, string[]> = {
+  groq: [...SUPPORTED_MODELS_BY_PROVIDER.groq],
   google: [...SUPPORTED_MODELS_BY_PROVIDER.google],
   anthropic: [...SUPPORTED_MODELS_BY_PROVIDER.anthropic],
 };
 
+export interface BackendLlmConfig {
+  provider: Provider;
+  model: string;
+  apiKey: string;
+}
+
+/**
+ * Resolves the LLM configuration from server-side environment variables.
+ * Provider, model, and API key are never accepted from the client.
+ */
+export function getBackendLlmConfig(): BackendLlmConfig {
+  const provider = (process.env.QUERYWISE_LLM_PROVIDER ?? DEFAULT_LLM_PROVIDER) as Provider;
+  const model = process.env.QUERYWISE_LLM_MODEL ?? DEFAULT_LLM_MODEL;
+  const apiKey = resolveApiKey(provider);
+  return { provider, model, apiKey };
+}
+
+function resolveApiKey(provider: Provider): string {
+  if (provider === "groq") {
+    const key = process.env.GROQ_API_KEY;
+    if (!key) throw new Error("GROQ_API_KEY environment variable is not set.");
+    return key;
+  }
+  if (provider === "google") {
+    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.QUERYWISE_INGESTION_LLM_API_KEY;
+    if (!key) throw new Error("GOOGLE_GENERATIVE_AI_API_KEY environment variable is not set.");
+    return key;
+  }
+  if (provider === "anthropic") {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error("ANTHROPIC_API_KEY environment variable is not set.");
+    return key;
+  }
+  throw new Error(`Unknown LLM provider: ${provider}`);
+}
+
 export function getModel(provider: Provider, model: string, apiKey: string) {
+  if (provider === "groq") {
+    return createGroq({ apiKey })(model);
+  }
   if (provider === "google") {
     return createGoogleGenerativeAI({ apiKey })(model);
   }

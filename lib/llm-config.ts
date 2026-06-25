@@ -1,16 +1,16 @@
-export const LLM_PROVIDER_IDS = ["google", "anthropic"] as const;
+export const LLM_PROVIDER_IDS = ["groq", "google", "anthropic"] as const;
 
 export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number];
 
-export const DEFAULT_LLM_PROVIDER: LlmProvider = "google";
-export const DEFAULT_LLM_MODEL = "gemini-3-flash-preview";
-
-export const LLM_PROVIDER_OPTIONS: { label: string; value: LlmProvider }[] = [
-  { label: "Google", value: "google" },
-  { label: "Anthropic", value: "anthropic" },
-];
+export const DEFAULT_LLM_PROVIDER: LlmProvider = "groq";
+export const DEFAULT_LLM_MODEL = "moonshotai/kimi-k2-instruct";
 
 export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]> = {
+  groq: [
+    "moonshotai/kimi-k2-instruct",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+  ],
   google: [
     "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
@@ -20,6 +20,12 @@ export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]
     "claude-sonnet-4-6",
   ],
 };
+
+export const LLM_PROVIDER_OPTIONS: { label: string; value: LlmProvider }[] = [
+  { label: "Groq", value: "groq" },
+  { label: "Google", value: "google" },
+  { label: "Anthropic", value: "anthropic" },
+];
 
 export function isLlmProvider(value: string): value is LlmProvider {
   return LLM_PROVIDER_IDS.includes(value as LlmProvider);
@@ -32,30 +38,3 @@ export function isSupportedModel(provider: LlmProvider, model: string): boolean 
 export function defaultModelForProvider(provider: LlmProvider): string {
   return SUPPORTED_MODELS_BY_PROVIDER[provider][0] ?? DEFAULT_LLM_MODEL;
 }
-
-export const LLM_MODEL_CATALOG = [
-  {
-    provider: "google" as const,
-    model: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro Preview",
-    tier: "powerful" as const,
-  },
-  {
-    provider: "google" as const,
-    model: "gemini-3-flash-preview",
-    label: "Gemini 3 Flash Preview",
-    tier: "fast" as const,
-  },
-  {
-    provider: "anthropic" as const,
-    model: "claude-opus-4-6",
-    label: "Claude Opus 4.6",
-    tier: "powerful" as const,
-  },
-  {
-    provider: "anthropic" as const,
-    model: "claude-sonnet-4-6",
-    label: "Claude Sonnet 4.6",
-    tier: "fast" as const,
-  },
-] as const;

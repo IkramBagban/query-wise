@@ -10,8 +10,5 @@ export const TERMINAL_QUERY_RUN_STATUSES: ReadonlySet<QueryRunStatus> = new Set(
 export interface QuerySubmission {
   conversationId: string;
   question: string;
-  provider: "google" | "anthropic";
-  model: string;
-  apiKey: string;
   idempotencyKey: string;
 }

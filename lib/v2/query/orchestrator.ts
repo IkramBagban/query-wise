@@ -17,6 +17,7 @@ import { getQueryRuntimeDependencies } from "./runtime";
 import { statusEvent, type QueryStreamEmitter } from "./sse";
 import { devLog, devLogError } from "@/lib/v2/observability";
 import { generateConversationTitle } from "@/lib/llm/title";
+import { getBackendLlmConfig } from "@/lib/llm/client";
 import {
   registerActiveQueryRun,
   throwIfQueryRunAborted,
@@ -49,14 +50,17 @@ async function generateAndPersistTitle(input: {
   conversationId: string;
   userMessage: string;
   assistantMessage: string;
-  provider: "google" | "anthropic";
-  model: string;
-  apiKey: string;
   abortSignal: AbortSignal;
   queryRunId: string;
 }): Promise<void> {
   try {
-    const title = await generateConversationTitle(input);
+    const llmConfig = getBackendLlmConfig();
+    const title = await generateConversationTitle({
+      ...input,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      apiKey: llmConfig.apiKey,
+    });
     if (title) {
       await setGeneratedConversationTitle(input.conversationId, title);
     }
@@ -70,20 +74,18 @@ async function generateAndPersistTitle(input: {
 export async function executeDurableQueryRun(input: {
   queryRunId: string;
   question: string;
-  provider: "google" | "anthropic";
-  model: string;
-  apiKey: string;
   emit?: QueryStreamEmitter;
 }) {
   const { emit } = input;
-  // this get's the queryRun from the db. the entry is created in 'acceptQuerySubmission' function on this same request
+  const llmConfig = getBackendLlmConfig();
+
   let run = await getOwnedQueryRun(input.queryRunId);
   devLog("info", "query.run.started", "Durable query run started.", {
     queryRunId: run.id,
     conversationId: run.conversationId,
     connectionId: run.connectionId,
-    provider: input.provider,
-    model: input.model,
+    provider: llmConfig.provider,
+    model: llmConfig.model,
   });
   if (run.status === "succeeded" || run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
     emit?.(run.status === "succeeded" ? "completed" : "failed", { status: run.status, statusVersion: run.statusVersion });
@@ -102,7 +104,7 @@ export async function executeDurableQueryRun(input: {
       ownerUserId: run.ownerUserId,
       connectionId: run.connectionId,
       providerId: run.providerId,
-      dialectId: run.dialectId, // todo: add one ine comment what's this. 
+      dialectId: run.dialectId,
     };
     const loadStartedAt = Date.now();
     const [schema, history] = await Promise.all([
@@ -121,14 +123,13 @@ export async function executeDurableQueryRun(input: {
     throwIfQueryRunAborted(abortSignal);
     emit?.("status", statusEvent(run.status, run.statusVersion));
     const llm = {
-      provider: input.provider,
-      model: input.model,
-      apiKey: input.apiKey,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      apiKey: llmConfig.apiKey,
       abortSignal,
     };
     const planningStartedAt = Date.now();
 
-    // planning query run. this is where the LLM generates the SQL query from the user question and the schema.
     const plan = await planStagedNlSqlQuery({
       question: input.question,
       history,
@@ -162,9 +163,6 @@ export async function executeDurableQueryRun(input: {
         conversationId: run.conversationId,
         userMessage: input.question,
         assistantMessage: assistantContent,
-        provider: input.provider,
-        model: input.model,
-        apiKey: input.apiKey,
         abortSignal,
         queryRunId: run.id,
       });
@@ -280,9 +278,6 @@ export async function executeDurableQueryRun(input: {
         conversationId: run.conversationId,
         userMessage: input.question,
         assistantMessage: explanationText,
-        provider: input.provider,
-        model: input.model,
-        apiKey: input.apiKey,
         abortSignal,
         queryRunId: run.id,
       });

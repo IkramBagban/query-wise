@@ -1,4 +1,4 @@
-export { SUPPORTED_MODELS, type Provider } from "./client";
+export { type Provider } from "./client";
 export { generateStructuredObject } from "./structured";
 export { generateSQL } from "./sql";
 export {

@@ -116,9 +116,6 @@ export interface CreateConnectionInput {
 export interface SubmitQueryInput {
   conversationId: ResourceId;
   question: string;
-  provider: string;
-  model: string;
-  apiKey: string;
   idempotencyKey: string;
 }
 

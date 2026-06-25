@@ -11,12 +11,13 @@ import { ErDiagramModal } from "@/components/schema/ErDiagramModal";
 import { SchemaSummary } from "@/components/schema/SchemaSummary";
 import { TableItem } from "@/components/schema/TableItem";
 import type { SchemaInfo } from "@/types";
+import type { LlmProvider } from "@/lib/llm-config";
 
 interface SchemaPanelProps {
   schema: SchemaInfo | null;
   isLoading: boolean;
   connectionString?: string;
-  provider: "google" | "anthropic";
+  provider: LlmProvider;
   model: string;
   apiKey: string;
 }
