@@ -18,13 +18,13 @@ export function AuthPageShell({
       <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(23,65,40,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(23,65,40,0.2)_1px,transparent_1px)] [background-size:26px_26px]" />
       <section className="relative z-10 grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
         <div className="max-w-xl">
-          <p className="font-syne text-3xl font-bold tracking-tight">
+          <p className="font-syne text-3xl font-bold tracking-tight text-white">
             Query<span className="text-[#2ed52e]">Wise</span>
           </p>
           <p className="mt-12 text-xs font-bold uppercase tracking-[0.16em] text-[#2f7a3f]">
             {eyebrow}
           </p>
-          <h1 className="mt-3 font-syne text-4xl font-bold leading-tight tracking-tight">
+          <h1 className="mt-3 font-syne text-4xl font-bold leading-tight tracking-tight text-white">
             {title}
           </h1>
           <p className="mt-4 max-w-lg text-base leading-relaxed text-[#2f4938]">

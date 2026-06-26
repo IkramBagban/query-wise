@@ -123,7 +123,7 @@ export function MessageResultCard({
         isExpanded ? "min-h-[520px]" : ""
       }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#174128]/10 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-b border-[#174128]/10 bg-[linear-gradient(180deg,#eff9eb_0%,#f7fcf5_100%)] px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex flex-wrap gap-2">
           {hasResultView ? (
             <Tooltip content="Chart" side="bottom">

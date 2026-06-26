@@ -104,14 +104,14 @@ export async function listConversations(input: {
   const page = records.slice(0, limit);
   const counts = await getAppDb().message.groupBy({
     by: ["conversationId"],
-    where: { conversationId: { in: page.map((item) => item.id) } },
+    where: { conversationId: { in: page.map((item: any) => item.id) } },
     _count: { _all: true },
   });
-  const countById = new Map(counts.map((item) => [item.conversationId, item._count._all]));
+  const countById = new Map(counts.map((item: any) => [item.conversationId, item._count._all]));
   const last = page.at(-1);
   return {
     contractVersion: "querywise.v2",
-    items: page.map((item) => ({ ...conversationDto(item), messageCount: countById.get(item.id) ?? 0 })),
+    items: page.map((item: any) => ({ ...conversationDto(item), messageCount: countById.get(item.id) ?? 0 })),
     pageInfo: {
       nextCursor: hasMore && last
         ? encodeCursor(CONVERSATION_CURSOR, userId, [last.lastActivityAt.toISOString(), last.id])
