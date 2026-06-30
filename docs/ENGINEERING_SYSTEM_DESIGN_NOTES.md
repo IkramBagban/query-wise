@@ -2,6 +2,29 @@
 
 This document captures the important backend/data-logic decisions so you can explain them in interviews and quickly reason about future changes.
 
+## Monorepo Restructuring (2026-06-29)
+
+**What changed:** Converted from a single Next.js project to a pnpm workspaces monorepo.
+
+**Structure:**
+- `packages/shared` (@query-wise/shared) — Prisma client, domain types, security, observability, DAL core, data-source registry, ingestion queue types
+- `apps/web` (@query-wise/web) — Next.js 16 app, deployed to Vercel
+- `apps/worker` (@query-wise/worker) — BullMQ schema-ingestion worker, deployed to VM
+
+**Why:** The worker process was tangled inside the Next.js codebase, making independent deployment impossible. Shared code (Prisma, domain types, encryption) is now in `packages/shared`, consumed by both apps via `@query-wise/shared/*` imports.
+
+**v2 naming removed:** The `lib/v2/`, `components/v2/`, `hooks/v2/`, `types/v2/` convention was flattened — code now lives at `lib/`, `components/`, `hooks/` within `apps/web/`.
+
+**Legacy code deleted:** All pre-v2 code (old `lib/`, `components/chat/`, `components/dashboard/`, deprecated API routes `/api/dashboard/`, `/api/share/`, `/api/schema/`) was removed as it had been superseded.
+
+**Key tradeoffs:**
+- Prisma schema lives in `packages/shared/prisma/` — both apps reference it; `apps/web/prisma/` has a copy for Vercel build compatibility
+- No Turborepo — pnpm workspaces alone is sufficient at this scale
+- Worker has its own LLM client (`src/llm.ts`) using `QUERYWISE_INGESTION_LLM_*` env vars, separate from the web app's query LLM
+- `getConnectionSecret` (auth-dependent) was removed from `packages/shared/connections` and remains in `apps/web/lib/connections/credentials.ts`; only `getConnectionSecretForIngestion` and `getConnectionSecretForOwner` are exported from shared
+
+**How to test:** `pnpm --filter @query-wise/web exec tsc --noEmit` and `pnpm --filter @query-wise/worker exec tsc --noEmit` must both pass with no errors.
+
 ## 1) Query-to-Chart System Design
 
 ### Request flow

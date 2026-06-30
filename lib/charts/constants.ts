@@ -1,3 +1,0 @@
-export const MAX_PIE_CATEGORIES = 8;
-export const MAX_BAR_CATEGORIES = 40;
-export const HIGH_CARDINALITY_DIMENSION = 60;
