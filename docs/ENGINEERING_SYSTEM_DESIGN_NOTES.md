@@ -1396,6 +1396,13 @@ Why this is the right approach:
   6. Test password unlock success, incorrect password, and rate limiting after repeated failed attempts.
   7. Create an expired link and verify the public page shows the expired state.
 
+**Follow-up (layout + refresh robustness):**
+- Fixed public shared chart visibility: the widget cards in `PublicShareView` previously only applied `min-h-64` to the chart area. Recharts `ResponsiveContainer height="100%"` (used by bar/line/area/pie/scatter) requires a definite height ancestor. Now uses `grid auto-rows-[18rem]`, `Card flex h-full flex-col`, `min-h-0 flex-1`, and `h-full w-full` wrapper (matching `DashboardGrid` and the public loading skeleton's `h-72`). Successful `widget.result` cases now render visibly.
+- Made public re-execution query matching more robust: replaced raw `.trim()` comparison with a `queriesMatch` helper that normalizes internal whitespace (`\s+` → single space). This reduces spurious `WIDGET_QUERY_MISMATCH` errors from minor formatting/serialization diffs while still enforcing that the saved `queryDefinition` is logically equivalent to the provenance `queryRun.generatedQuery` (per public contract).
+- Why: Users reported "not able to see the chart" on valid public shares. The height issue made charts collapse even on success paths; strict matching made some legitimate shares show "Chart unavailable".
+- Tradeoffs: Normalization is conservative and safe. No snapshot fallback was introduced (forbidden by `PUBLIC_SHARING.md` contract). Live execution still takes precedence.
+- How to test the fixes: Generate a public link from a dashboard with charts, open it incognito; confirm charts are visible and sized correctly (not blank or zero-height). For matching: save a widget, slightly reformat whitespace in a test query if possible or rely on natural LLM output diffs; verify public load still shows the chart rather than mismatch error. Re-run `scripts/e2e-share-links.mjs` if available.
+
 ## 52) AI-generated conversation titles
 
 - What changed: New conversations keep the default `New conversation` title through user-message submission, then generate a short title from the first user message plus the first assistant response. The generated title is applied only while the stored title is still the default.

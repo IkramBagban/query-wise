@@ -11,6 +11,7 @@ import { AppError, resourceNotFound } from "@query-wise/shared/dal/core";
 import { getDataSourceAdapter, requireCapability } from "@query-wise/shared/data-sources";
 import { createResourceId } from "@query-wise/shared/domain";
 import { createResultPreview } from "@/lib/query";
+import { devLogError } from "@query-wise/shared/observability";
 import type { EncryptedPayload, ProviderQuery, PublicDashboardDto } from "@query-wise/shared/types";
 import {
   ChartConfigSchema,
@@ -86,6 +87,17 @@ function encryptedPayload(value: unknown): EncryptedPayload | null {
     typeof payload.authTag === "string"
     ? (payload as EncryptedPayload)
     : null;
+}
+
+/**
+ * Normalize SQL text for comparison (collapse whitespace).
+ * Used during public share refresh to tolerate benign formatting differences
+ * while still ensuring the logical query matches the original run.
+ */
+function queriesMatch(a: ProviderQuery, b: ProviderQuery): boolean {
+  if (a.kind !== b.kind || a.dialectId !== b.dialectId) return false;
+  const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+  return normalize(a.text) === normalize(b.text);
 }
 
 async function linkDto(link: DashboardShareLink, baseUrl: string) {
@@ -423,7 +435,7 @@ async function executePublicWidget(
     !generatedQuery.success ||
     generatedQuery.data.kind !== query.data.kind ||
     generatedQuery.data.dialectId !== query.data.dialectId ||
-    generatedQuery.data.text.trim() !== query.data.text.trim()
+    !queriesMatch(generatedQuery.data, query.data)
   ) {
     return {
       ...base,
@@ -577,10 +589,23 @@ export async function getPublicDashboard(
       return generated;
     },
   );
-  await getAppDb().dashboardShareLink.update({
-    where: { id: share.id },
-    data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
-  });
+
+  // Best-effort side effect: increment viewCount and update lastViewedAt for the share link.
+  // We intentionally do NOT await-fail here. A transient DB pool issue (common on Neon in dev
+  // or under load) must never turn a successful public dashboard payload into a 500 for viewers.
+  getAppDb()
+    .dashboardShareLink.update({
+      where: { id: share.id },
+      data: { viewCount: { increment: 1 }, lastViewedAt: new Date() },
+    })
+    .catch((err) => {
+      devLogError(
+        "public-dashboard.viewcount-increment-failed",
+        "Best-effort public share view count / lastViewedAt increment failed (non-fatal).",
+        err,
+      );
+    });
+
   return dto;
 }
 
