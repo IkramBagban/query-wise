@@ -1,0 +1,28 @@
+{
+  "name": "@query-wise/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@query-wise/shared": "workspace:*",
+    "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/google": "^3.0.53",
+    "@ai-sdk/groq": "^3.0.42",
+    "ai": "^6.0.141",
+    "bullmq": "^5.78.1",
+    "dotenv": "^17.3.1",
+    "ioredis": "^5.10.1",
+    "pg": "^8.20.0",
+    "tsx": "^4.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/pg": "^8.20.0",
+    "typescript": "^5"
+  }
+}
