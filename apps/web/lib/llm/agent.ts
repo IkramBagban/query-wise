@@ -1,0 +1,266 @@
+import type { ChartHint, ChatMessage, SchemaInfo } from "@/types";
+import { getModel, type Provider, withModelFallback } from "./client";
+import type { ExecuteQueryToolResult } from "./llm";
+import { z } from "zod";
+import { buildConstrainedAgentSystemPrompt } from "./prompts";
+import type { ModelMessage } from "./sql";
+import { Output, stepCountIs, streamText, tool } from "ai";
+
+interface RunConstrainedAgentParams {
+  question: string;
+  history: ChatMessage[];
+  schema: SchemaInfo;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+  executeQueryTool: (question: string) => Promise<ExecuteQueryToolResult>;
+  onTextDelta?: (chunk: string) => void;
+  onStage?: (label: string) => void;
+  abortSignal?: AbortSignal;
+}
+
+
+
+export interface ConstrainedAgentResponse {
+  mode: "query" | "conversation";
+  explanation: string;
+  chartHint: ChartHint | null;
+  toolResult: ExecuteQueryToolResult | null;
+}
+
+const AgentChartHintSchema = z.union([
+  z.object({
+    type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]),
+    xKey: z.string().trim().min(1).default(""),
+    yKey: z.string().trim().min(1).default(""),
+    yKeys: z.array(z.string().trim().min(1)).default([]),
+    nameKey: z.string().trim().min(1).default(""),
+    valueKey: z.string().trim().min(1).default(""),
+  }),
+  z.null(),
+]);
+
+const AgentOutputSchema = z.object({
+  mode: z.enum(["query", "conversation"]),
+  explanation: z.string(),
+  chartHint: AgentChartHintSchema.default(null),
+});
+
+type AgentOutput = z.infer<typeof AgentOutputSchema>;
+
+interface RunAgentTurnParams {
+  forcedTool: boolean;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+  systemPrompt: string;
+  messages: ModelMessage[];
+  executeQueryTool: RunConstrainedAgentParams["executeQueryTool"];
+  onTextDelta?: RunConstrainedAgentParams["onTextDelta"];
+  onStage?: RunConstrainedAgentParams["onStage"];
+  abortSignal?: AbortSignal;
+}
+
+
+
+
+
+
+
+
+function sanitizeChartHint(raw: unknown): ChartHint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const parsed = raw as ChartHint;
+
+  const pickString = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : undefined;
+  const pickStringArray = (value: unknown): string[] | undefined =>
+    Array.isArray(value)
+      ? value
+          .filter(
+            (v): v is string => typeof v === "string" && v.trim().length > 0,
+          )
+          .map((v) => v.trim())
+      : undefined;
+
+  const type = pickString(parsed.type);
+  if (
+    type &&
+    type !== "bar" &&
+    type !== "line" &&
+    type !== "pie" &&
+    type !== "scatter" &&
+    type !== "area" &&
+    type !== "table"
+  ) {
+    return null;
+  }
+
+  return {
+    type: type as ChartHint["type"],
+    xKey: pickString(parsed.xKey),
+    yKey: pickString(parsed.yKey),
+    yKeys: pickStringArray(parsed.yKeys),
+    nameKey: pickString(parsed.nameKey),
+    valueKey: pickString(parsed.valueKey),
+  };
+}
+
+function getDeltaFromProgress(previous: string, current: string): string {
+  if (!current) return "";
+  if (!previous) return current;
+  if (current.startsWith(previous)) {
+    return current.slice(previous.length);
+  }
+
+  const maxPrefix = Math.min(previous.length, current.length);
+  let i = 0;
+  while (i < maxPrefix && previous[i] === current[i]) {
+    i += 1;
+  }
+  return current.slice(i);
+}
+
+async function runAgentTurn({
+  forcedTool,
+  provider,
+  model,
+  apiKey,
+  systemPrompt,
+  messages,
+  executeQueryTool,
+  onTextDelta,
+  onStage,
+  abortSignal,
+}: RunAgentTurnParams): Promise<{ output: AgentOutput; toolResult: ExecuteQueryToolResult | null }> {
+  let toolResult: ExecuteQueryToolResult | null = null;
+
+  const output = await withModelFallback({
+    provider,
+    model,
+    execute: async (candidateModel) => {
+      const result = streamText({
+        model: getModel(provider, candidateModel, apiKey),
+        system: systemPrompt,
+        output: Output.object({ schema: AgentOutputSchema }),
+        messages,
+        tools: {
+          execute_query: tool({
+            description:
+              "Executes a database analysis question against the connected PostgreSQL schema and returns SQL + result rows.",
+            inputSchema: z.object({
+              question: z.string().trim().min(1).max(700),
+            }),
+            strict: true,
+            execute: async ({ question }) => {
+              onStage?.("Generating SQL");
+              const toolOutput = await executeQueryTool(question);
+              toolResult = toolOutput;
+              return toolOutput;
+            },
+          }),
+        },
+        activeTools: ["execute_query"],
+        toolChoice: forcedTool ? "required" : "auto",
+        stopWhen: stepCountIs(8),
+        maxOutputTokens: 2000,
+        temperature: 0.1,
+        abortSignal,
+        experimental_onToolCallStart: () => {
+          onStage?.("Calling execute_query");
+        },
+        experimental_onToolCallFinish: () => {
+          onStage?.("Tool finished");
+        },
+      });
+
+      let streamedExplanation = "";
+      const bufferedDeltas: string[] = [];
+
+      for await (const partial of result.partialOutputStream) {
+        const nextExplanation =
+          partial &&
+          typeof partial === "object" &&
+          typeof partial.explanation === "string"
+            ? partial.explanation
+            : "";
+
+        if (!nextExplanation) continue;
+        const delta = getDeltaFromProgress(streamedExplanation, nextExplanation);
+        streamedExplanation = nextExplanation;
+        if (delta.length > 0) {
+          bufferedDeltas.push(delta);
+        }
+      }
+
+      const turnOutput = await result.output;
+      for (const delta of bufferedDeltas) {
+        onTextDelta?.(delta);
+      }
+      return turnOutput;
+    },
+  });
+
+  return { output, toolResult };
+}
+
+export async function runConstrainedAnalystAgent(
+  params: RunConstrainedAgentParams,
+): Promise<ConstrainedAgentResponse> {
+  const systemPrompt = buildConstrainedAgentSystemPrompt(params.schema);
+
+  const historyMessages: ModelMessage[] = params.history
+    .slice(-12)
+    .map((message) => ({
+      role: message.role,
+      content:
+        message.role === "user"
+          ? message.content
+          : (message.sql ?? message.content),
+    }));
+
+  const hasLatestQuestion =
+    historyMessages.length > 0 &&
+    historyMessages[historyMessages.length - 1]?.role === "user" &&
+    historyMessages[historyMessages.length - 1]?.content.trim() ===
+      params.question.trim();
+
+  const messages: ModelMessage[] = hasLatestQuestion
+    ? historyMessages
+    : [...historyMessages, { role: "user", content: params.question }];
+
+  const baseTurnParams = {
+    provider: params.provider,
+    model: params.model,
+    apiKey: params.apiKey,
+    systemPrompt,
+    messages,
+    executeQueryTool: params.executeQueryTool,
+    onTextDelta: params.onTextDelta,
+    onStage: params.onStage,
+    abortSignal: params.abortSignal,
+  } satisfies Omit<RunAgentTurnParams, "forcedTool">;
+
+  let { output, toolResult } = await runAgentTurn({
+    ...baseTurnParams,
+    forcedTool: false,
+  });
+
+  if (output.mode === "query" && !toolResult) {
+    const retryTurn = await runAgentTurn({
+      ...baseTurnParams,
+      forcedTool: true,
+    });
+    output = retryTurn.output;
+    toolResult = retryTurn.toolResult;
+  }
+
+  return {
+    mode: toolResult ? "query" : output.mode,
+    explanation: output.explanation.trim(),
+    chartHint: sanitizeChartHint(output.chartHint),
+    toolResult,
+  };
+}
