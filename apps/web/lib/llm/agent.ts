@@ -28,19 +28,22 @@ export interface ConstrainedAgentResponse {
   toolResult: ExecuteQueryToolResult | null;
 }
 
-const AgentChartHintSchema = z.object({
-  type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]).optional(),
-  xKey: z.string().trim().min(1).optional(),
-  yKey: z.string().trim().min(1).optional(),
-  yKeys: z.array(z.string().trim().min(1)).optional(),
-  nameKey: z.string().trim().min(1).optional(),
-  valueKey: z.string().trim().min(1).optional(),
-});
+const AgentChartHintSchema = z.union([
+  z.object({
+    type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]),
+    xKey: z.string().trim().min(1).default(""),
+    yKey: z.string().trim().min(1).default(""),
+    yKeys: z.array(z.string().trim().min(1)).default([]),
+    nameKey: z.string().trim().min(1).default(""),
+    valueKey: z.string().trim().min(1).default(""),
+  }),
+  z.null(),
+]);
 
 const AgentOutputSchema = z.object({
   mode: z.enum(["query", "conversation"]),
   explanation: z.string(),
-  chartHint: AgentChartHintSchema.nullable().optional().default(null),
+  chartHint: AgentChartHintSchema.default(null),
 });
 
 type AgentOutput = z.infer<typeof AgentOutputSchema>;

@@ -2,8 +2,8 @@ export const LLM_PROVIDER_IDS = ["groq", "google", "anthropic"] as const;
 
 export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number];
 
-export const DEFAULT_LLM_PROVIDER: LlmProvider = "groq";
-export const DEFAULT_LLM_MODEL = "moonshotai/kimi-k2-instruct";
+export const DEFAULT_LLM_PROVIDER: LlmProvider = "google";
+export const DEFAULT_LLM_MODEL = "gemini-2.5-flash";
 
 export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]> = {
   groq: [
@@ -12,7 +12,7 @@ export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]
     "llama-3.1-8b-instant",
   ],
   google: [
-    "gemini-3.1-pro-preview",
+    "gemini-2.5-flash",
     "gemini-3-flash-preview",
   ],
   anthropic: [

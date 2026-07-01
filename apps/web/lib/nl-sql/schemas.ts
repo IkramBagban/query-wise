@@ -3,7 +3,8 @@ import { z } from "zod";
 export const RewriteQuestionSchema = z.object({
   requiresDatabase: z.boolean(),
   standaloneQuestion: z.string().trim().min(1).max(900),
-  directAnswer: z.string().trim().max(1200).nullable().default(null),
+  // directAnswer: z.string().trim().max(1200).nullable().default(null),
+  directAnswer: z.string().trim().max(1200).nullable(),
 });
 
 export const SelectedTableSchema = z.object({
@@ -33,14 +34,19 @@ export const ColumnPruningSchema = z.object({
 export const SqlPlanSchema = z.object({
   sql: z.string().trim().min(1).max(12000),
   resultIntent: z.string().trim().min(1).max(500),
-  chartHint: z.object({
-    type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]).optional(),
-    xKey: z.string().trim().min(1).optional(),
-    yKey: z.string().trim().min(1).optional(),
-    yKeys: z.array(z.string().trim().min(1)).optional(),
-    nameKey: z.string().trim().min(1).optional(),
-    valueKey: z.string().trim().min(1).optional(),
-  }).nullable().default(null),
+  chartHint: z
+    .union([
+      z.object({
+        type: z.enum(["bar", "line", "pie", "scatter", "area", "table"]),
+        xKey: z.string().trim().min(1).default(""),
+        yKey: z.string().trim().min(1).default(""),
+        yKeys: z.array(z.string().trim().min(1)).default([]),
+        nameKey: z.string().trim().min(1).default(""),
+        valueKey: z.string().trim().min(1).default(""),
+      }),
+      z.null(),
+    ])
+    .default(null),
 });
 
 export const ChartHintOnlySchema = z.object({
