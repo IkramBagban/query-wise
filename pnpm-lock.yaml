@@ -8,9 +8,15 @@ importers:
 
   .:
     dependencies:
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
       pnpm:
         specifier: ^11.9.0
         version: 11.9.0
+      react-resizable:
+        specifier: ^4.0.2
+        version: 4.0.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
     devDependencies:
       concurrently:
         specifier: ^10.0.3
@@ -3878,6 +3884,12 @@ packages:
 
   react-resizable@3.2.0:
     resolution: {integrity: sha512-3NKQ0SLZV7rs3LQHeXlOzDSRQfFrkX6TVet77/Qk03zqiZyee37b7N8/gwDJAA8UUjRz7PdWCCy49hcso45SMQ==}
+    peerDependencies:
+      react: '>= 16.3'
+      react-dom: '>= 16.3'
+
+  react-resizable@4.0.2:
+    resolution: {integrity: sha512-jZD9ghYRmyJCw0+awYctSZ+9pmX1WXQvzDrTovELYc8obC/BShTI2r4c14LIVzeQ+vJZNb0yKM7bG2eqv7Vfyg==}
     peerDependencies:
       react: '>= 16.3'
       react-dom: '>= 16.3'
@@ -8470,6 +8482,13 @@ snapshots:
       redux: 5.0.1
 
   react-resizable@3.2.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      prop-types: 15.8.1
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      react-draggable: 4.7.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+
+  react-resizable@4.0.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       prop-types: 15.8.1
       react: 19.2.4
