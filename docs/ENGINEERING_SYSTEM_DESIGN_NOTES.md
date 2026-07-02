@@ -1461,3 +1461,13 @@ Why this is the right approach:
   2. Run a V3 compound question and verify `result_blocks` contains ordered blocks while message metadata contains `agentV3.transcript`.
   3. Fetch both `/api/query/:queryRunId` and `/api/conversations/:conversationId/messages`; confirm each query-run DTO exposes `resultBlocks`.
   4. Confirm the legacy result columns equal block 0, then run `pnpm --filter web exec tsc --noEmit` and `pnpm build`.
+
+## 57) Local chart heuristic axis hardening (Task T7)
+
+- What changed: Extracted column kind inference (numeric/temporal/categorical) into a shared `getColumnKind` helper in `apps/web/lib/charts/axis.ts`. Implemented `validateAxisSemantics` to enforce strict chart semantics: measures (numeric) only on `yKey/yKeys/valueKey`, dimension (categorical/temporal) on `xKey/nameKey`, scatter x may be numeric/temporal, and pie needs low-cardinality `nameKey` (≤12 rows) + numeric `valueKey`. Updated `detect.ts` and `hints.ts` to validate the heuristic fallback/hint, downgrade to `table` if it violates semantics, and (for hints) automatically swap `xKey` and `yKey` if that corrects the semantics for a 2-axis chart.
+- Why: The local chart heuristic (and LLM hints) previously could render charts with swapped axes (e.g. state on y-axis, revenue on x-axis), leading to broken or meaningless visualizations. This aligns the frontend rendering fallback semantics directly with the backend agent `set-chart` tool semantics.
+- Tradeoffs and risks: Stricter validation means edge-case valid charts might be downgraded to tables if column types are inferred incorrectly (e.g. numeric categories acting as dimensions). The swap-correction logic is limited to 2-axis charts with a single `yKey`, leaving complex invalid multi-series charts to just downgrade.
+- How to test:
+  1. Ask for a query that typically triggers a chart hint with swapped axes.
+  2. Verify the chart automatically swaps the axes or downgrades to a table instead of rendering broken.
+  3. Run `npx tsx apps/web/lib/charts/axis.test.ts` to verify the pure-function semantics.

@@ -3,8 +3,9 @@ import type { ChartConfig, ChartHint, QueryResult } from "@/types";
 import { HIGH_CARDINALITY_DIMENSION, MAX_PIE_CATEGORIES } from "./constants";
 import { makeConfig } from "./config";
 import { inferColumnProfile, isNumericResultColumn } from "./profiles";
+import { validateAxisSemantics } from "./axis";
 
-export function applyChartHint(
+function applyChartHintInternal(
   base: ChartConfig,
   result: QueryResult,
   hint?: ChartHint | null,
@@ -58,4 +59,36 @@ export function applyChartHint(
         ? ["line", "area", "bar", "scatter", "table"]
         : ["bar", "line", "area", "scatter", "pie", "table"],
   });
+}
+
+export function applyChartHint(
+  base: ChartConfig,
+  result: QueryResult,
+  hint?: ChartHint | null,
+): ChartConfig {
+  const resolved = applyChartHintInternal(base, result, hint);
+
+  if (resolved.type !== "table" && !validateAxisSemantics(resolved.type, result.rows, resolved)) {
+    // Try to correct by swapping x and y if it's a 2-axis chart with a single y-key
+    if (
+      resolved.type !== "pie" &&
+      resolved.xKey &&
+      resolved.yKey &&
+      (!resolved.yKeys || resolved.yKeys.length === 1)
+    ) {
+      const swapped = {
+        ...resolved,
+        xKey: resolved.yKey,
+        yKey: resolved.xKey,
+        yKeys: [resolved.xKey],
+      };
+      if (validateAxisSemantics(swapped.type, result.rows, swapped)) {
+        return swapped;
+      }
+    }
+
+    return makeConfig("table", { availableTypes: resolved.availableTypes });
+  }
+
+  return resolved;
 }

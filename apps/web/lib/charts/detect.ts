@@ -8,7 +8,9 @@ import {
 import { makeConfig, withYKeys } from "./config";
 import { inferColumnProfile, pickBestDimensionColumn } from "./profiles";
 
-export function detectChartConfig(result: QueryResult): ChartConfig {
+import { validateAxisSemantics } from "./axis";
+
+function detectChartConfigInternal(result: QueryResult): ChartConfig {
   const { columns, rows } = result;
   if (rows.length === 0 || columns.length === 0) {
     return makeConfig("table", {
@@ -129,4 +131,16 @@ export function detectChartConfig(result: QueryResult): ChartConfig {
   return makeConfig("table", {
     availableTypes: ["table", "bar", "line", "area", "scatter"],
   });
+}
+
+export function detectChartConfig(result: QueryResult): ChartConfig {
+  const config = detectChartConfigInternal(result);
+  
+  if (config.type !== "table" && !validateAxisSemantics(config.type, result.rows, config)) {
+    return makeConfig("table", {
+      availableTypes: config.availableTypes,
+    });
+  }
+  
+  return config;
 }
