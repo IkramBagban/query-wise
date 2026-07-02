@@ -56,7 +56,8 @@ function resolveApiKey(provider: Provider): string {
 
 export function getModel(provider: Provider, model: string, apiKey: string) {
   if (provider === "groq") {
-    return createGroq({ apiKey })(model);
+    // @ts-ignore: parallelToolCalls is supported in settings but may lack typings in this version
+    return createGroq({ apiKey })(model, { parallelToolCalls: false });
   }
   if (provider === "google") {
     return createGoogleGenerativeAI({ apiKey })(model);
@@ -74,6 +75,12 @@ export function getStatusCode(error: unknown): number | null {
 
 export function isRetryableError(error: unknown): boolean {
   const statusCode = getStatusCode(error);
+  
+  const message = getErrorMessage(error).toLowerCase();
+  if (message.includes("tool call") || message.includes("invalid_request_error")) {
+    return true;
+  }
+
   if (statusCode === 401) return false;
   if (statusCode === 403) return false;
   if (statusCode === 429) return true;
@@ -117,7 +124,9 @@ export function shouldFallbackToAnotherModel(error: unknown): boolean {
     message.includes("unavailable") ||
     message.includes("overloaded") ||
     message.includes("capacity") ||
-    message.includes("deprecated")
+    message.includes("deprecated") ||
+    message.includes("tool call") ||
+    message.includes("invalid_request_error")
   );
 }
 

@@ -63,6 +63,7 @@ const suggestions = [
 
 const STORAGE_KEYS = {
   connection: "querywise.v2.connectionId",
+  pendingQuestion: "querywise.v2.pendingQuestion",
 } as const;
 
 function formatClockTime(value: string) {
@@ -710,7 +711,7 @@ export function EmptyWorkspaceView() {
     setQuestion("");
     setSubmitting(true);
     setError(null);
-    setStreamState({ status: "Queued", textDelta: "", activities: [], blocks: [] });
+    setStreamState({ status: "Starting conversation...", textDelta: "", activities: [], blocks: [] });
     try {
       let resolvedConnectionId = connectionId;
       if (connectionId === "__demo__") {
@@ -718,10 +719,7 @@ export function EmptyWorkspaceView() {
         resolvedConnectionId = demo.id;
       }
       const conversation = await conversationsApi.create(resolvedConnectionId);
-      await conversationsApi.submitStream(
-        { conversationId: conversation.id, question: trimmed },
-        handleQueryEvent,
-      );
+      window.sessionStorage.setItem(STORAGE_KEYS.pendingQuestion, trimmed);
       bumpChatVersion();
       router.push(`/chats/${conversation.id}`);
     } catch (reason) {
@@ -1141,15 +1139,16 @@ export function ConversationView({ conversationId }: { conversationId: string })
 
   const handleQueryEvent = makeQueryEventHandler(setStreamState, setError);
 
-  async function submit(event?: FormEvent) {
+  async function submit(event?: FormEvent, overrideQuestion?: string) {
     event?.preventDefault();
-    if (!question.trim()) return;
+    const targetQuestion = overrideQuestion ?? question;
+    if (!targetQuestion.trim()) return;
     if (composerDisabledReason) {
       setError(composerDisabledReason);
       return;
     }
-    const trimmed = question.trim();
-    setQuestion("");
+    const trimmed = targetQuestion.trim();
+    if (!overrideQuestion) setQuestion("");
     setPendingQuestion(trimmed);
     setSubmitting(true);
     setError(null);
@@ -1160,7 +1159,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
       await conversation.refresh();
       bumpChatVersion();
     } catch (reason) {
-      setQuestion(trimmed);
+      if (!overrideQuestion) setQuestion(trimmed);
       setError(reason instanceof Error ? reason.message : "Unable to submit query");
     } finally {
       setPendingQuestion(null);
@@ -1168,6 +1167,19 @@ export function ConversationView({ conversationId }: { conversationId: string })
       setStreamState(null);
     }
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pending = window.sessionStorage.getItem(STORAGE_KEYS.pendingQuestion);
+    if (pending) {
+      window.sessionStorage.removeItem(STORAGE_KEYS.pendingQuestion);
+      // We wait briefly to ensure the connection context is loaded, though
+      // submit() handles its own stream execution gracefully.
+      setTimeout(() => {
+        void submit(undefined, pending);
+      }, 0);
+    }
+  }, []);
 
   async function createDashboard(name: string) {
     const dashboard = await dashboardsApi.create(name);
@@ -1225,11 +1237,11 @@ export function ConversationView({ conversationId }: { conversationId: string })
           </div>
         </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
-          {(conversation.loading || messagesLoading) && !ordered.length ? (
+          {(conversation.loading || messagesLoading) && !ordered.length && !pendingQuestion && !submitting ? (
             <MessageListSkeleton messages={4} />
           ) : messagesError && !ordered.length ? (
             <ErrorState error={messagesError} onRetry={() => void refreshMessages()} />
-          ) : !ordered.length ? (
+          ) : !ordered.length && !pendingQuestion && !submitting ? (
             <div className="mx-auto max-w-2xl pt-10 text-center">
               <BrandMark className="mx-auto size-12 rounded-2xl" />
               <h2 className="mt-4 font-syne text-2xl font-semibold">Ask a question about your data</h2>
