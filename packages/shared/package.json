@@ -11,7 +11,8 @@
     "./data-sources": "./src/data-sources/index.ts",
     "./connections": "./src/connections/index.ts",
     "./ingestion": "./src/ingestion/index.ts",
-    "./types": "./src/types/index.ts"
+    "./types": "./src/types/index.ts",
+    "./ai": "./src/ai/index.ts"
   },
   "scripts": {
     "db:generate": "prisma generate --schema ./prisma/schema.prisma",

@@ -28,6 +28,8 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
         embedding_kind,
         content,
         embedding,
+        dimensions,
+        embedding_model,
         payload,
         schema_fingerprint,
         updated_at
@@ -40,6 +42,8 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
         ${record.embeddingKind},
         ${record.text},
         ${toPgVector(record.vector)}::vector,
+        ${record.dimensions},
+        ${record.embeddingModel},
         ${JSON.stringify(record.payload)}::jsonb,
         ${record.payload.schemaFingerprint},
         now()
@@ -50,6 +54,8 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
         entity_name = EXCLUDED.entity_name,
         content = EXCLUDED.content,
         embedding = EXCLUDED.embedding,
+        dimensions = EXCLUDED.dimensions,
+        embedding_model = EXCLUDED.embedding_model,
         payload = EXCLUDED.payload,
         schema_fingerprint = EXCLUDED.schema_fingerprint,
         updated_at = now()

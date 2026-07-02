@@ -155,7 +155,7 @@ async function createIngestionSnapshot(input: {
     });
     await tx.databaseConnection.update({
       where: { id: input.connectionId },
-      data: { schemaSyncStatus: "running" },
+      data: { schemaSyncStatus: "ready" },
     });
     return { snapshotId, snapshotVersion, existingDescriptions };
   });
@@ -311,7 +311,7 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
       connectionId: data.connectionId,
       entityCount: metadata.entities.length,
     });
-    const embeddings = createEmbeddingRecords({
+    const embeddings = await createEmbeddingRecords({
       connectionId: data.connectionId,
       schemaFingerprint,
       entities: metadata.entities,

@@ -127,7 +127,7 @@ export async function refreshConnectionSchemaInline(connectionId: ResourceId) {
 export async function getLatestConnectionSchema(connectionId: ResourceId) {
   const record = await requireOwnedConnection(connectionId);
   const snapshot = await getAppDb().schemaSnapshot.findFirst({
-    where: { connectionId, ownerUserId: record.ownerUserId, status: "succeeded" },
+    where: { connectionId, ownerUserId: record.ownerUserId, status: { in: ["succeeded", "syncing"] } },
     orderBy: { snapshotVersion: "desc" },
   });
   if (!snapshot?.metadata) throw new AppError("SCHEMA_SNAPSHOT_UNAVAILABLE", "No usable schema snapshot is available.", true);

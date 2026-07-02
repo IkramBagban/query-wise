@@ -5,6 +5,7 @@ import type { MetadataEntity } from "@query-wise/shared/types";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { getModel, type Provider, withModelFallback } from "./llm";
 import type { SchemaEmbeddingRecord, SchemaEntityDescription } from "@query-wise/shared/ingestion";
+import { embedTexts } from "@query-wise/shared/ai";
 
 const DESCRIPTION_BATCH_SIZE = 8;
 const EMBEDDING_DIMENSIONS = 384;
@@ -227,19 +228,6 @@ export async function describeEntities(
   return descriptions;
 }
 
-function hashEmbedding(text: string, dimensions = EMBEDDING_DIMENSIONS): number[] {
-  const vector = Array.from({ length: dimensions }, () => 0);
-  const tokens = text.toLowerCase().match(/[a-z0-9_]+/g) ?? [];
-  for (const token of tokens) {
-    const digest = createHash("sha256").update(token).digest();
-    const index = digest.readUInt16BE(0) % dimensions;
-    const sign = digest[2] % 2 === 0 ? 1 : -1;
-    vector[index] += sign;
-  }
-  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
-  return vector.map((value) => Number((value / magnitude).toFixed(6)));
-}
-
 function tableSummaryText(entity: MetadataEntity, description: SchemaEntityDescription): string {
   const columns = description.columns.map((column) => `${column.name}: ${column.description}`).join("; ");
   return `${entity.namespace}.${entity.name}: ${description.description}. Columns: ${columns}`;
@@ -249,38 +237,47 @@ function questionSummaryText(description: SchemaEntityDescription): string {
   return description.sampleQuestions.join("\n");
 }
 
-export function createEmbeddingRecords(input: {
+export async function createEmbeddingRecords(input: {
   connectionId: string;
   schemaFingerprint: string;
   entities: MetadataEntity[];
   descriptions: Record<string, SchemaEntityDescription>;
   alreadyEmbeddedEntityIds?: Set<string>;
-}): SchemaEmbeddingRecord[] {
-  const records: SchemaEmbeddingRecord[] = [];
+}): Promise<SchemaEmbeddingRecord[]> {
+  const itemsToEmbed: { entity: MetadataEntity, description: SchemaEntityDescription, kind: "table-summary" | "question-summary", text: string }[] = [];
+  
   for (const entity of input.entities) {
     if (input.alreadyEmbeddedEntityIds?.has(entity.id)) continue;
     const description = input.descriptions[entity.id] ?? fallbackDescription(entity);
-    const tableText = tableSummaryText(entity, description);
-    const questionText = questionSummaryText(description);
+    itemsToEmbed.push({ entity, description, kind: "table-summary", text: tableSummaryText(entity, description) });
+    itemsToEmbed.push({ entity, description, kind: "question-summary", text: questionSummaryText(description) });
+  }
+  
+  if (itemsToEmbed.length === 0) return [];
+  
+  const texts = itemsToEmbed.map(item => item.text);
+  const embeddings = await embedTexts(texts);
+  
+  if (!embeddings) {
+    return []; // Fall back to lexical seamlessly
+  }
+
+  const records: SchemaEmbeddingRecord[] = [];
+  for (let i = 0; i < itemsToEmbed.length; i++) {
+    const item = itemsToEmbed[i];
+    const embedding = embeddings[i];
+    if (!item || !embedding) continue;
     records.push({
       connectionId: input.connectionId,
-      entityId: entity.id,
-      namespace: entity.namespace,
-      entityName: entity.name,
-      embeddingKind: "table-summary",
-      text: tableText,
-      vector: hashEmbedding(tableText),
-      payload: { metadata: entity, description, schemaFingerprint: input.schemaFingerprint },
-    });
-    records.push({
-      connectionId: input.connectionId,
-      entityId: entity.id,
-      namespace: entity.namespace,
-      entityName: entity.name,
-      embeddingKind: "question-summary",
-      text: questionText,
-      vector: hashEmbedding(questionText),
-      payload: { metadata: entity, description, schemaFingerprint: input.schemaFingerprint },
+      entityId: item.entity.id,
+      namespace: item.entity.namespace,
+      entityName: item.entity.name,
+      embeddingKind: item.kind,
+      text: item.text,
+      vector: embedding.vector,
+      dimensions: embedding.dimensions,
+      embeddingModel: embedding.embeddingModel,
+      payload: { metadata: item.entity, description: item.description, schemaFingerprint: input.schemaFingerprint },
     });
   }
   return records;

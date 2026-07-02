@@ -18,18 +18,7 @@ function tokens(value: string): string[] {
     .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
 }
 
-function hashEmbedding(text: string, dimensions = 384): number[] {
-  const vector = Array.from({ length: dimensions }, () => 0);
-  const textTokens = tokens(text);
-  for (const token of textTokens) {
-    const digest = createHash("sha256").update(token).digest();
-    const index = digest.readUInt16BE(0) % dimensions;
-    const sign = digest[2] % 2 === 0 ? 1 : -1;
-    vector[index] += sign;
-  }
-  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
-  return vector.map((value) => Number((value / magnitude).toFixed(6)));
-}
+import { embedTexts } from "@query-wise/shared/ai";
 
 function toPgVector(vector: number[]): string {
   return `[${vector.join(",")}]`;
@@ -104,16 +93,23 @@ async function retrieveVectorCandidateTables(params: {
   limit?: number | null;
 }): Promise<TableCandidate[]> {
   if (!params.schema.connectionId || !params.schema.schemaFingerprint) return [];
-  const queryVector = toPgVector(hashEmbedding(params.question));
+  
+  const embeddings = await embedTexts([params.question]);
+  if (!embeddings || embeddings.length === 0) return [];
+  
+  const { vector: queryVector, embeddingModel } = embeddings[0];
+  const vectorStr = toPgVector(queryVector);
+
   const rows = await getAppDb().$queryRaw<Array<{
     entity_id: string;
     score: number;
   }>>(Prisma.sql`
-    SELECT entity_id, MAX(1 - (embedding <=> ${queryVector}::vector))::float8 AS score
+    SELECT entity_id, MAX(1 - (embedding <=> ${vectorStr}::vector))::float8 AS score
     FROM v2_schema_embeddings
     WHERE connection_id = ${params.schema.connectionId}::uuid
       AND schema_fingerprint = ${params.schema.schemaFingerprint}
       AND embedding_kind IN ('table-summary', 'question-summary')
+      AND embedding_model = ${embeddingModel}
     GROUP BY entity_id
     ORDER BY score DESC
     LIMIT ${params.limit ?? 30}

@@ -1483,3 +1483,21 @@ Why this is the right approach:
   3. Verify the final completed message renders each block in order, followed by the narrative.
   4. Verify single-block and legacy V2 messages render correctly (fallback to legacy fields).
   5. Verify the dashboard pin button only appears for block 0.
+
+## 59) Progressive Readiness and Real Semantic Embeddings (Task T5)
+
+- What changed: 
+  - **Progressive Readiness**: In `apps/worker/src/processor.ts`, `schemaSyncStatus` is now set to `"ready"` immediately after the database introspection, fingerprinting, and initial snapshot creation are complete, rather than waiting for the LLM descriptions and embeddings. The background job continues to enrich the snapshot in place. We also updated `getLatestConnectionSchema` to allow fetching snapshots in the `"syncing"` status.
+  - **Real Semantic Embeddings**: Replaced the local lexical `hashEmbedding` function with a real AI SDK implementation (`embedTexts` in `@query-wise/shared/ai`). Added `embedding_model` and `dimensions` to the `v2_schema_embeddings` table via a raw SQL migration. `createEmbeddingRecords` is now async, handles batches seamlessly, and correctly populates the database using standard providers like Google. Query-time retrieval strictly filters by the `embeddingModel`.
+- Why: 
+  - Connections must be queryable almost instantly even if there are hundreds of tables. Users shouldn't be blocked by slow LLM generation. 
+  - Simple hashing is insufficient for true semantic retrieval; real vector embeddings (e.g. from Google or Voyage) provide much better accuracy for table matching based on natural language questions.
+- Tradeoffs and risks: 
+  - If a user queries the connection while it is `"ready"` but the snapshot is still `"syncing"`, the LLM will fall back to heuristic table descriptions (names and columns) without the enriched descriptions and sample questions. This is an intentional tradeoff for speed.
+  - If the embedding provider environment variables are missing, the worker gracefully skips inserting vector embeddings (inserting 0 rows), and the retrieval seamlessly falls back to the lexical search path (which remains fully functional).
+- How to test:
+  1. Trigger a schema refresh for a connection.
+  2. Verify that the connection status in the UI changes to "Ready" within a few seconds, while the enrichment progress continues in the background.
+  3. Start a new chat immediately and verify that queries succeed using the heuristic fallback descriptions.
+  4. Ensure `QUERYWISE_EMBEDDING_PROVIDER` and `MODEL` are set, complete a full ingestion, and verify `v2_schema_embeddings` rows contain the model name.
+  5. Run a query and check logs to ensure vector retrieval (`retrieveVectorCandidateTables`) was used.
