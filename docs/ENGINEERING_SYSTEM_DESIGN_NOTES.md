@@ -1471,3 +1471,15 @@ Why this is the right approach:
   1. Ask for a query that typically triggers a chart hint with swapped axes.
   2. Verify the chart automatically swaps the axes or downgrades to a table instead of rendering broken.
   3. Run `npx tsx apps/web/lib/charts/axis.test.ts` to verify the pure-function semantics.
+
+## 58) V3 Multi-block Conversation UI (Task T4)
+
+- What changed: Extracted query-stream state into a robust `StreamState` interface tracking `activities`, `blocks`, `textDelta`, and `status`. Created `PendingAssistantMessage` to consume `StreamState` and render a live timeline of agent activities (tool calls, thinking), live streaming SQL blocks with preview/execution stats, and the streamed textual answer. Updated `AssistantMessage` to consume the durable `resultBlocks` list and render multiple `ConversationResultCard` instances, followed by the text narrative. `ConversationResultCard` was updated to accept an optional `block` parameter, using block-specific fields (SQL, rows, timing, chart config) while falling back to legacy single-run fields. Dashboard pinning within the card is disabled for block index > 0.
+- Why: Task T4 requires the conversation UI to accurately reflect the V3 agent's compound operations, both live (as events stream in) and historically (from the multi-block T3 persistence).
+- Tradeoffs and risks: Dashboard pinning is currently limited to block 0 due to backend API limitations (dashboards expect a single `queryRunId`). `EmptyWorkspaceView` consumes `StreamState` but only renders the simple `status` label due to space constraints before navigation.
+- How to test:
+  1. Submit a multi-step query.
+  2. Verify the pending message renders a live timeline (activity labels, collapsible SQL blocks, query stats) as they stream.
+  3. Verify the final completed message renders each block in order, followed by the narrative.
+  4. Verify single-block and legacy V2 messages render correctly (fallback to legacy fields).
+  5. Verify the dashboard pin button only appears for block 0.

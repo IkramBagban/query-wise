@@ -120,7 +120,7 @@ export interface SubmitQueryInput {
   idempotencyKey: string;
 }
 
-export type QueryStreamEventType = "status" | "text-delta" | "sql-preview" | "query-stats" | "completed" | "failed";
+export type QueryStreamEventType = "status" | "text-delta" | "sql-preview" | "query-stats" | "activity" | "completed" | "failed";
 
 export interface QueryStreamEvent {
   contractVersion: "querywise.v2";

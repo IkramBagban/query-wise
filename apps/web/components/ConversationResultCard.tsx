@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/useToast";
 import { exportToCSV, exportToJSON, exportToXLSX, generateFilename } from "@/lib/export";
 import { formatNumber } from "@/lib/utils";
 import type { ConversationMessageDto } from "@/lib/api-client";
-import type { ChartConfig, ChartType } from "@query-wise/shared/types";
+import type { ChartConfig, ChartType, QueryResultBlock } from "@query-wise/shared/types";
 
 const CHART_TYPES: { label: string; value: ChartType; icon: typeof BarChart3 }[] = [
   { label: "Bar", value: "bar", icon: BarChart3 },
@@ -43,6 +43,7 @@ const CHART_TYPES: { label: string; value: ChartType; icon: typeof BarChart3 }[]
 
 interface ConversationResultCardProps {
   message: ConversationMessageDto;
+  block?: QueryResultBlock;
   dashboardOptions: { value: string; label: string }[];
   onCreateDashboard: (name: string) => Promise<string>;
   onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string) => Promise<void>;
@@ -198,13 +199,14 @@ function DashboardMenu({
 
 export function ConversationResultCard({
   message,
+  block,
   dashboardOptions,
   onCreateDashboard,
   onSave,
 }: ConversationResultCardProps) {
   const run = message.queryRun;
-  const preview = run?.resultPreview;
-  const baseConfig = (message.metadata.chartConfig ?? { schemaVersion: 1, type: "table" }) as ChartConfig;
+  const preview = block ? block.resultPreview : run?.resultPreview;
+  const baseConfig = (block?.chartConfig ?? message.metadata.chartConfig ?? { schemaVersion: 1, type: "table" }) as ChartConfig;
   const [tab, setTab] = useState<"chart" | "sql">("chart");
   const [chartType, setChartType] = useState<ChartType>(baseConfig.type === "table" ? "bar" : baseConfig.type);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -215,7 +217,10 @@ export function ConversationResultCard({
 
   if (!run || !preview || !Array.isArray(preview.rows) || !Array.isArray(preview.columns)) return null;
   const result = previewToQueryResult(preview);
-  const rowCount = run.returnedRowCount ?? preview.returnedRowCount;
+  const rowCount = block?.rowCount ?? run.returnedRowCount ?? preview.returnedRowCount;
+  const executionTimeMs = block?.executionTimeMs ?? run.executionTimeMs;
+  const sqlText = block?.sql ?? run.generatedQuery?.text;
+  const showPin = !block || block.index === 0;
 
   function exportResult(format: "csv" | "xlsx" | "json") {
     const filename = generateFilename(config.title ?? "query-result", format);
@@ -245,7 +250,7 @@ export function ConversationResultCard({
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 pt-3">
           <button type="button" onClick={() => setTab("chart")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "chart" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}><BarChart3 className="size-3.5" />Chart</button>
           <button type="button" onClick={() => setTab("sql")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "sql" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}><Code2 className="size-3.5" />SQL</button>
-          <span className="ml-auto pb-2 text-[11px] text-text-3">{formatNumber(rowCount)} row{rowCount === 1 ? "" : "s"}{run.executionTimeMs != null ? ` · ${run.executionTimeMs}ms` : ""}</span>
+          <span className="ml-auto pb-2 text-[11px] text-text-3">{formatNumber(rowCount)} row{rowCount === 1 ? "" : "s"}{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</span>
         </div>
 
         <div className="p-3 sm:p-4">
@@ -256,21 +261,21 @@ export function ConversationResultCard({
                 <div className="flex items-center gap-1.5">
                   <IconAction label="Open chart details" onClick={() => setDetailsOpen(true)}><Maximize2 className="size-4" /></IconAction>
                   <ExportMenu onExport={exportResult} />
-                  <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />
+                  {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />}
                 </div>
               </div>
               <div className="min-w-0 h-[21rem] rounded-lg border border-border bg-surface-2/40 p-2"><V2Chart preview={preview} config={config} /></div>
             </>
-          ) : run.generatedQuery ? <CodeBlock sql={run.generatedQuery.text} variant="dark" /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">No SQL was generated for this response.</p>}
+          ) : sqlText ? <CodeBlock sql={sqlText} variant="dark" /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">No SQL was generated for this response.</p>}
         </div>
       </Card>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen} panelClassName="max-h-[92vh] max-w-[96vw] overflow-y-auto p-4 sm:max-w-6xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-2">Chart details</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-2">Chart details {block ? `(Block ${block.index})` : ""}</p>
             <h2 className="mt-1 font-syne text-2xl font-semibold">{config.title ?? "Query result"}</h2>
-            <p className="mt-1 text-xs text-text-3">{formatNumber(rowCount)} rows{run.executionTimeMs != null ? ` · ${run.executionTimeMs}ms` : ""}</p>
+            <p className="mt-1 text-xs text-text-3">{formatNumber(rowCount)} rows{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</p>
           </div>
           <button type="button" aria-label="Close chart details" onClick={() => setDetailsOpen(false)} className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text-1 shadow-sm transition hover:bg-surface-2"><X className="size-5" /></button>
         </div>
@@ -287,7 +292,7 @@ export function ConversationResultCard({
               <button type="button" title="Table view" aria-label="Show raw data table" onClick={() => setDetailsView("table")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "table" ? "bg-accent-dim text-accent-2" : "text-text-3 hover:text-text-1"}`}><Table2 className="size-4" /></button>
             </div>
             <ExportMenu onExport={exportResult} />
-            <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="label" />
+            {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="label" />}
           </div>
         </div>
 
@@ -300,7 +305,7 @@ export function ConversationResultCard({
             <ChevronDown className="size-4 text-text-3" />
           </summary>
           <div className="border-t border-white/10 p-3">
-            {run.generatedQuery ? <CodeBlock sql={run.generatedQuery.text} variant="dark" /> : <p className="text-sm text-white/60">No SQL was generated for this response.</p>}
+            {sqlText ? <CodeBlock sql={sqlText} variant="dark" /> : <p className="text-sm text-white/60">No SQL was generated for this response.</p>}
           </div>
         </details>
       </Dialog>

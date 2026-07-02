@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ChevronDown,
   CheckCircle2,
+  Code2,
   Database,
   MessageSquarePlus,
   PanelRightClose,
@@ -440,24 +441,74 @@ export function NewConversationView() {
 
 /* ---------------------- Shared query event handler ------------------------ */
 
+export interface StreamBlock {
+  index: number;
+  purpose?: string;
+  sql?: string;
+  validation?: "valid" | "blocked";
+  rowCount?: number;
+  executionTimeMs?: number;
+  truncated?: boolean;
+}
+
+export interface StreamState {
+  status: string | null;
+  textDelta: string;
+  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null }>;
+  blocks: StreamBlock[];
+}
+
 function makeQueryEventHandler(
-  setStreamStatus: (status: string | null) => void,
+  setStreamState: React.Dispatch<React.SetStateAction<StreamState | null>>,
   setError: (error: string | null) => void,
 ) {
   return function handleQueryEvent(event: QueryStreamEvent) {
-    if (event.type === "status") {
-      const data = event.data as { status?: string; label?: string };
-      setStreamStatus(data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working"));
-    }
-    if (event.type === "sql-preview") setStreamStatus("Validating SQL");
-    if (event.type === "query-stats") setStreamStatus("Preparing results");
-    if (event.type === "text-delta") setStreamStatus("Writing answer");
-    if (event.type === "completed") setStreamStatus("Complete");
-    if (event.type === "failed") {
-      const data = event.data as { error?: { message?: string } };
-      setStreamStatus("Failed");
-      setError(data.error?.message ?? "Unable to submit query");
-    }
+    setStreamState((current) => {
+      const state = current || { status: null, textDelta: "", activities: [], blocks: [] };
+      if (event.type === "status") {
+        const data = event.data as { status?: string; label?: string };
+        return { ...state, status: data.label ?? (data.status ? data.status.replaceAll("_", " ") : "Working") };
+      }
+      if (event.type === "activity") {
+        const data = event.data as any;
+        return { ...state, status: "Working", activities: [...state.activities, data] };
+      }
+      if (event.type === "sql-preview") {
+        const data = event.data as any;
+        const blocks = [...state.blocks];
+        const idx = blocks.findIndex(b => b.index === data.blockIndex);
+        if (idx >= 0) {
+          blocks[idx] = { ...blocks[idx], sql: data.text, purpose: data.purpose, validation: data.validation };
+        } else {
+          blocks.push({ index: data.blockIndex, sql: data.text, purpose: data.purpose, validation: data.validation });
+        }
+        return { ...state, status: "Validating SQL", blocks };
+      }
+      if (event.type === "query-stats") {
+        const data = event.data as any;
+        const blocks = [...state.blocks];
+        const idx = blocks.findIndex(b => b.index === data.blockIndex);
+        if (idx >= 0) {
+          blocks[idx] = { ...blocks[idx], rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated };
+        } else {
+          blocks.push({ index: data.blockIndex, rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated });
+        }
+        return { ...state, status: "Preparing results", blocks };
+      }
+      if (event.type === "text-delta") {
+        const data = event.data as { chunk: string };
+        return { ...state, status: "Writing answer", textDelta: state.textDelta + data.chunk };
+      }
+      if (event.type === "completed") {
+        return { ...state, status: "Complete" };
+      }
+      if (event.type === "failed") {
+        const data = event.data as { error?: { message?: string } };
+        setError(data.error?.message ?? "Unable to submit query");
+        return { ...state, status: "Failed" };
+      }
+      return state;
+    });
   };
 }
 
@@ -611,7 +662,7 @@ export function EmptyWorkspaceView() {
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streamStatus, setStreamStatus] = useState<string | null>(null);
+  const [streamState, setStreamState] = useState<StreamState | null>(null);
 
   const connectionItems = useMemo(() => connections.data?.items ?? [], [connections.data]);
   const selectedConnection = useMemo(
@@ -645,7 +696,7 @@ export function EmptyWorkspaceView() {
     return () => window.clearInterval(timer);
   }, [connectionItems, refreshConnections]);
 
-  const handleQueryEvent = makeQueryEventHandler(setStreamStatus, setError);
+  const handleQueryEvent = makeQueryEventHandler(setStreamState, setError);
 
   function selectConnection(nextConnectionId: string) {
     setConnectionId(nextConnectionId);
@@ -658,7 +709,7 @@ export function EmptyWorkspaceView() {
     setQuestion("");
     setSubmitting(true);
     setError(null);
-    setStreamStatus("Queued");
+    setStreamState({ status: "Queued", textDelta: "", activities: [], blocks: [] });
     try {
       let resolvedConnectionId = connectionId;
       if (connectionId === "__demo__") {
@@ -676,7 +727,7 @@ export function EmptyWorkspaceView() {
       setQuestion(trimmed);
       setError(reason instanceof Error ? reason.message : "Unable to start conversation");
       setSubmitting(false);
-      setStreamStatus(null);
+      setStreamState(null);
     }
   }
 
@@ -729,10 +780,10 @@ export function EmptyWorkspaceView() {
           error={error}
           disabled={disableComposer}
         />
-        {streamStatus && submitting ? (
+        {streamState && submitting ? (
           <p className="mt-2 text-center text-xs text-text-3">
             <Spinner size="sm" className="mr-1" />
-            {streamStatus}
+            {streamState.status ?? "Analyzing your data..."}
           </p>
         ) : null}
         {schemaSyncWarning ? (
@@ -763,6 +814,61 @@ function UserMessage({ message }: { message: ConversationMessageDto }) {
   );
 }
 
+function PendingAssistantMessage({ state }: { state: StreamState }) {
+  return (
+    <div className="flex items-start gap-3">
+      <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-text-1">QueryWise</span>
+        </div>
+        {state.activities.length > 0 && (
+          <div className="mt-3 flex flex-col gap-2">
+             {state.activities.map((act, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs text-text-3">
+                  <Spinner size="sm" />
+                  <span className="capitalize">{act.kind}:</span>
+                  <span>{act.label}</span>
+                </div>
+             ))}
+          </div>
+        )}
+        {state.blocks.map(block => (
+          <details key={block.index} className="mt-3 overflow-hidden rounded-xl border border-border bg-[#102117] text-white shadow-sm" open>
+            <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold">
+              <span className="inline-flex items-center gap-2">
+                <Code2 className="size-4 text-accent" />
+                Block {block.index}: {block.purpose}
+              </span>
+              <ChevronDown className="size-4 text-text-3" />
+            </summary>
+            {block.sql && (
+              <div className="border-t border-white/10 p-3">
+                <CodeBlock sql={block.sql} variant="dark" />
+                {block.rowCount !== undefined && (
+                   <p className="mt-2 text-xs text-white/60">
+                     {block.rowCount.toLocaleString()} rows in {block.executionTimeMs}ms
+                   </p>
+                )}
+              </div>
+            )}
+          </details>
+        ))}
+        {state.textDelta && (
+           <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-text-1">
+             {state.textDelta}
+           </p>
+        )}
+        {!state.textDelta && state.activities.length === 0 && state.blocks.length === 0 && (
+           <div className="mt-3 flex items-center gap-2 text-sm text-text-3">
+             <Spinner size="sm" />{state.status ?? "Analyzing your data..."}
+           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AssistantMessage({
   message,
   dashboardOptions,
@@ -774,7 +880,10 @@ function AssistantMessage({
   onCreateDashboard: (name: string) => Promise<string>;
   onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string) => Promise<void>;
 }) {
-  const hasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
+  const blocks = message.queryRun?.resultBlocks;
+  const hasBlocks = blocks && blocks.length > 0;
+  const legacyHasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
+
   return (
     <div className="flex items-start gap-3">
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
@@ -783,16 +892,30 @@ function AssistantMessage({
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
           <span className="text-[10px] text-text-3">{formatClockTime(message.createdAt)}</span>
         </div>
-        {message.content ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
+        {!hasBlocks && message.content ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
         {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.metadata.errorCode}</p> : null}
-        {hasResult ? (
-          <ConversationResultCard
-            message={message}
-            dashboardOptions={dashboardOptions}
-            onCreateDashboard={onCreateDashboard}
-            onSave={onSave}
-          />
+        {hasBlocks ? (
+           <div className="mt-3 space-y-4">
+             {blocks.map((block) => (
+                <ConversationResultCard
+                   key={block.index}
+                   message={message}
+                   block={block}
+                   dashboardOptions={dashboardOptions}
+                   onCreateDashboard={onCreateDashboard}
+                   onSave={onSave}
+                />
+             ))}
+           </div>
+        ) : legacyHasResult ? (
+           <ConversationResultCard
+             message={message}
+             dashboardOptions={dashboardOptions}
+             onCreateDashboard={onCreateDashboard}
+             onSave={onSave}
+           />
         ) : null}
+        {hasBlocks && message.content ? <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
       </div>
     </div>
   );
@@ -929,7 +1052,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streamStatus, setStreamStatus] = useState<string | null>(null);
+  const [streamState, setStreamState] = useState<StreamState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const olderScrollPosition = useRef<{ height: number; top: number } | null>(null);
 
@@ -1038,7 +1161,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     return () => window.clearInterval(timer);
   }, [connection.data, refreshConnection, ingestion.terminal]);
 
-  const handleQueryEvent = makeQueryEventHandler(setStreamStatus, setError);
+  const handleQueryEvent = makeQueryEventHandler(setStreamState, setError);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -1052,7 +1175,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     setPendingQuestion(trimmed);
     setSubmitting(true);
     setError(null);
-    setStreamStatus("Queued");
+    setStreamState({ status: "Queued", textDelta: "", activities: [], blocks: [] });
     try {
       await conversationsApi.submitStream({ conversationId, question: trimmed }, handleQueryEvent);
       await refreshMessages();
@@ -1064,7 +1187,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     } finally {
       setPendingQuestion(null);
       setSubmitting(false);
-      setStreamStatus(null);
+      setStreamState(null);
     }
   }
 
@@ -1176,13 +1299,8 @@ export function ConversationView({ conversationId }: { conversationId: string })
                   <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-semibold text-accent-foreground shadow-sm">N</span>
                 </div>
               ) : null}
-              {submitting ? (
-                <div className="flex items-center gap-3">
-                  <BrandMark className="size-8" />
-                  <span className="inline-flex items-center gap-2 rounded-2xl rounded-tl-sm border border-border bg-surface px-4 py-2.5 text-sm text-text-3">
-                    <Spinner size="sm" />{streamStatus ?? "Analyzing your data..."}
-                  </span>
-                </div>
+              {submitting && streamState ? (
+                <PendingAssistantMessage state={streamState} />
               ) : null}
             </div>
           )}
