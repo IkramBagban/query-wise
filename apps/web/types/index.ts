@@ -26,7 +26,7 @@ export interface SchemaColumn {
   defaultValue?: string | null;
   enumValues?: string[];
   range?: { min: string; max: string };
-  topValues?: Array<{ value: string; count: number }>;
+  topValues?: Array<{ value: string; count?: number }>;
 }
 
 /**

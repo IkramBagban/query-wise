@@ -10,12 +10,12 @@ export async function embedTexts(texts: string[]): Promise<{ vector: number[]; d
   }
 
   // Support google natively. Voyage or others can be added here.
-  let model;
-  if (providerName === "google") {
-    model = google.textEmbeddingModel(modelName);
-  } else {
-    throw new Error(`Unsupported embedding provider: ${providerName}`);
+  // An unsupported/misconfigured provider must fall back to lexical, not fail the ingestion job.
+  if (providerName !== "google") {
+    console.error(`Unsupported embedding provider: ${providerName}. Falling back to lexical.`);
+    return null;
   }
+  const model = google.textEmbeddingModel(modelName);
 
   try {
     const { embeddings } = await embedMany({

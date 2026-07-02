@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import type { SchemaInfo, SchemaTable } from "@/types";
 import { Prisma } from "@prisma/client";
 import { getAppDb } from "@query-wise/shared/app-db";
+import { embedTexts } from "@query-wise/shared/ai";
 import { toTableCandidate, type TableCandidate } from "./schema-context";
 
 const STOP_WORDS = new Set([
@@ -17,8 +17,6 @@ function tokens(value: string): string[] {
     .map((token) => token.trim())
     .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
 }
-
-import { embedTexts } from "@query-wise/shared/ai";
 
 function toPgVector(vector: number[]): string {
   return `[${vector.join(",")}]`;

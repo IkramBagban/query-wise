@@ -27,7 +27,7 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
     let p = 1;
     
     for (const record of chunk) {
-      values.push(`(${p++}::uuid, ${p++}, ${p++}, ${p++}, ${p++}, ${p++}, ${p++}::vector, ${p++}, ${p++}, ${p++}::jsonb, ${p++}, now())`);
+      values.push(`($${p++}::uuid, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}::vector, $${p++}, $${p++}, $${p++}::jsonb, $${p++}, now())`);
       
       params.push(
         record.connectionId,

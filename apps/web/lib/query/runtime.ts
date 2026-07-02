@@ -63,18 +63,23 @@ function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string |
     tables: metadata.entities.map((entity) => ({
       name: entity.namespace === "public" ? entity.name : `${entity.namespace}.${entity.name}`,
       rowCount: entity.estimatedRowCount ?? undefined,
-      columns: entity.columns.map((column) => ({
-        name: column.name,
-        type: column.nativeType,
-        fullType: column.nativeType,
-        nullable: column.nullable,
-        isPrimaryKey: column.primaryKey,
-        isForeignKey: relationships.some(
-          (relationship) =>
-            relationship.fromEntityId === entity.id &&
-            relationship.fromColumns.includes(column.name),
-        ),
-      })),
+      columns: entity.columns.map((column) => {
+        // Sampling attaches distinct example values (no frequency) under entity.topValues[column].
+        const sampled = entity.topValues?.[column.name];
+        return {
+          name: column.name,
+          type: column.nativeType,
+          fullType: column.nativeType,
+          nullable: column.nullable,
+          isPrimaryKey: column.primaryKey,
+          isForeignKey: relationships.some(
+            (relationship) =>
+              relationship.fromEntityId === entity.id &&
+              relationship.fromColumns.includes(column.name),
+          ),
+          topValues: sampled?.length ? sampled.map((value) => ({ value })) : undefined,
+        };
+      }),
     })),
     relationships: relationships.flatMap((relationship) => {
       const from = entityById.get(relationship.fromEntityId);

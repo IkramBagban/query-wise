@@ -1522,3 +1522,23 @@ Why this is the right approach:
   2. Observe worker logs to see batch concurrent dispatch and variable batch sizing.
   3. Change the data type or name of a single column, re-trigger sync, and ensure only that table is re-described (by observing `schema-ingestion.descriptions.progress` log events).
   4. Inspect the resulting `SchemaSnapshot` JSON data and verify `topValues` are present for text columns like `status` or `category`.
+
+## 61) T5/T6 Correctness Fixes (Progressive Readiness, Embedding Fallback, Sampling Data Flow, Vector Inserts)
+
+- What changed:
+  - **Progressive readiness actually holds** (`connectionStatusForStage` in `apps/worker/src/processor.ts`): `describing` and `embedding` stages now map to `"ready"` instead of `"running"`. Previously `createIngestionSnapshot` flipped the connection to `ready`, but the very next `saveSnapshotProgress(stage: "describing")` flipped it back to `running` for the entire enrichment, so the connection was un-queryable for all but a split second. Only `introspecting`/`fingerprinting` (which run before a snapshot exists) map to `running`.
+  - **Embedding provider misconfiguration falls back to lexical** (`embedTexts` in `packages/shared/src/ai/embeddings.ts`): an unsupported/typo'd `QUERYWISE_EMBEDDING_PROVIDER` now logs and returns `null` instead of `throw`-ing before the try/catch, which had failed the whole ingestion job.
+  - **Batched embedding inserts now bind parameters** (`persistSchemaEmbeddings` in `apps/worker/src/vector-store.ts`): placeholders were built as `(${p++}::uuid, ...)` producing literal `(1::uuid, 2, ...)`; fixed to `($${p++}::uuid, ...)` producing `($1::uuid, $2, ...)`. Every embedding persist was throwing at runtime (build passed because it's a runtime string).
+  - **Sampled values reach the prompt** (`toLegacySchema` in `apps/web/lib/query/runtime.ts`): sampling writes `entity.topValues` (a `Record<string, string[]>` on `MetadataEntity`), but nothing mapped it into the legacy per-column `SchemaColumn.topValues`. `toLegacySchema` now maps each column's sampled values to `[{ value }]`. `SchemaColumn.topValues[].count` is now optional (sampling yields distinct values, not frequencies) and the prompt renderer omits the `(count)` suffix when absent.
+  - **Global sampling time box** (`sampleEntityValues` in `apps/worker/src/sampling.ts`): added a `SAMPLING_BUDGET_MS` (30s) overall deadline checked between entities and columns, on top of the existing per-column 2s cap, so a very large DB cannot hold the ingestion job open (it gates `completeSnapshot`). Also removed the dead/empty `onProgress` callback (metadata is mutated in place and persisted by `completeSnapshot`), the `as any` cast, and leftover thinking-out-loud comments.
+  - **Cleanup**: removed unused `getModel`/`Provider`/`withModelFallback` imports from `processor.ts`, the dead `createHash` import and mid-file `embedTexts` import in `apps/web/lib/nl-sql/retrieval.ts`, and three junk repo-root files (`patch_enrichment.js`, `patch_processor.js`, `patch_vector.js`).
+- Why: each was a runtime-only or data-flow defect invisible to the type checker/build — the connection was never actually queryable during enrichment, embeddings never persisted, and sampled example values never influenced generation.
+- Tradeoffs and risks:
+  - Marking `describing`/`embedding` as `ready` means queries during enrichment use heuristic/partial descriptions (intended progressive-readiness tradeoff).
+  - The `20260702220000_add_embedding_model` migration's `ALTER COLUMN embedding TYPE vector` is left unchanged (editing an applied migration causes Prisma checksum drift). It must be verified against a real dev DB: it can fail if a fixed-dimension (`ivfflat`/`hnsw`) index exists on `embedding`; drop such an index before applying.
+- How to test:
+  1. Trigger a schema refresh; confirm the connection reports `ready` and stays queryable continuously through describing/embedding (not just for a moment).
+  2. Set `QUERYWISE_EMBEDDING_PROVIDER` to an unsupported value and confirm ingestion completes (falls back to lexical) instead of failing.
+  3. Complete an ingestion with a valid provider and verify `v2_schema_embeddings` rows are persisted (no runtime insert error).
+  4. Inspect a generated prompt / `SchemaColumn.topValues` and confirm sampled values appear (e.g. `top['active', 'pending']`).
+  5. On a very large DB, confirm sampling stops at ~30s and does not delay snapshot completion indefinitely.

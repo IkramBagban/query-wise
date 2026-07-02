@@ -25,7 +25,7 @@ export function buildStructuredTableContext(schema: SchemaInfo): string {
           const topValuesInfo =
             (column.topValues?.length ?? 0) > 0
               ? ` top[${column.topValues
-                  ?.map((item) => `'${item.value}' (${item.count})`)
+                  ?.map((item) => (item.count !== undefined ? `'${item.value}' (${item.count})` : `'${item.value}'`))
                   .join(", ")}]`
               : "";
           const defaultInfo = column.defaultValue

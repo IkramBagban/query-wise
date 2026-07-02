@@ -9,8 +9,6 @@ import { getConnectionSecretForIngestion } from "@query-wise/shared/connections"
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { describeEntities, createEmbeddingRecords } from "./enrichment";
 import { computeSchemaFingerprint, summarizeMetadata } from "./fingerprint";
-import { getModel, type Provider, withModelFallback } from "./llm";
-
 import { persistSchemaEmbeddings } from "./vector-store";
 import { sampleEntityValues } from "./sampling";
 import type {
@@ -83,8 +81,11 @@ function enrichMetadata(input: {
 
 function connectionStatusForStage(stage: SchemaIngestionStage) {
   if (stage === "queued") return "queued";
-  if (stage === "introspecting" || stage === "fingerprinting" || stage === "describing" || stage === "embedding") return "running";
-  if (stage === "ready") return "ready";
+  // Introspection/fingerprinting run before a snapshot exists, so the connection is not yet queryable.
+  if (stage === "introspecting" || stage === "fingerprinting") return "running";
+  // Progressive readiness (P0): once a snapshot exists, the schema is queryable. Describing and
+  // embedding are background enrichment that must not flip the connection back to un-queryable.
+  if (stage === "describing" || stage === "embedding" || stage === "ready") return "ready";
   return "error";
 }
 
@@ -273,9 +274,8 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
     });
     snapshotId = snapshot.snapshotId;
     
-    const samplingPromise = sampleEntityValues(data.connectionId, metadata, async (nextMetadata) => {
-      // in-place mutation of metadata will be picked up by the next saveSnapshotProgress call
-    }).catch(e => {});
+    // Sampling mutates `metadata` in place; completeSnapshot persists the enriched copy once done.
+    const samplingPromise = sampleEntityValues(data.connectionId, metadata);
 
     await saveSnapshotProgress({
       snapshotId,
