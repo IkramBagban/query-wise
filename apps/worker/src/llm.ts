@@ -58,7 +58,7 @@ function shouldFallbackToAnotherModel(error: unknown): boolean {
 }
 
 const FALLBACK_MODELS: Record<Provider, string[]> = {
-  google: ["gemini-2.0-flash", "gemini-1.5-flash"],
+  google: ["gemini-2.0-flash"],
   anthropic: ["claude-3-5-haiku-latest", "claude-3-haiku-20240307"],
   groq: ["llama-3.1-8b-instant", "llama3-8b-8192"],
 };

@@ -117,13 +117,20 @@ function TestConnectionButton({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "custom", connectionString }),
       });
-      const data = (await res.json()) as { success: boolean; error?: string };
-      const latencyMs = Date.now() - start;
-      if (data.success) {
+      const data = (await res.json()) as {
+        success?: boolean;
+        latencyMs?: number;
+        error?: string | { message?: string };
+      };
+      const latencyMs = data.latencyMs ?? Date.now() - start;
+      if (res.ok && data.success) {
         setTestState({ status: "success", latencyMs });
         onTestResult(true);
       } else {
-        setTestState({ status: "error", message: data.error ?? "Connection failed" });
+        const message =
+          (typeof data.error === "string" ? data.error : data.error?.message) ??
+          "Connection failed";
+        setTestState({ status: "error", message });
         onTestResult(false);
       }
     } catch {

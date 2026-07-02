@@ -181,6 +181,38 @@ export async function updateConnection(connectionId: ResourceId, input: { name?:
   return dto(record);
 }
 
+function connectionTestErrorMessage(errorCode: string | null): string {
+  switch (errorCode) {
+    case "DATA_SOURCE_AUTHENTICATION_FAILED":
+      return "Authentication failed — check username and password.";
+    case "DATA_SOURCE_TARGET_BLOCKED":
+      return "This database host is not allowed.";
+    case "VALIDATION_FAILED":
+      return "Invalid connection URL — check host, database, and sslmode=require.";
+    default:
+      return "Could not connect to the database server.";
+  }
+}
+
+export async function testDraftConnection(connectionString: string): Promise<{
+  success: boolean;
+  latencyMs: number;
+  name: string | null;
+  error?: string;
+}> {
+  await requireUser();
+  const adapter = getDataSourceAdapter("postgresql");
+  requireCapability(adapter, "connection-test");
+  const parsed = parsePostgresUrl(connectionString);
+  const result = await adapter.testConnection({ connectionString: parsed.connectionString });
+  return {
+    success: result.success,
+    latencyMs: result.latencyMs,
+    name: parsed.databaseName,
+    error: result.success ? undefined : connectionTestErrorMessage(result.errorCode),
+  };
+}
+
 export async function testSavedConnection(connectionId: ResourceId, idempotencyKey: string) {
   const record = await requireOwnedConnection(connectionId);
   return executeIdempotently({

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { generateText } from "ai";
+import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import type { MetadataEntity } from "@query-wise/shared/types";
+import { devLog, devLogError } from "@query-wise/shared/observability";
 import { getModel, type Provider, withModelFallback } from "./llm";
 import type { SchemaEmbeddingRecord, SchemaEntityDescription } from "@query-wise/shared/ingestion";
 
@@ -66,37 +67,115 @@ function fallbackDescription(entity: MetadataEntity): SchemaEntityDescription {
 }
 
 async function describeBatchWithLlm(entities: MetadataEntity[], config: { provider: Provider; model: string; apiKey: string }) {
+  const entityIds = entities.map((e) => e.id);
   const prompt = [
-    "Return strict JSON matching this TypeScript shape:",
-    "{ tables: Array<{ entityId: string; description: string; columns: Array<{ name: string; description: string }>; sampleQuestions: string[] }> }",
-    "Write concise analytics-focused descriptions. Do not invent values, metrics, or business facts not implied by names and types.",
+    "Enrich the provided PostgreSQL tables with concise, analytics-oriented metadata.",
+    "Return descriptions, column explanations, and 1-5 useful sample analytical questions per table.",
+    "Do not invent metrics, row counts, or business facts that cannot be inferred from the names and column types.",
+    "Input:",
     JSON.stringify({ tables: entities.map(compactEntity) }),
   ].join("\n\n");
 
-  const { text } = await withModelFallback({
-    provider: config.provider,
-    model: config.model,
-    execute: (candidateModel) =>
-      generateText({
-        model: getModel(config.provider, candidateModel, config.apiKey),
-        system: "You enrich PostgreSQL schema metadata for text-to-SQL retrieval. Respond only with valid JSON.",
-        prompt,
-        maxOutputTokens: 5000,
-        temperature: 0.1,
-      }),
-  });
+  // Prefer structured outputs (much more reliable than text + parse)
+  let tables: Array<{
+    entityId: string;
+    description: string;
+    columns: Array<{ name: string; description: string }>;
+    sampleQuestions: string[];
+  }>;
 
-  const jsonText = text.replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim();
-  let parsed: ReturnType<typeof descriptionSchema.safeParse> | { success: false };
   try {
-    parsed = descriptionSchema.safeParse(JSON.parse(jsonText));
-  } catch {
-    parsed = { success: false };
+    const result = await withModelFallback({
+      provider: config.provider,
+      model: config.model,
+      execute: (candidateModel) =>
+        generateObject({
+          model: getModel(config.provider, candidateModel, config.apiKey),
+          schema: descriptionSchema,
+          prompt,
+          system:
+            "You are a precise schema metadata enricher for text-to-SQL systems. " +
+            "Output ONLY the structured object. Every entityId from the input must be present exactly once.",
+          maxOutputTokens: 6000,
+          temperature: 0.0,
+        }),
+    });
+    tables = result.object.tables;
+  } catch (structuredError) {
+    // Fallback to text generation + parsing for models/providers that don't support structured outputs well
+    devLogError("schema-ingestion.llm.structured-failed", "Structured generation failed, falling back to text+parse", structuredError, {
+      provider: config.provider,
+      model: config.model,
+      batchEntityIds: entityIds,
+    });
+
+    const { text } = await withModelFallback({
+      provider: config.provider,
+      model: config.model,
+      execute: (candidateModel) =>
+        generateText({
+          model: getModel(config.provider, candidateModel, config.apiKey),
+          system: "You are a precise schema metadata enricher for text-to-SQL systems. Respond ONLY with valid JSON matching the requested shape. Never add commentary.",
+          prompt: "Return ONLY valid JSON:\n" + prompt,
+          maxOutputTokens: 6000,
+          temperature: 0.0,
+        }),
+    });
+
+    // Robust extraction
+    let jsonText = text.trim();
+    const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenceMatch) jsonText = fenceMatch[1].trim();
+    const objectMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (objectMatch) jsonText = objectMatch[0];
+
+    let parsed: ReturnType<typeof descriptionSchema.safeParse> | { success: false };
+    try {
+      parsed = descriptionSchema.safeParse(JSON.parse(jsonText));
+    } catch (parseErr) {
+      devLogError("schema-ingestion.llm.text-parse-failed", "Text fallback also failed to produce valid JSON", parseErr, {
+        rawPreview: text.slice(0, 1000),
+        batchEntityIds: entityIds,
+      });
+      parsed = { success: false };
+    }
+
+    if (!parsed.success) {
+      throw new Error("Schema enrichment model returned invalid descriptions.");
+    }
+    tables = parsed.data.tables;
   }
-  if (!parsed.success) {
-    throw new Error("Schema enrichment model returned invalid descriptions.");
+
+  // Ensure completeness and log any mismatches
+  const returnedIds = new Set(tables.map((t) => t.entityId));
+  const missing = entityIds.filter((id) => !returnedIds.has(id));
+  if (missing.length > 0) {
+    devLogError("schema-ingestion.llm.incomplete", "LLM response was missing some entities", undefined, {
+      missingEntityIds: missing,
+      returnedCount: tables.length,
+      expectedCount: entityIds.length,
+    });
   }
-  return parsed.data.tables;
+
+  // Filter to only the requested ones + basic validation
+  const validTables = tables.filter((t) =>
+    entityIds.includes(t.entityId) &&
+    t.description?.trim() &&
+    Array.isArray(t.columns) &&
+    t.columns.length > 0 &&
+    Array.isArray(t.sampleQuestions) &&
+    t.sampleQuestions.length >= 1 &&
+    t.sampleQuestions.length <= 5
+  );
+
+  if (validTables.length !== entities.length) {
+    devLogError("schema-ingestion.llm.partial-validation", "Some descriptions failed post-processing validation", undefined, {
+      batchEntityIds: entityIds,
+      validCount: validTables.length,
+    });
+  }
+
+  return validTables.length > 0 ? validTables : entities.map(fallbackDescription);
 }
 
 export async function describeEntities(
@@ -110,9 +189,35 @@ export async function describeEntities(
 
   for (let index = 0; index < pending.length; index += DESCRIPTION_BATCH_SIZE) {
     const batch = pending.slice(index, index + DESCRIPTION_BATCH_SIZE);
-    const batchDescriptions = llmConfig
-      ? await describeBatchWithLlm(batch, llmConfig)
-      : batch.map(fallbackDescription);
+    const batchIds = batch.map((e) => e.id);
+
+    let batchDescriptions: SchemaEntityDescription[];
+    if (llmConfig) {
+      try {
+        batchDescriptions = await describeBatchWithLlm(batch, llmConfig);
+      } catch (error) {
+        devLogError("schema-ingestion.descriptions.batch-failed", "LLM description batch failed, using heuristic fallback.", error, {
+          batchEntityIds: batchIds,
+          batchSize: batch.length,
+        });
+        batchDescriptions = batch.map(fallbackDescription);
+      }
+    } else {
+      batchDescriptions = batch.map(fallbackDescription);
+    }
+
+    // Final safety: ensure every entity in the batch has an entry (per-entity fallback)
+    const covered = new Set(batchDescriptions.map((d) => d.entityId));
+    for (const entity of batch) {
+      if (!covered.has(entity.id)) {
+        devLogError("schema-ingestion.descriptions.entity-fallback", "Falling back to heuristic for individual entity.", undefined, {
+          entityId: entity.id,
+          entityName: entity.name,
+        });
+        batchDescriptions.push(fallbackDescription(entity));
+      }
+    }
+
     for (const description of batchDescriptions) {
       descriptions[description.entityId] = description;
     }
