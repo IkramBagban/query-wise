@@ -1,4 +1,5 @@
 import type { ChartType } from "@/types";
+import { parseDate, parseNumeric } from "./profiles";
 
 export type AxisColumnKind = "numeric" | "temporal" | "categorical";
 
@@ -7,21 +8,10 @@ export function getColumnKind(
   column: string,
 ): AxisColumnKind {
   const sample = rows.find((row) => row[column] != null)?.[column];
-
-  if (typeof sample === "number") return "numeric";
-
-  if (sample instanceof Date && !Number.isNaN(sample.getTime())) {
-    return "temporal";
-  }
-
-  if (typeof sample === "string") {
-    const trimmed = sample.trim();
-    if (trimmed.length >= 8) {
-      const ts = Date.parse(trimmed);
-      if (!Number.isNaN(ts)) return "temporal";
-    }
-  }
-
+  // Numeric first: pg drivers return NUMERIC/BIGINT (and aggregates like SUM)
+  // as strings, and numeric-looking strings must never classify as temporal.
+  if (parseNumeric(sample) !== null) return "numeric";
+  if (parseDate(sample) !== null) return "temporal";
   return "categorical";
 }
 

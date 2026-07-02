@@ -475,23 +475,26 @@ function makeQueryEventHandler(
       }
       if (event.type === "sql-preview") {
         const data = event.data as any;
+        // V2 events and blocked previews carry no blockIndex; fold them into block 0.
+        const index = data.blockIndex ?? 0;
         const blocks = [...state.blocks];
-        const idx = blocks.findIndex(b => b.index === data.blockIndex);
+        const idx = blocks.findIndex(b => b.index === index);
         if (idx >= 0) {
           blocks[idx] = { ...blocks[idx], sql: data.text, purpose: data.purpose, validation: data.validation };
         } else {
-          blocks.push({ index: data.blockIndex, sql: data.text, purpose: data.purpose, validation: data.validation });
+          blocks.push({ index, sql: data.text, purpose: data.purpose, validation: data.validation });
         }
         return { ...state, status: "Validating SQL", blocks };
       }
       if (event.type === "query-stats") {
         const data = event.data as any;
+        const index = data.blockIndex ?? 0;
         const blocks = [...state.blocks];
-        const idx = blocks.findIndex(b => b.index === data.blockIndex);
+        const idx = blocks.findIndex(b => b.index === index);
         if (idx >= 0) {
           blocks[idx] = { ...blocks[idx], rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated };
         } else {
-          blocks.push({ index: data.blockIndex, rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated });
+          blocks.push({ index, rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated });
         }
         return { ...state, status: "Preparing results", blocks };
       }
@@ -838,7 +841,7 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
             <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold">
               <span className="inline-flex items-center gap-2">
                 <Code2 className="size-4 text-accent" />
-                Block {block.index}: {block.purpose}
+                {block.purpose ?? `Query ${block.index + 1}`}
               </span>
               <ChevronDown className="size-4 text-text-3" />
             </summary>

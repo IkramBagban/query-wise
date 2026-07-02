@@ -2,7 +2,7 @@ import { isDateColumn, isNumericColumn } from "@/lib/utils";
 
 import type { ColumnProfile } from "./types";
 
-function parseNumeric(value: unknown): number | null {
+export function parseNumeric(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -12,7 +12,7 @@ function parseNumeric(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseDate(value: unknown): number | null {
+export function parseDate(value: unknown): number | null {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
