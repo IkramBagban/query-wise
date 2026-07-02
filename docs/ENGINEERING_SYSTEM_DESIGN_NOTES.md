@@ -1501,3 +1501,24 @@ Why this is the right approach:
   3. Start a new chat immediately and verify that queries succeed using the heuristic fallback descriptions.
   4. Ensure `QUERYWISE_EMBEDDING_PROVIDER` and `MODEL` are set, complete a full ingestion, and verify `v2_schema_embeddings` rows contain the model name.
   5. Run a query and check logs to ensure vector retrieval (`retrieveVectorCandidateTables`) was used.
+
+## 60) Enrichment Quality and Throughput (Task T6)
+
+- What changed: 
+  - **Concurrent Description Batches**: `describeEntities` in `apps/worker/src/enrichment.ts` now uses concurrent evaluation (up to 4 batches concurrently) instead of a strictly serial loop.
+  - **Column-budgeted Batching & Wide Table Truncation**: Tables are grouped by total column count (target 150 per batch). Extremely wide tables (>100 columns) are put into their own batch with a higher `maxOutputTokens` (8192) and truncated for the LLM prompt to only include the top 100 most relevant columns (keys, temporal/numeric etc.). The omitted columns are padded with heuristic descriptions on the way out.
+  - **Per-entity Fingerprint Reuse**: We now compute `entityFingerprint` based on the structural shape of the individual entity. Only tables whose fingerprint hasn't changed will reuse previous descriptions.
+  - **Value Sampling**: After readiness is signaled, a non-blocking asynchronous step (`sampleEntityValues`) executes in the background. It reads the top 15 values for low-cardinality string/varchar columns. These are saved into `topValues` on the snapshot metadata for use during query time.
+  - **Batched Embedding Inserts**: `persistSchemaEmbeddings` in `apps/worker/src/vector-store.ts` inserts embeddings in batches of 100 via a single parameterized `INSERT INTO ... VALUES (...)` query, drastically reducing roundtrips.
+- Why: 
+  - The serial entity-by-entity or fixed-size batch loops were too slow for large databases.
+  - Feeding massive >300 column tables into the LLM routinely exceeded token budgets and diluted the context.
+  - Roundtripping vector inserts row-by-row is inefficient on Postgres.
+- Tradeoffs and risks: 
+  - Value sampling executes a `SELECT DISTINCT ... LIMIT 15` without knowing if a column is indexed. We mitigated this by wrapping the subquery in a `LIMIT 5000` (which is fast on Postgres) and strictly enforcing a 2-second timeout per query via `executeReadQuery`. Errors are swallowed to prevent halting ingestion.
+  - Fallbacks: tables truncated to 100 columns will only have semantic descriptions/sample questions based on the first 100 columns. The remaining columns get generic descriptions, which is an acceptable tradeoff since they are typically less analytically useful anyway.
+- How to test:
+  1. Trigger ingestion on a massive schema with >500 tables and >150 columns per table.
+  2. Observe worker logs to see batch concurrent dispatch and variable batch sizing.
+  3. Change the data type or name of a single column, re-trigger sync, and ensure only that table is re-described (by observing `schema-ingestion.descriptions.progress` log events).
+  4. Inspect the resulting `SchemaSnapshot` JSON data and verify `topValues` are present for text columns like `status` or `category`.

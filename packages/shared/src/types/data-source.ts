@@ -95,6 +95,7 @@ export interface MetadataEntity {
   columns: MetadataColumn[];
   estimatedRowCount: number | null;
   estimatedRowCountMeasuredAt: IsoDateTime | null;
+  topValues?: Record<string, string[]>;
 }
 export interface MetadataColumn {
   name: string;

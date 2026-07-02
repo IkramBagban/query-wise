@@ -18,8 +18,33 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
   const hasVectorTable = await relationExists(tx, "v2_schema_embeddings");
   if (!hasVectorTable) return "metadata-only";
 
-  for (const record of records) {
-    await tx.$executeRaw(Prisma.sql`
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const chunk = records.slice(i, i + BATCH_SIZE);
+    
+    const values: string[] = [];
+    const params: any[] = [];
+    let p = 1;
+    
+    for (const record of chunk) {
+      values.push(`(${p++}::uuid, ${p++}, ${p++}, ${p++}, ${p++}, ${p++}, ${p++}::vector, ${p++}, ${p++}, ${p++}::jsonb, ${p++}, now())`);
+      
+      params.push(
+        record.connectionId,
+        record.entityId,
+        record.namespace,
+        record.entityName,
+        record.embeddingKind,
+        record.text,
+        toPgVector(record.vector),
+        record.dimensions,
+        record.embeddingModel,
+        JSON.stringify(record.payload),
+        record.payload.schemaFingerprint
+      );
+    }
+    
+    const query = `
       INSERT INTO v2_schema_embeddings (
         connection_id,
         entity_id,
@@ -34,20 +59,7 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
         schema_fingerprint,
         updated_at
       )
-      VALUES (
-        ${record.connectionId}::uuid,
-        ${record.entityId},
-        ${record.namespace},
-        ${record.entityName},
-        ${record.embeddingKind},
-        ${record.text},
-        ${toPgVector(record.vector)}::vector,
-        ${record.dimensions},
-        ${record.embeddingModel},
-        ${JSON.stringify(record.payload)}::jsonb,
-        ${record.payload.schemaFingerprint},
-        now()
-      )
+      VALUES ${values.join(", ")}
       ON CONFLICT (connection_id, entity_id, embedding_kind)
       DO UPDATE SET
         namespace = EXCLUDED.namespace,
@@ -59,8 +71,11 @@ export async function persistSchemaEmbeddings(tx: AppDbTransaction, records: Sch
         payload = EXCLUDED.payload,
         schema_fingerprint = EXCLUDED.schema_fingerprint,
         updated_at = now()
-    `);
+    `;
+    
+    await tx.$executeRawUnsafe(query, ...params);
   }
 
   return "persisted";
 }
+

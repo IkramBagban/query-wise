@@ -6,6 +6,7 @@ import { devLog, devLogError } from "@query-wise/shared/observability";
 import { getModel, type Provider, withModelFallback } from "./llm";
 import type { SchemaEmbeddingRecord, SchemaEntityDescription } from "@query-wise/shared/ingestion";
 import { embedTexts } from "@query-wise/shared/ai";
+import { computeEntityFingerprint } from "./fingerprint";
 
 const DESCRIPTION_BATCH_SIZE = 8;
 const EMBEDDING_DIMENSIONS = 384;
@@ -67,7 +68,35 @@ function fallbackDescription(entity: MetadataEntity): SchemaEntityDescription {
   };
 }
 
-async function describeBatchWithLlm(entities: MetadataEntity[], config: { provider: Provider; model: string; apiKey: string }) {
+
+
+const TARGET_COLUMNS_PER_BATCH = 150;
+const MAX_CONCURRENT_BATCHES = 4;
+const WIDE_TABLE_THRESHOLD = 100;
+
+function truncateWideEntity(entity: MetadataEntity): { truncatedEntity: MetadataEntity, omittedColumns: MetadataEntity['columns'] } {
+  if (entity.columns.length <= WIDE_TABLE_THRESHOLD) return { truncatedEntity: entity, omittedColumns: [] };
+  
+  const sorted = [...entity.columns].sort((a, b) => {
+    if (a.primaryKey && !b.primaryKey) return -1;
+    if (!a.primaryKey && b.primaryKey) return 1;
+    const aFk = a.name.toLowerCase().endsWith("id") || a.name.toLowerCase().endsWith("_id");
+    const bFk = b.name.toLowerCase().endsWith("id") || b.name.toLowerCase().endsWith("_id");
+    if (aFk && !bFk) return -1;
+    if (!aFk && bFk) return 1;
+    return a.ordinal - b.ordinal;
+  });
+
+  const kept = sorted.slice(0, WIDE_TABLE_THRESHOLD);
+  const omitted = sorted.slice(WIDE_TABLE_THRESHOLD);
+
+  return {
+    truncatedEntity: { ...entity, columns: entity.columns.filter(c => kept.includes(c)) },
+    omittedColumns: entity.columns.filter(c => omitted.includes(c)),
+  };
+}
+
+async function describeBatchWithLlm(entities: MetadataEntity[], config: { provider: Provider; model: string; apiKey: string }, maxOutputTokens = 6000) {
   const entityIds = entities.map((e) => e.id);
   const prompt = [
     "Enrich the provided PostgreSQL tables with concise, analytics-oriented metadata.",
@@ -77,7 +106,6 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
     JSON.stringify({ tables: entities.map(compactEntity) }),
   ].join("\n\n");
 
-  // Prefer structured outputs (much more reliable than text + parse)
   let tables: Array<{
     entityId: string;
     description: string;
@@ -97,13 +125,12 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
           system:
             "You are a precise schema metadata enricher for text-to-SQL systems. " +
             "Output ONLY the structured object. Every entityId from the input must be present exactly once.",
-          maxOutputTokens: 6000,
+          maxOutputTokens,
           temperature: 0.0,
         }),
     });
     tables = result.object.tables;
   } catch (structuredError) {
-    // Fallback to text generation + parsing for models/providers that don't support structured outputs well
     devLogError("schema-ingestion.llm.structured-failed", "Structured generation failed, falling back to text+parse", structuredError, {
       provider: config.provider,
       model: config.model,
@@ -118,12 +145,11 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
           model: getModel(config.provider, candidateModel, config.apiKey),
           system: "You are a precise schema metadata enricher for text-to-SQL systems. Respond ONLY with valid JSON matching the requested shape. Never add commentary.",
           prompt: "Return ONLY valid JSON:\n" + prompt,
-          maxOutputTokens: 6000,
+          maxOutputTokens,
           temperature: 0.0,
         }),
     });
 
-    // Robust extraction
     let jsonText = text.trim();
     const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     if (fenceMatch) jsonText = fenceMatch[1].trim();
@@ -147,7 +173,6 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
     tables = parsed.data.tables;
   }
 
-  // Ensure completeness and log any mismatches
   const returnedIds = new Set(tables.map((t) => t.entityId));
   const missing = entityIds.filter((id) => !returnedIds.has(id));
   if (missing.length > 0) {
@@ -158,7 +183,6 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
     });
   }
 
-  // Filter to only the requested ones + basic validation
   const validTables = tables.filter((t) =>
     entityIds.includes(t.entityId) &&
     t.description?.trim() &&
@@ -185,48 +209,102 @@ export async function describeEntities(
   onBatch?: (descriptions: Record<string, SchemaEntityDescription>) => Promise<void>,
 ): Promise<Record<string, SchemaEntityDescription>> {
   const descriptions = { ...existing };
-  const pending = entities.filter((entity) => !descriptions[entity.id]);
   const llmConfig = configuredProvider();
 
-  for (let index = 0; index < pending.length; index += DESCRIPTION_BATCH_SIZE) {
-    const batch = pending.slice(index, index + DESCRIPTION_BATCH_SIZE);
-    const batchIds = batch.map((e) => e.id);
+  const pending: { entity: MetadataEntity, omittedColumns: MetadataEntity['columns'] }[] = [];
 
-    let batchDescriptions: SchemaEntityDescription[];
-    if (llmConfig) {
-      try {
-        batchDescriptions = await describeBatchWithLlm(batch, llmConfig);
-      } catch (error) {
-        devLogError("schema-ingestion.descriptions.batch-failed", "LLM description batch failed, using heuristic fallback.", error, {
-          batchEntityIds: batchIds,
-          batchSize: batch.length,
-        });
-        batchDescriptions = batch.map(fallbackDescription);
-      }
-    } else {
-      batchDescriptions = batch.map(fallbackDescription);
+  for (const entity of entities) {
+    const fingerprint = computeEntityFingerprint(entity);
+    const existingDesc = descriptions[entity.id];
+    if (existingDesc && existingDesc.entityFingerprint === fingerprint) {
+      continue;
     }
-
-    // Final safety: ensure every entity in the batch has an entry (per-entity fallback)
-    const covered = new Set(batchDescriptions.map((d) => d.entityId));
-    for (const entity of batch) {
-      if (!covered.has(entity.id)) {
-        devLogError("schema-ingestion.descriptions.entity-fallback", "Falling back to heuristic for individual entity.", undefined, {
-          entityId: entity.id,
-          entityName: entity.name,
-        });
-        batchDescriptions.push(fallbackDescription(entity));
-      }
-    }
-
-    for (const description of batchDescriptions) {
-      descriptions[description.entityId] = description;
-    }
-    await onBatch?.(descriptions);
+    const { truncatedEntity, omittedColumns } = truncateWideEntity(entity);
+    pending.push({ entity: truncatedEntity, omittedColumns });
   }
+
+  const batches: (typeof pending)[] = [];
+  let currentBatch: typeof pending = [];
+  let currentCols = 0;
+
+  for (const item of pending) {
+    if (currentBatch.length > 0 && currentCols + item.entity.columns.length > TARGET_COLUMNS_PER_BATCH) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentCols = 0;
+    }
+    currentBatch.push(item);
+    currentCols += item.entity.columns.length;
+    if (currentCols >= TARGET_COLUMNS_PER_BATCH) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentCols = 0;
+    }
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+
+  let activePromises = new Set<Promise<void>>();
+
+  for (const batch of batches) {
+    if (activePromises.size >= MAX_CONCURRENT_BATCHES) {
+      await Promise.race(activePromises);
+    }
+
+    const batchIds = batch.map((item) => item.entity.id);
+    const batchEntities = batch.map((item) => item.entity);
+    const totalColumns = batchEntities.reduce((sum, e) => sum + e.columns.length, 0);
+    const maxTokens = totalColumns > 100 ? 8192 : 6000;
+
+    const promise = (async () => {
+      let batchDescriptions: SchemaEntityDescription[];
+      if (llmConfig) {
+        try {
+          batchDescriptions = await describeBatchWithLlm(batchEntities, llmConfig, maxTokens);
+        } catch (error) {
+          devLogError("schema-ingestion.descriptions.batch-failed", "LLM description batch failed, using heuristic fallback.", error, {
+            batchEntityIds: batchIds,
+            batchSize: batch.length,
+          });
+          batchDescriptions = batchEntities.map(fallbackDescription);
+        }
+      } else {
+        batchDescriptions = batchEntities.map(fallbackDescription);
+      }
+
+      const descById = new Map(batchDescriptions.map(d => [d.entityId, d]));
+      for (const item of batch) {
+        let desc = descById.get(item.entity.id);
+        if (!desc) {
+          devLogError("schema-ingestion.descriptions.entity-fallback", "Falling back to heuristic for individual entity.", undefined, {
+            entityId: item.entity.id,
+            entityName: item.entity.name,
+          });
+          desc = fallbackDescription(item.entity);
+        }
+        
+        for (const col of item.omittedColumns) {
+          desc.columns.push({
+            name: col.name,
+            description: `${col.name} is a ${col.nativeType} column.`,
+          });
+        }
+        
+        desc.entityFingerprint = computeEntityFingerprint(entities.find(e => e.id === item.entity.id)!);
+        descriptions[desc.entityId] = desc;
+      }
+
+      await onBatch?.({ ...descriptions });
+    })();
+
+    activePromises.add(promise);
+    promise.finally(() => activePromises.delete(promise));
+  }
+
+  await Promise.all(activePromises);
 
   return descriptions;
 }
+
 
 function tableSummaryText(entity: MetadataEntity, description: SchemaEntityDescription): string {
   const columns = description.columns.map((column) => `${column.name}: ${column.description}`).join("; ");

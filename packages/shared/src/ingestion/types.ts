@@ -28,6 +28,7 @@ export interface SchemaIngestionProgress {
 
 export interface SchemaEntityDescription {
   entityId: string;
+  entityFingerprint?: string;
   description: string;
   columns: Array<{ name: string; description: string }>;
   sampleQuestions: string[];
@@ -41,6 +42,8 @@ export interface SchemaEmbeddingRecord {
   embeddingKind: "table-summary" | "question-summary";
   text: string;
   vector: number[];
+  dimensions: number;
+  embeddingModel: string;
   payload: {
     metadata: MetadataEntity;
     description: SchemaEntityDescription;

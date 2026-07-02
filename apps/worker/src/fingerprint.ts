@@ -48,6 +48,10 @@ export function computeSchemaFingerprint(metadata: CanonicalDataSourceMetadata):
   return createHash("sha256").update(JSON.stringify(structuralShape)).digest("hex");
 }
 
+export function computeEntityFingerprint(entity: MetadataEntity): string {
+  return createHash("sha256").update(JSON.stringify(stableEntity(entity))).digest("hex");
+}
+
 export function summarizeMetadata(metadata: CanonicalDataSourceMetadata): string {
   return `${metadata.namespaces.length} schemas, ${metadata.entities.length} entities, ${metadata.relationships.length} relationships`;
 }

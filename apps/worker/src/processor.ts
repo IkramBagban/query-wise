@@ -9,7 +9,10 @@ import { getConnectionSecretForIngestion } from "@query-wise/shared/connections"
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { describeEntities, createEmbeddingRecords } from "./enrichment";
 import { computeSchemaFingerprint, summarizeMetadata } from "./fingerprint";
+import { getModel, type Provider, withModelFallback } from "./llm";
+
 import { persistSchemaEmbeddings } from "./vector-store";
+import { sampleEntityValues } from "./sampling";
 import type {
   EnrichedSchemaMetadata,
   SchemaEntityDescription,
@@ -269,6 +272,10 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
       schemaFingerprint,
     });
     snapshotId = snapshot.snapshotId;
+    
+    const samplingPromise = sampleEntityValues(data.connectionId, metadata, async (nextMetadata) => {
+      // in-place mutation of metadata will be picked up by the next saveSnapshotProgress call
+    }).catch(e => {});
 
     await saveSnapshotProgress({
       snapshotId,
@@ -339,6 +346,7 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
     });
 
     const completionStartedAt = Date.now();
+    await samplingPromise;
     await completeSnapshot({
       connectionId: data.connectionId,
       snapshotId,
