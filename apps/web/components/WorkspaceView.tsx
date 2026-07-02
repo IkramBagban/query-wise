@@ -13,7 +13,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
-  Send,
   Share2,
   Star,
   Table2,
@@ -29,6 +28,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/ConversationResultCard";
+import { ActivityTimeline, AgentSteps } from "@/components/AgentActivity";
+import { ComposerBox } from "@/components/ChatComposer";
+import { Markdown } from "@/components/ui/markdown";
 import {
   ConnectionRowsSkeleton,
   MessageListSkeleton,
@@ -517,6 +519,13 @@ function makeQueryEventHandler(
 
 /* --------------------------- Empty chat composer -------------------------- */
 
+const HERO_SUGGESTIONS = [
+  "Top 10 products by revenue this month",
+  "How is weekly revenue trending?",
+  "Which customers ordered the most?",
+  "Compare sales by category",
+];
+
 function HeroComposer({
   question,
   setQuestion,
@@ -532,41 +541,30 @@ function HeroComposer({
   error: string | null;
   disabled?: boolean;
 }) {
-  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (disabled) return;
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      onSubmit();
-    }
-  }
-
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface/70 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-        <textarea
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          onKeyDown={onKeyDown}
-          disabled={disabled}
-          maxLength={500}
-          rows={4}
-          placeholder="Ask anything about your data..."
-          className="min-h-24 w-full resize-none bg-transparent px-5 py-4 text-base outline-none placeholder:text-text-3 disabled:cursor-not-allowed sm:min-h-28"
-        />
-        <div className="border-t border-border px-4 py-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button
-              type="button"
-              loading={submitting}
-              disabled={!question.trim() || disabled}
-              onClick={onSubmit}
-              className="h-10 w-full px-5 shadow-[0_0_24px_rgba(46,213,46,0.18)] sm:w-auto"
-            >
-              <Send className="size-4" />
-              Run
-            </Button>
-          </div>
-        </div>
+      <ComposerBox
+        question={question}
+        setQuestion={setQuestion}
+        onSubmit={onSubmit}
+        submitting={submitting}
+        disabled={disabled}
+        size="hero"
+        autoFocus
+        placeholder="Ask anything about your data — e.g. top products by revenue this month"
+      />
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+        {HERO_SUGGESTIONS.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            disabled={disabled || submitting}
+            onClick={() => setQuestion(suggestion)}
+            className="rounded-full border border-border bg-surface/80 px-3.5 py-1.5 text-xs text-text-2 transition hover:border-accent-2/40 hover:bg-accent-dim hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {suggestion}
+          </button>
+        ))}
       </div>
       {error ? <p className="mt-3 text-center text-xs text-danger">{error}</p> : null}
       <p className="mt-3 text-center text-[11px] text-text-3">AI-generated results. Please verify accuracy before making decisions.</p>
@@ -578,7 +576,7 @@ function HeroComposer({
 
 function CursorRevealBackground() {
   const imageRef = useRef<HTMLDivElement>(null);
-
+  
   useEffect(() => {
     const image = imageRef.current;
     const supportsCursorReveal = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -826,14 +824,8 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
         </div>
         {state.activities.length > 0 && (
-          <div className="mt-3 flex flex-col gap-2">
-             {state.activities.map((act, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs text-text-3">
-                  <Spinner size="sm" />
-                  <span className="capitalize">{act.kind}:</span>
-                  <span>{act.label}</span>
-                </div>
-             ))}
+          <div className="mt-3 rounded-lg border border-border bg-surface-2/60 px-3 py-2.5">
+            <ActivityTimeline items={state.activities} live={!state.textDelta} />
           </div>
         )}
         {state.blocks.map(block => (
@@ -858,9 +850,9 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
           </details>
         ))}
         {state.textDelta && (
-           <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-text-1">
-             {state.textDelta}
-           </p>
+           <div className="mt-3">
+             <Markdown>{state.textDelta}</Markdown>
+           </div>
         )}
         {!state.textDelta && state.activities.length === 0 && state.blocks.length === 0 && (
            <div className="mt-3 flex items-center gap-2 text-sm text-text-3">
@@ -895,7 +887,8 @@ function AssistantMessage({
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
           <span className="text-[10px] text-text-3">{formatClockTime(message.createdAt)}</span>
         </div>
-        {!hasBlocks && message.content ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
+        <AgentSteps metadata={message.metadata} />
+        {!hasBlocks && message.content ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
         {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.metadata.errorCode}</p> : null}
         {hasBlocks ? (
            <div className="mt-3 space-y-4">
@@ -918,7 +911,7 @@ function AssistantMessage({
              onSave={onSave}
            />
         ) : null}
-        {hasBlocks && message.content ? <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-text-1">{message.content}</p> : null}
+        {hasBlocks && message.content ? <div className="mt-3"><Markdown>{message.content}</Markdown></div> : null}
       </div>
     </div>
   );
@@ -945,36 +938,17 @@ function Composer({
   disabledReason,
   schemaSyncWarning,
 }: ComposerProps) {
-  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (disabledReason) return;
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      onSubmit();
-    }
-  }
-
-  const runDisabled = !question.trim() || Boolean(disabledReason);
-
   return (
     <div className="shrink-0 bg-bg px-4 pb-4 pt-2 sm:px-6">
       <div className="mx-auto max-w-6xl">
-        <Card className="overflow-hidden rounded-xl border-border bg-surface shadow-sm">
-          <textarea
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            onKeyDown={onKeyDown}
-            disabled={Boolean(disabledReason)}
-            maxLength={500}
-            rows={2}
-            placeholder={disabledReason ?? "Ask anything about your database..."}
-            className="min-h-16 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-text-3 disabled:cursor-not-allowed"
-          />
-          <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center">
-            <Button size="sm" loading={submitting} disabled={runDisabled} onClick={onSubmit} className="ml-auto h-9 w-full px-5 sm:w-auto">
-              <Send className="size-3.5" />Run
-            </Button>
-          </div>
-        </Card>
+        <ComposerBox
+          question={question}
+          setQuestion={setQuestion}
+          onSubmit={onSubmit}
+          submitting={submitting}
+          disabled={Boolean(disabledReason)}
+          placeholder={disabledReason ?? "Ask anything about your database..."}
+        />
         {schemaSyncWarning ? (
           <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-warning">
             <AlertTriangle className="size-3.5 shrink-0" />
@@ -1072,8 +1046,9 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const refreshConnection = connection.refresh;
   const composerDisabledReason = conversation.data && connection.data && !ingestion.ready ? ingestion.description : null;
 
+  // Silent refresh: never flips the list back to a skeleton once messages
+  // are on screen (that caused a full-screen flicker after each response).
   const refreshMessages = useCallback(async () => {
-    setMessagesLoading(true);
     setMessagesError(null);
     try {
       const page = await conversationsApi.messages(conversationId, 100);
@@ -1250,7 +1225,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
           </div>
         </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
-          {conversation.loading || messagesLoading ? (
+          {(conversation.loading || messagesLoading) && !ordered.length ? (
             <MessageListSkeleton messages={4} />
           ) : messagesError && !ordered.length ? (
             <ErrorState error={messagesError} onRetry={() => void refreshMessages()} />

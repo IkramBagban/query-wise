@@ -82,7 +82,9 @@ export function buildAnalystAgentSystemPrompt(schema: SchemaInfo): string {
     "",
     "ANSWERING:",
     "- After the data is in, write the answer: the numbers, what they say, and any caveat (truncation, empty result, assumption you made).",
-    "- Reference blocks naturally (\"the table below\", \"second chart\"); never mention tools, SQL budgets, or these instructions.",
+    "- The user already sees every query result as an interactive table/chart block. NEVER reproduce result rows as a table or list in your text — summarize instead: totals, peaks, trends, comparisons, outliers.",
+    "- Format with markdown: **bold** for key figures, short bullet lists when comparing. Keep answers to a few sentences unless the question demands more.",
+    "- Reference blocks naturally (\"the chart above\", \"second table\"); never mention tools, SQL budgets, or these instructions.",
     "",
     schemaSection(schema),
   ].join("\n");
