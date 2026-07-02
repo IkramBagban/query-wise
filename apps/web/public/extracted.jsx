@@ -1,270 +1,4 @@
-'use client';
-import React, { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 
-import FeaturesJourney from "@/components/FeaturesJourney";
-
-export default function QueryWiseLanding() {
-  const [theme, setTheme] = useState('dark');
-  const [exIdx, setExIdx] = useState(0);
-  const [typed, setTyped] = useState('');
-  const [phase, setPhase] = useState('idle'); // idle | typing | pipeline
-  const [stepIdx, setStepIdx] = useState(-1);
-  const [showSql, setShowSql] = useState(false);
-  const [showChart, setShowChart] = useState(false);
-  const [grown, setGrown] = useState(false);
-  const [showWidget, setShowWidget] = useState(false);
-  const [shot, setShot] = useState(0);
-  const [featIdx, setFeatIdx] = useState(0);
-  
-  const runTokenRef = useRef(0);
-  const featIntRef = useRef<any>(null);
-  const ioRef = useRef<any>(null);
-
-  const FEATS = [
-    { icon: '💬', title: 'Chat, not query', tag: 'natural language', crumb: 'querywise.app/chats', headline: 'Ask in plain English.', line: 'Follow-ups keep their context.' },
-    { icon: '⚡', title: 'See the SQL', tag: 'never a black box', crumb: 'generated query · explained', headline: 'Generated, explained, read-only.', line: 'Nothing runs you can’t inspect.' },
-    { icon: '📊', title: 'Charts, automatic', tag: 'zero config', crumb: 'visualization · auto-selected', headline: 'The right chart, picked for you.', line: 'From the shape of your data.' },
-    { icon: '📈', title: 'Live dashboards', tag: 'pin & refresh', crumb: 'dashboards/company-kpis', headline: 'Pin answers as widgets.', line: 'They refresh themselves.' },
-    { icon: '🔗', title: 'Public sharing', tag: 'secure links', crumb: 'shared/x7f2 · public', headline: 'Share a link, live data.', line: 'Password optional. SQL never exposed.' },
-    { icon: '🔒', title: 'Safe by default', tag: 'passes review', crumb: 'security', headline: 'Encrypted, read-only, audited.', line: 'Credentials never touch the browser.' },
-    { icon: '🗂', title: 'Every database', tag: 'one workspace', crumb: 'connections', headline: 'Dev, staging, prod.', line: 'All in one place, always synced.' }
-  ];
-
-  const EXAMPLES = [
-    {
-      q: 'Show monthly revenue for the last 12 months',
-      sql: "SELECT date_trunc('month', o.created_at) AS month,\n       SUM(o.total_amount) AS revenue\nFROM orders o\nWHERE o.created_at >= now() - interval '12 months'\nGROUP BY 1 ORDER BY 1;",
-      chartTitle: 'Monthly revenue',
-      chartMeta: '12 rows · bar chart (auto)',
-      labels: ['Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun'],
-      values: [34,41,38,52,47,58,55,63,60,72,69,84],
-      widget: "Saved as widget to 'Company KPIs' dashboard"
-    },
-    {
-      q: 'Which products sold the most last quarter?',
-      sql: "SELECT p.name, SUM(oi.quantity) AS units_sold\nFROM order_items oi\nJOIN products p ON p.id = oi.product_id\nWHERE oi.created_at >= now() - interval '3 months'\nGROUP BY p.name\nORDER BY units_sold DESC LIMIT 5;",
-      chartTitle: 'Top products by units sold',
-      chartMeta: '5 rows · bar chart (auto)',
-      labels: ['Trail Pack','Aero Bottle','Flux Mat','Core Tee','Ridge Cap'],
-      values: [88,71,64,52,40],
-      widget: "Saved as widget to 'Sales' dashboard"
-    },
-    {
-      q: 'How many new customers signed up each week?',
-      sql: "SELECT date_trunc('week', created_at) AS week,\n       COUNT(*) AS signups\nFROM customers\nWHERE created_at >= now() - interval '8 weeks'\nGROUP BY 1 ORDER BY 1;",
-      chartTitle: 'Weekly customer signups',
-      chartMeta: '8 rows · bar chart (auto)',
-      labels: ['W1','W2','W3','W4','W5','W6','W7','W8'],
-      values: [30,42,38,55,61,58,74,82],
-      widget: "Saved as widget to 'Growth' dashboard"
-    }
-  ];
-
-  const STEP_LABELS = ['understand', 'generate sql', 'validate read-only', 'execute', 'chart'];
-  const KEYWORDS = ['SELECT','FROM','WHERE','GROUP','ORDER','BY','JOIN','ON','AS','DESC','ASC','LIMIT','AND','OR','INTERVAL'];
-  const FUNCS = ['date_trunc','sum','count','now','avg','min','max'];
-
-  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-  const highlight = (sql: string) => {
-    const lines = sql.split('\n');
-    return lines.map(line => {
-      const toks = [];
-      const re = /('[^']*'|\b\d+(?:\.\d+)?\b|\w+|[^\w\s]+|\s+)/g;
-      let m;
-      while ((m = re.exec(line)) !== null) {
-        const t = m[0];
-        let c = '#C9D6CC';
-        if (t.startsWith("'")) c = '#E5C07B';
-        else if (/^\d/.test(t)) c = '#D19A66';
-        else if (KEYWORDS.includes(t.toUpperCase())) c = '#5EE08A';
-        else if (FUNCS.includes(t.toLowerCase())) c = '#63B3ED';
-        else if (/^[^\w\s]+$/.test(t)) c = '#7C8B80';
-        toks.push({ t, c });
-      }
-      return { toks };
-    });
-  };
-
-  const playExample = async (i: number, thenLoop: boolean) => {
-    const token = ++runTokenRef.current;
-    const ex = EXAMPLES[i];
-    setExIdx(i);
-    setTyped('');
-    setPhase('typing');
-    setStepIdx(-1);
-    setShowSql(false);
-    setShowChart(false);
-    setGrown(false);
-    setShowWidget(false);
-    
-    await delay(500); if (token !== runTokenRef.current) return;
-    for (let c = 1; c <= ex.q.length; c++) {
-      setTyped(ex.q.slice(0, c));
-      await delay(26); if (token !== runTokenRef.current) return;
-    }
-    await delay(300); if (token !== runTokenRef.current) return;
-    setPhase('pipeline');
-    setStepIdx(0);
-    
-    await delay(700); if (token !== runTokenRef.current) return;
-    setStepIdx(1);
-    
-    await delay(750); if (token !== runTokenRef.current) return;
-    setShowSql(true);
-    setStepIdx(2);
-    
-    await delay(1000); if (token !== runTokenRef.current) return;
-    setStepIdx(3);
-    
-    await delay(800); if (token !== runTokenRef.current) return;
-    setShowChart(true);
-    setStepIdx(4);
-    
-    await delay(80); if (token !== runTokenRef.current) return;
-    setGrown(true);
-    
-    await delay(1100); if (token !== runTokenRef.current) return;
-    setStepIdx(5);
-    setShowWidget(true);
-    
-    if (!thenLoop) return;
-    await delay(4200); if (token !== runTokenRef.current) return;
-    playExample((i + 1) % EXAMPLES.length, true);
-  };
-
-  const setFeat = (i: number) => {
-    setFeatIdx(i);
-    if (featIntRef.current) clearInterval(featIntRef.current);
-    featIntRef.current = setInterval(() => {
-      setFeatIdx(prev => (prev + 1) % FEATS.length);
-    }, 5000);
-  };
-
-  useEffect(() => {
-    let t = 'dark';
-    try { t = localStorage.getItem('qw-theme') || 'dark'; } catch(e) {}
-    setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
-
-    playExample(0, true);
-
-    featIntRef.current = setInterval(() => {
-      setFeatIdx(prev => (prev + 1) % FEATS.length);
-    }, 5000);
-
-    ioRef.current = new IntersectionObserver((entries) => {
-      for (const en of entries) {
-        if (en.isIntersecting) {
-          en.target.classList.add('rv');
-          ioRef.current.unobserve(en.target);
-        }
-      }
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-
-    document.querySelectorAll('[data-reveal]').forEach(el => ioRef.current.observe(el));
-
-    return () => {
-      runTokenRef.current++;
-      if (ioRef.current) ioRef.current.disconnect();
-      if (featIntRef.current) clearInterval(featIntRef.current);
-    };
-  }, []);
-
-  const toggleTheme = () => {
-    const t = theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('qw-theme', t); } catch (e) {}
-    setTheme(t);
-  };
-
-  const ex = EXAMPLES[exIdx];
-
-  const steps = STEP_LABELS.map((label, i) => {
-    const done = stepIdx > i;
-    const active = stepIdx === i;
-    return {
-      label,
-      color: done ? 'var(--accent)' : (active ? 'var(--text)' : 'var(--faint)'),
-      dot: done || active ? 'var(--accent)' : 'var(--border2)',
-      anim: active ? 'qw-pulse 1s ease-in-out infinite' : 'none'
-    };
-  });
-
-  const bars = ex.labels.map((label, i) => ({
-    label,
-    h: grown ? ex.values[i] + '%' : '3%'
-  }));
-
-  const examples = EXAMPLES.map((e, i) => ({
-    q: e.q,
-    onClick: () => playExample(i, true),
-    bg: i === exIdx ? 'var(--accent-soft)' : 'var(--surface)',
-    border: i === exIdx ? 'var(--accent-line)' : 'var(--border)',
-    color: i === exIdx ? 'var(--accent)' : 'var(--muted)'
-  }));
-
-  const shotLabels = ['Chat', 'SQL', 'Chart', 'Dashboard', 'Connections', 'Shared'];
-  const crumbs = [
-    'querywise.app/chats — acme_analytics',
-    'querywise.app/chats — generated query',
-    'querywise.app/chats — visualization',
-    'querywise.app/dashboards/company-kpis',
-    'querywise.app/connections',
-    'querywise.app/shared/x7f2-kq91-mv30 — public view'
-  ];
-  const shotTabs = shotLabels.map((label, i) => ({
-    label,
-    onClick: () => setShot(i),
-    bg: i === shot ? 'var(--accent)' : 'var(--surface)',
-    border: i === shot ? 'var(--accent)' : 'var(--border)',
-    color: i === shot ? 'var(--accent-ink)' : 'var(--muted)'
-  }));
-
-  const cur = FEATS[featIdx];
-  const feats = FEATS.map((f, i) => {
-    const on = i === featIdx;
-    return {
-      icon: f.icon, title: f.title, tag: f.tag,
-      onClick: () => setFeat(i),
-      bg: on ? 'var(--accent-soft)' : 'var(--surface)',
-      border: on ? 'var(--accent-line)' : 'var(--border)',
-      accent: on ? 'var(--accent)' : 'transparent',
-      iconBg: on ? 'var(--accent)' : 'var(--surface2)',
-      titleColor: on ? 'var(--text)' : 'var(--muted)'
-    };
-  });
-
-  const featCrumb = cur.crumb;
-  const featHeadline = cur.headline;
-  const featLine = cur.line;
-  const featIs0 = featIdx === 0;
-  const featIs1 = featIdx === 1;
-  const featIs2 = featIdx === 2;
-  const featIs3 = featIdx === 3;
-  const featIs4 = featIdx === 4;
-  const featIs5 = featIdx === 5;
-  const featIs6 = featIdx === 6;
-  
-  const shotCrumb = crumbs[shot];
-  const shotIs0 = shot === 0;
-  const shotIs1 = shot === 1;
-  const shotIs2 = shot === 2;
-  const shotIs3 = shot === 3;
-  const shotIs4 = shot === 4;
-  const shotIs5 = shot === 5;
-
-  const themeGlyph = theme === 'dark' ? '☀' : '☾';
-  const caretOn = phase === 'typing';
-  const showStatus = stepIdx >= 0;
-  const sqlLines = highlight(ex.sql);
-  const chartTitle = ex.chartTitle;
-  const chartMeta = ex.chartMeta;
-  const widgetMsg = ex.widget;
-
-  return (
-    <div style={{ background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', fontFamily: "'Space Grotesk', system-ui, sans-serif" }}>
-      
 
 
 
@@ -443,7 +177,198 @@ export default function QueryWiseLanding() {
 </section>
 
 
-<FeaturesJourney />
+<section id="features" data-screen-label="Features" style={{"padding": "110px 28px", "background": "var(--bg)"}}>
+  <div style={{"maxWidth": "1180px", "margin": "0 auto"}}>
+    <div data-reveal style={{"maxWidth": "640px"}}>
+      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>FEATURES</p>
+      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>Everything from question to answer</h2>
+    </div>
+    <div data-reveal style={{"display": "grid", "gridTemplateColumns": "326px 1fr", "gap": "22px", "marginTop": "52px", "alignItems": "stretch"}}>
+      
+      <div style={{"display": "flex", "flexDirection": "column", "gap": "8px"}}>
+        {feats.map((f, i) => (
+<React.Fragment key={i}>
+
+          <button onClick={f.onClick} style={{"textAlign": "left", "display": "flex", "alignItems": "center", "gap": "14px", "padding": "15px 17px", "borderRadius": "14px", "cursor": "pointer", "background": "{f.bg}", "border": "1px solid {f.border}", "borderLeft": "3px solid {f.accent}", "transition": "background 0.25s ease,border-color 0.25s ease,transform 0.25s ease"}} className="hover-style-10">
+            <span style={{"width": "38px", "height": "38px", "flexShrink": "0", "borderRadius": "11px", "background": "{f.iconBg}", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "18px", "transition": "background 0.25s ease"}}>{f.icon}</span>
+            <span style={{"display": "flex", "flexDirection": "column", "gap": "2px", "minWidth": "0"}}>
+              <span style={{"fontSize": "15.5px", "fontWeight": "600", "color": "{f.titleColor}", "transition": "color 0.25s ease"}}>{f.title}</span>
+              <span style={{"fontSize": "12.5px", "color": "var(--faint)", "lineHeight": "1.3"}}>{f.tag}</span>
+            </span>
+          </button>
+        
+</React.Fragment>
+))}
+      </div>
+      
+      <div style={{"position": "relative", "background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "20px", "boxShadow": "var(--shadow)", "overflow": "hidden", "minHeight": "456px", "display": "flex", "flexDirection": "column"}}>
+        <div style={{"display": "flex", "alignItems": "center", "gap": "8px", "padding": "13px 18px", "borderBottom": "1px solid var(--border)", "background": "var(--surface2)"}}>
+          <span style={{"width": "10px", "height": "10px", "borderRadius": "50%", "background": "#F26D6D"}}></span>
+          <span style={{"width": "10px", "height": "10px", "borderRadius": "50%", "background": "#F2C36D"}}></span>
+          <span style={{"width": "10px", "height": "10px", "borderRadius": "50%", "background": "#5FCB7E"}}></span>
+          <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)", "marginLeft": "10px"}}>{featCrumb}</span>
+        </div>
+        <div style={{"flex": "1", "padding": "34px 30px", "display": "flex", "flexDirection": "column", "alignItems": "center", "justifyContent": "center"}}>
+          <p style={{"fontSize": "15px", "lineHeight": "1.55", "color": "var(--muted)", "textAlign": "center", "maxWidth": "440px", "margin": "0 0 26px"}} key={featIdx}><b style={{"color": "var(--text)", "fontWeight": "600"}}>{featHeadline}</b> {featLine}</p>
+          
+          {featIs0 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "430px", "display": "flex", "flexDirection": "column", "gap": "12px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"alignSelf": "flex-end", "background": "var(--accent-soft)", "border": "1px solid var(--accent-line)", "borderRadius": "13px 13px 4px 13px", "padding": "11px 16px", "fontSize": "14px"}}>Which products sold the most?</div>
+              <div style={{"alignSelf": "flex-start", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "13px 13px 13px 4px", "padding": "11px 16px", "fontSize": "14px", "color": "var(--muted)", "maxWidth": "85%"}}>Top seller: <b style={{"color": "var(--text)", "fontWeight": "600"}}>Trail Pack</b> — 4,210 units ↓</div>
+              <div style={{"alignSelf": "flex-end", "background": "var(--accent-soft)", "border": "1px solid var(--accent-line)", "borderRadius": "13px 13px 4px 13px", "padding": "11px 16px", "fontSize": "14px"}}>And how's that trending?</div>
+            </div>
+          
+</React.Fragment>
+)}
+          
+          {featIs1 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "460px", "background": "var(--code-bg)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "20px 22px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "14px"}}>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "letterSpacing": "0.14em", "color": "#5F6F63"}}>GENERATED SQL</span>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "#5EE08A", "border": "1px solid rgba(94,224,138,0.3)", "borderRadius": "999px", "padding": "3px 10px"}}>✓ read-only</span>
+              </div>
+              <div style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "13px", "lineHeight": "1.85"}}>
+                <div><span style={{"color": "#5EE08A"}}>SELECT</span><span style={{"color": "#C9D6CC"}}> p.name, </span><span style={{"color": "#63B3ED"}}>SUM</span><span style={{"color": "#C9D6CC"}}>(oi.quantity)</span></div>
+                <div><span style={{"color": "#5EE08A"}}>FROM</span><span style={{"color": "#C9D6CC"}}> order_items oi</span></div>
+                <div><span style={{"color": "#5EE08A"}}>JOIN</span><span style={{"color": "#C9D6CC"}}> products p </span><span style={{"color": "#5EE08A"}}>ON</span><span style={{"color": "#C9D6CC"}}> p.id = oi.product_id</span></div>
+                <div><span style={{"color": "#5EE08A"}}>GROUP BY</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#D19A66"}}>1</span><span style={{"color": "#5EE08A"}}> ORDER BY</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#D19A66"}}>2</span><span style={{"color": "#5EE08A"}}> DESC</span><span style={{"color": "#C9D6CC"}}>;</span></div>
+              </div>
+            </div>
+          
+</React.Fragment>
+)}
+          
+          {featIs2 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "430px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"display": "flex", "gap": "6px", "marginBottom": "18px", "justifyContent": "center"}}>
+                <span style={{"fontSize": "12px", "fontWeight": "600", "color": "var(--accent-ink)", "background": "var(--accent)", "borderRadius": "8px", "padding": "5px 13px"}}>Bar</span>
+                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "8px", "padding": "5px 13px"}}>Line</span>
+                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "8px", "padding": "5px 13px"}}>Pie</span>
+                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "8px", "padding": "5px 13px"}}>Scatter</span>
+              </div>
+              <div style={{"display": "flex", "alignItems": "flex-end", "gap": "8px", "height": "150px"}}>
+                <div style={{"flex": "1", "height": "38%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out infinite"}}></div>
+                <div style={{"flex": "1", "height": "52%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 0.2s infinite"}}></div>
+                <div style={{"flex": "1", "height": "44%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 0.4s infinite"}}></div>
+                <div style={{"flex": "1", "height": "66%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 0.6s infinite"}}></div>
+                <div style={{"flex": "1", "height": "58%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 0.8s infinite"}}></div>
+                <div style={{"flex": "1", "height": "80%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 1s infinite"}}></div>
+                <div style={{"flex": "1", "height": "72%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 1.2s infinite"}}></div>
+                <div style={{"flex": "1", "height": "96%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "animation": "qw-breathe 3s ease-in-out 1.4s infinite"}}></div>
+              </div>
+            </div>
+          
+</React.Fragment>
+)}
+          
+          {featIs3 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "440px", "display": "grid", "gridTemplateColumns": "repeat(3,1fr)", "gap": "12px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"gridColumn": "span 2", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "15px", "height": "130px", "display": "flex", "flexDirection": "column"}}>
+                <span style={{"fontSize": "12px", "fontWeight": "600", "marginBottom": "auto"}}>Monthly revenue</span>
+                <div style={{"display": "flex", "alignItems": "flex-end", "gap": "5px", "height": "58%"}}>
+                  <div style={{"flex": "1", "height": "42%", "background": "var(--accent)", "opacity": "0.5", "borderRadius": "3px"}}></div>
+                  <div style={{"flex": "1", "height": "54%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px"}}></div>
+                  <div style={{"flex": "1", "height": "48%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px"}}></div>
+                  <div style={{"flex": "1", "height": "64%", "background": "var(--accent)", "opacity": "0.75", "borderRadius": "3px"}}></div>
+                  <div style={{"flex": "1", "height": "78%", "background": "var(--accent)", "borderRadius": "3px"}}></div>
+                </div>
+              </div>
+              <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "15px", "height": "130px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
+                <span style={{"fontSize": "12px", "fontWeight": "600"}}>Active users</span>
+                <span style={{"fontSize": "26px", "fontWeight": "700"}}>8,412</span>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "var(--accent)"}}>▲ 6.1%</span>
+              </div>
+              <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "15px", "height": "96px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
+                <span style={{"fontSize": "12px", "fontWeight": "600"}}>Churn</span>
+                <span style={{"fontSize": "22px", "fontWeight": "700"}}>1.8%</span>
+              </div>
+              <div style={{"gridColumn": "span 2", "background": "var(--surface2)", "border": "1px dashed var(--border2)", "borderRadius": "12px", "height": "96px", "display": "flex", "alignItems": "center", "justifyContent": "center", "color": "var(--faint)", "fontSize": "12.5px"}}>＋ drag any answer here</div>
+            </div>
+          
+</React.Fragment>
+)}
+          
+          {featIs4 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "440px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"display": "flex", "alignItems": "center", "gap": "10px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "11px", "padding": "11px 16px", "marginBottom": "14px"}}>
+                <span style={{"fontSize": "14px"}}>🔒</span>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "color": "var(--muted)", "overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"}}>querywise.app/shared/x7f2-kq91</span>
+                <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "var(--accent)", "flexShrink": "0"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)", "animation": "qw-pulse 1.8s ease-in-out infinite"}}></span>LIVE</span>
+              </div>
+              <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}}>
+                <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "15px", "height": "118px", "display": "flex", "flexDirection": "column"}}>
+                  <span style={{"fontSize": "12px", "fontWeight": "600", "marginBottom": "auto"}}>Signups</span>
+                  <div style={{"display": "flex", "alignItems": "flex-end", "gap": "4px", "height": "56%"}}>
+                    <div style={{"flex": "1", "height": "40%", "background": "var(--accent)", "opacity": "0.5", "borderRadius": "3px"}}></div>
+                    <div style={{"flex": "1", "height": "58%", "background": "var(--accent)", "opacity": "0.65", "borderRadius": "3px"}}></div>
+                    <div style={{"flex": "1", "height": "50%", "background": "var(--accent)", "opacity": "0.65", "borderRadius": "3px"}}></div>
+                    <div style={{"flex": "1", "height": "80%", "background": "var(--accent)", "borderRadius": "3px"}}></div>
+                  </div>
+                </div>
+                <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "15px", "height": "118px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
+                  <span style={{"fontSize": "12px", "fontWeight": "600"}}>MRR</span>
+                  <span style={{"fontSize": "26px", "fontWeight": "700"}}>$84.2k</span>
+                  <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "var(--accent)"}}>▲ 9.7%</span>
+                </div>
+              </div>
+            </div>
+          
+</React.Fragment>
+)}
+          
+          {featIs5 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "420px", "display": "flex", "flexDirection": "column", "alignItems": "center", "gap": "22px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"width": "74px", "height": "74px", "borderRadius": "20px", "background": "var(--accent-soft)", "border": "1px solid var(--accent-line)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "34px"}}>🛡️</div>
+              <div style={{"display": "flex", "gap": "10px", "flexWrap": "wrap", "justifyContent": "center"}}>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "999px", "padding": "7px 15px"}}>🔑 encrypted credentials</span>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "999px", "padding": "7px 15px"}}>👁 read-only validation</span>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "999px", "padding": "7px 15px"}}>📜 append-only audit log</span>
+              </div>
+            </div>
+          
+</React.Fragment>
+)}
+          
+          {featIs6 && (
+<React.Fragment>
+
+            <div style={{"width": "100%", "maxWidth": "430px", "display": "flex", "flexDirection": "column", "gap": "10px", "animation": "qw-fadeup 0.45s ease both"}}>
+              <div style={{"display": "flex", "alignItems": "center", "gap": "13px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "14px 16px"}}>
+                <span style={{"width": "34px", "height": "34px", "borderRadius": "9px", "background": "var(--accent-soft)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "15px"}}>🐘</span>
+                <span style={{"fontSize": "13.5px", "fontWeight": "600"}}>production_db</span>
+                <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontSize": "11.5px", "color": "var(--accent)"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)"}}></span>connected</span>
+              </div>
+              <div style={{"display": "flex", "alignItems": "center", "gap": "13px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "14px 16px"}}>
+                <span style={{"width": "34px", "height": "34px", "borderRadius": "9px", "background": "var(--accent-soft)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "15px"}}>🐘</span>
+                <span style={{"fontSize": "13.5px", "fontWeight": "600"}}>staging_db</span>
+                <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontSize": "11.5px", "color": "var(--accent)"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)"}}></span>connected</span>
+              </div>
+              <div style={{"display": "flex", "alignItems": "center", "gap": "13px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "14px 16px"}}>
+                <span style={{"width": "34px", "height": "34px", "borderRadius": "9px", "background": "var(--accent-soft)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "15px"}}>🐘</span>
+                <span style={{"fontSize": "13.5px", "fontWeight": "600"}}>dev_local</span>
+                <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontSize": "11.5px", "color": "#F2C36D"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "#F2C36D", "animation": "qw-pulse 1.6s ease-in-out infinite"}}></span>syncing</span>
+              </div>
+            </div>
+          
+</React.Fragment>
+)}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 
 <section id="how" data-screen-label="How it works" style={{"padding": "110px 28px", "background": "var(--bg2)", "borderTop": "1px solid var(--border)", "borderBottom": "1px solid var(--border)"}}>
@@ -994,7 +919,3 @@ export default function QueryWiseLanding() {
     <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)"}}>read-only by design 🔒</span>
   </div>
 </footer>
-
-    </div>
-  );
-}
