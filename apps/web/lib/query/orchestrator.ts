@@ -24,11 +24,7 @@ import {
   throwIfQueryRunAborted,
   unregisterActiveQueryRun,
 } from "./cancellation";
-
-function safeFailure(error: unknown): { code: string; message: string } {
-  if (error instanceof AppError) return { code: error.code, message: error.message };
-  return { code: "INTERNAL_ERROR", message: "The query could not be completed." };
-}
+import { toUserFacingError } from "./error-mapping";
 
 export async function executeDurableQueryRun(input: {
   queryRunId: string;
@@ -272,7 +268,7 @@ export async function executeDurableQueryRun(input: {
     });
     return run;
   } catch (error) {
-    const failure = safeFailure(error);
+    const failure = toUserFacingError(error);
     devLogError("query.run.failed", "Durable query run failed.", error, {
       queryRunId: run.id,
       status: run.status,

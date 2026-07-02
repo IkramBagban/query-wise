@@ -888,8 +888,8 @@ function AssistantMessage({
           <span className="text-[10px] text-text-3">{formatClockTime(message.createdAt)}</span>
         </div>
         <AgentSteps metadata={message.metadata} />
-        {!hasBlocks && message.content ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
-        {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.metadata.errorCode}</p> : null}
+        {!hasBlocks && message.content && !message.metadata.errorCode ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
+        {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.content || "Something went wrong while processing your query. Please try again."}</p> : null}
         {hasBlocks ? (
            <div className="mt-3 space-y-4">
              {blocks.map((block) => (
