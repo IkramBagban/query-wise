@@ -41,10 +41,24 @@ export interface MessageDto {
   contractVersion: ContractVersion; id: ResourceId; sequence: number; role: MessageRole; content: string;
   queryRunId: ResourceId | null; metadata: MessageRecord["metadata"]; createdAt: IsoDateTime;
 }
+export type QueryResultBlockValidation = "valid" | "blocked";
+export interface QueryResultBlock {
+  index: number;
+  purpose: string;
+  sql: string;
+  validation: QueryResultBlockValidation;
+  resultPreview: BoundedResultPreview;
+  rowCount: number;
+  totalRowCount: number | null;
+  truncated: boolean;
+  executionTimeMs: number;
+  chartConfig: ChartConfig | null;
+}
 export interface QueryRunRecord extends OwnedResource {
   conversationId: ResourceId; connectionId: ResourceId; triggeringMessageId: ResourceId; responseMessageId: ResourceId | null;
   idempotencyKey: string; requestFingerprint: string; status: QueryRunStatus; statusVersion: number; providerId: DataSourceProviderId;
-  dialectId: SqlDialectId; generatedQuery: ProviderQuery | null; resultPreview: BoundedResultPreview | null; returnedRowCount: number | null;
+  dialectId: SqlDialectId; generatedQuery: ProviderQuery | null; resultPreview: BoundedResultPreview | null; resultBlocks: QueryResultBlock[];
+  returnedRowCount: number | null;
   totalRowCount: number | null; truncated: boolean | null; executionTimeMs: number | null; generatedAt: IsoDateTime | null;
   startedAt: IsoDateTime | null; finishedAt: IsoDateTime | null; errorCode: string | null; errorMessage: string | null;
 }

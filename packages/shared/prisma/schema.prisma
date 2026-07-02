@@ -195,6 +195,7 @@ model QueryRun {
   generatedQuery      Json?          @map("generated_query")
   validationResult    Json?          @map("validation_result")
   resultPreview       Json?          @map("result_preview")
+  resultBlocks        Json           @default("[]") @map("result_blocks")
   returnedRowCount    Int?           @map("returned_row_count")
   totalRowCount       BigInt?        @map("total_row_count")
   truncated           Boolean?

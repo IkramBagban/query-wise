@@ -11,7 +11,7 @@ import {
   normalizePageLimit,
   requireFound,
 } from "@query-wise/shared/dal/core";
-import type { ConversationDto, MessageDto } from "@query-wise/shared/types";
+import type { ConversationDto, MessageDto, QueryResultBlock } from "@query-wise/shared/types";
 import type {
   ConversationDetail,
   ConversationListItem,
@@ -222,6 +222,7 @@ export async function listMessages(input: {
           status: run.status,
           generatedQuery: run.generatedQuery,
           resultPreview: run.resultPreview,
+          resultBlocks: run.resultBlocks as unknown as QueryResultBlock[],
           returnedRowCount: run.returnedRowCount,
           totalRowCount: run.totalRowCount == null ? null : Number(run.totalRowCount),
           truncated: run.truncated,

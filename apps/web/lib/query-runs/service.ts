@@ -5,7 +5,7 @@ import { getAppDb, withAppDbTransaction } from "@query-wise/shared/app-db";
 import { requireUser } from "@/lib/auth";
 import { appendMessage, DEFAULT_CONVERSATION_TITLE } from "@/lib/conversations";
 import { AppError, requireFound } from "@query-wise/shared/dal/core";
-import type { QueryRunDto, QueryRunStatus } from "@query-wise/shared/types";
+import type { QueryResultBlock, QueryRunDto, QueryRunStatus } from "@query-wise/shared/types";
 import { TERMINAL_QUERY_RUN_STATUSES, type QuerySubmission } from "./types";
 import { abortActiveQueryRun } from "@/lib/query/cancellation";
 import { writeAuditLog } from "@/lib/audit";
@@ -32,6 +32,7 @@ export function queryRunDto(run: QueryRun): QueryRunDto {
     dialectId: run.dialectId as QueryRunDto["dialectId"],
     generatedQuery: run.generatedQuery as unknown as QueryRunDto["generatedQuery"],
     resultPreview: run.resultPreview as unknown as QueryRunDto["resultPreview"],
+    resultBlocks: run.resultBlocks as unknown as QueryRunDto["resultBlocks"],
     returnedRowCount: run.returnedRowCount,
     totalRowCount: run.totalRowCount == null ? null : Number(run.totalRowCount),
     truncated: run.truncated,
@@ -281,6 +282,7 @@ export async function completeQueryRun(input: {
   metadata?: Prisma.InputJsonValue;
   generatedQuery?: Prisma.InputJsonValue;
   resultPreview?: Prisma.InputJsonValue;
+  resultBlocks?: QueryResultBlock[];
   returnedRowCount?: number;
   totalRowCount?: number | null;
   truncated?: boolean;
@@ -309,6 +311,9 @@ export async function completeQueryRun(input: {
         responseMessageId: response.id,
         generatedQuery: input.generatedQuery,
         resultPreview: input.resultPreview,
+        ...(input.resultBlocks
+          ? { resultBlocks: input.resultBlocks as unknown as Prisma.InputJsonValue }
+          : {}),
         returnedRowCount: input.returnedRowCount,
         totalRowCount: input.totalRowCount,
         truncated: input.truncated,

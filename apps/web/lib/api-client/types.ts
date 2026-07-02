@@ -27,6 +27,7 @@ export type ConversationMessageDto = MessageDto & {
     status: QueryRunDto["status"];
     generatedQuery: QueryRunDto["generatedQuery"];
     resultPreview: QueryRunDto["resultPreview"];
+    resultBlocks: QueryRunDto["resultBlocks"];
     returnedRowCount: number | null;
     totalRowCount: number | null;
     truncated: boolean | null;

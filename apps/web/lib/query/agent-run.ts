@@ -9,7 +9,7 @@ import type {
 import { completeQueryRun, transitionQueryRun } from "@/lib/query-runs";
 import { getBackendLlmConfig } from "@/lib/llm/client";
 import { devLog } from "@query-wise/shared/observability";
-import type { ChartConfig, ProviderQuery } from "@query-wise/shared/types";
+import type { ChartConfig, ProviderQuery, QueryResultBlock } from "@query-wise/shared/types";
 import type { ChatMessage, SchemaInfo } from "@/types";
 import { createResultPreview } from "./preview";
 import type { QueryRuntimeContext, QueryRuntimeDependencies } from "./runtime";
@@ -53,21 +53,11 @@ function blockV2ChartConfig(block: AgentResultBlock | undefined): ChartConfig | 
   return block?.chartConfig ? toV2ChartConfig(block.chartConfig) : null;
 }
 
-/** Full agent transcript + ordered blocks (multi-block persistence is T3). */
+/** Agent transcript remains message metadata for debugging and reproducibility. */
 function buildAgentMetadata(result: AnalystAgentResult): Prisma.InputJsonValue {
   const metadata: Record<string, unknown> = {
     schemaVersion: 1,
     agentV3: {
-      blocks: result.blocks.map((block) => ({
-        index: block.index,
-        purpose: block.purpose,
-        sql: block.sql,
-        chartConfig: blockV2ChartConfig(block),
-        resultPreview: createResultPreview(block.result),
-        rowCount: block.result.returnedRowCount,
-        truncated: block.result.truncated,
-        executionTimeMs: block.result.executionTimeMs,
-      })),
       transcript: result.transcript,
     },
   };
@@ -76,18 +66,36 @@ function buildAgentMetadata(result: AnalystAgentResult): Prisma.InputJsonValue {
   return metadata as unknown as Prisma.InputJsonValue;
 }
 
+/** Shape bounded agent results for first-class query-run persistence. */
+function buildResultBlocks(blocks: AgentResultBlock[]): QueryResultBlock[] {
+  return blocks.map((block) => {
+    const resultPreview = createResultPreview(block.result);
+    return {
+      index: block.index,
+      purpose: block.purpose,
+      sql: block.sql,
+      validation: "valid",
+      resultPreview,
+      rowCount: block.result.returnedRowCount,
+      totalRowCount: block.result.totalRowCount,
+      truncated: block.result.truncated || resultPreview.truncated,
+      executionTimeMs: block.result.executionTimeMs,
+      chartConfig: blockV2ChartConfig(block),
+    };
+  });
+}
+
 /** Mirror block 0 into the legacy single-result columns (dashboards, shares). */
-function buildLegacyMirror(block: AgentResultBlock | undefined) {
+function buildLegacyMirror(block: QueryResultBlock | undefined) {
   if (!block) return {};
   const query: ProviderQuery = { kind: "sql", dialectId: "postgresql", text: block.sql };
-  const preview = createResultPreview(block.result);
   return {
     generatedQuery: query as unknown as Prisma.InputJsonValue,
-    resultPreview: preview as unknown as Prisma.InputJsonValue,
-    returnedRowCount: block.result.returnedRowCount,
-    totalRowCount: block.result.totalRowCount,
-    truncated: block.result.truncated || preview.truncated,
-    executionTimeMs: block.result.executionTimeMs,
+    resultPreview: block.resultPreview as unknown as Prisma.InputJsonValue,
+    returnedRowCount: block.rowCount,
+    totalRowCount: block.totalRowCount,
+    truncated: block.truncated,
+    executionTimeMs: block.executionTimeMs,
   };
 }
 
@@ -147,11 +155,13 @@ export async function runAgentQueryRun(input: {
   throwIfQueryRunAborted(abortSignal);
   emit?.("status", statusEvent(run.status, run.statusVersion));
 
+  const resultBlocks = buildResultBlocks(result.blocks);
   run = await completeQueryRun({
     queryRunId: run.id,
     assistantContent: result.answer,
     metadata: buildAgentMetadata(result),
-    ...buildLegacyMirror(result.blocks[0]),
+    resultBlocks,
+    ...buildLegacyMirror(resultBlocks[0]),
   });
   emit?.("completed", { status: run.status, statusVersion: run.statusVersion });
 

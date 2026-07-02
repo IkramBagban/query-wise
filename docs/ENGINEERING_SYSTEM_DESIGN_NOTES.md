@@ -1450,3 +1450,14 @@ Why this is the right approach:
   3. Flag on, conversational message (no query): confirm zero blocks, answer persisted, no legacy result columns set.
   4. Cancel a run mid-flight (flag on) and confirm it terminates at the abort seam without persisting a completed result.
   5. `pnpm --filter web exec tsc --noEmit` and `pnpm build` both pass.
+
+## 56) First-class multi-block query results
+
+- What changed: Query runs now persist an ordered, bounded `resultBlocks` JSON list containing each block's index, purpose, SQL, validation status, preview, row counts, truncation state, execution time, and chart config. V3 assistant-message metadata retains the agent transcript but no longer duplicates block payloads. Query-run and conversation-message DTOs expose the block list, while block 0 is still mirrored into the legacy single-result columns.
+- Why: Compound analyst-agent answers need durable per-query results that the conversation UI can render directly without interpreting debugging metadata. A JSON column matches the existing bounded preview/chart persistence model and keeps each run's ordered blocks atomic with finalization.
+- Tradeoffs and risks: JSON does not support relational queries over individual blocks and relies on the typed repository boundary; this is acceptable while blocks are fetched and rendered as one bounded run payload. Existing rows receive an empty list, and legacy dashboard/public-share consumers remain limited to block 0 until they adopt block selection.
+- How to test:
+  1. Apply the Prisma migration and generate the Prisma client.
+  2. Run a V3 compound question and verify `result_blocks` contains ordered blocks while message metadata contains `agentV3.transcript`.
+  3. Fetch both `/api/query/:queryRunId` and `/api/conversations/:conversationId/messages`; confirm each query-run DTO exposes `resultBlocks`.
+  4. Confirm the legacy result columns equal block 0, then run `pnpm --filter web exec tsc --noEmit` and `pnpm build`.

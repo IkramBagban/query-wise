@@ -1,4 +1,4 @@
-import type { ConversationDto, MessageDto } from "@query-wise/shared/types";
+import type { ConversationDto, MessageDto, QueryResultBlock } from "@query-wise/shared/types";
 
 export interface ConversationListItem extends ConversationDto {
   messageCount: number;
@@ -19,6 +19,7 @@ export type ConversationMessageDto = MessageDto & {
     status: string;
     generatedQuery: unknown;
     resultPreview: unknown;
+    resultBlocks: QueryResultBlock[];
     returnedRowCount: number | null;
     totalRowCount: number | null;
     truncated: boolean | null;
