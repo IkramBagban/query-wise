@@ -8,16 +8,17 @@ import {
   recordQueryValidation,
   transitionQueryRun,
 } from "@/lib/query-runs";
-import { recentConversationHistory, setGeneratedConversationTitle } from "@/lib/conversations";
+import { recentConversationHistory } from "@/lib/conversations";
 import { beginExplainStream, planStagedNlSqlQuery } from "@/lib/nl-sql";
 import { AppError } from "@query-wise/shared/dal/core";
-import type { BoundedQueryResult, ChartConfig, ProviderQuery } from "@query-wise/shared/types";
+import type { BoundedQueryResult, ProviderQuery } from "@query-wise/shared/types";
 import { createResultPreview } from "./preview";
 import { getQueryRuntimeDependencies } from "./runtime";
 import { statusEvent, type QueryStreamEmitter } from "./sse";
 import { devLog, devLogError } from "@query-wise/shared/observability";
-import { generateConversationTitle } from "@/lib/llm/title";
 import { getBackendLlmConfig } from "@/lib/llm/client";
+import { runAgentQueryRun } from "./agent-run";
+import { elapsedMs, generateAndPersistTitle, toV2ChartConfig } from "./run-helpers";
 import {
   registerActiveQueryRun,
   throwIfQueryRunAborted,
@@ -27,48 +28,6 @@ import {
 function safeFailure(error: unknown): { code: string; message: string } {
   if (error instanceof AppError) return { code: error.code, message: error.message };
   return { code: "INTERNAL_ERROR", message: "The query could not be completed." };
-}
-
-function toV2ChartConfig(chart: ReturnType<typeof resolveChartConfig>): ChartConfig {
-  return {
-    schemaVersion: 1,
-    type: chart.type,
-    xKey: chart.xKey,
-    yKey: chart.yKey,
-    yKeys: chart.yKeys,
-    nameKey: chart.nameKey,
-    valueKey: chart.valueKey,
-    title: chart.title,
-  };
-}
-
-function elapsedMs(startedAt: number): number {
-  return Date.now() - startedAt;
-}
-
-async function generateAndPersistTitle(input: {
-  conversationId: string;
-  userMessage: string;
-  assistantMessage: string;
-  abortSignal: AbortSignal;
-  queryRunId: string;
-}): Promise<void> {
-  try {
-    const llmConfig = getBackendLlmConfig();
-    const title = await generateConversationTitle({
-      ...input,
-      provider: llmConfig.provider,
-      model: llmConfig.model,
-      apiKey: llmConfig.apiKey,
-    });
-    if (title) {
-      await setGeneratedConversationTitle(input.conversationId, title);
-    }
-  } catch (error) {
-    devLogError("conversation.title.generation-failed", "Conversation title generation failed.", error, {
-      queryRunId: input.queryRunId,
-    });
-  }
 }
 
 export async function executeDurableQueryRun(input: {
@@ -122,6 +81,28 @@ export async function executeDurableQueryRun(input: {
     run = await transitionQueryRun(run.id, "generating");
     throwIfQueryRunAborted(abortSignal);
     emit?.("status", statusEvent(run.status, run.statusVersion));
+
+    if (process.env.QUERYWISE_AGENT_V3 === "true") {
+      run = await runAgentQueryRun({
+        run,
+        context,
+        runtime,
+        schema,
+        history,
+        question: input.question,
+        emit,
+        abortSignal,
+      });
+      devLog("info", "query.run.succeeded", "Durable query run completed.", {
+        queryRunId: run.id,
+        status: run.status,
+        returnedRowCount: run.returnedRowCount,
+        executionTimeMs: run.executionTimeMs,
+        durationMs: elapsedMs(runStartedAt),
+      });
+      return run;
+    }
+
     const llm = {
       provider: llmConfig.provider,
       model: llmConfig.model,

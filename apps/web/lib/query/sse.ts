@@ -1,6 +1,13 @@
 import type { QueryRunStatus } from "@query-wise/shared/types";
 
-export type QueryStreamType = "status" | "text-delta" | "sql-preview" | "query-stats" | "completed" | "failed";
+export type QueryStreamType =
+  | "status"
+  | "text-delta"
+  | "sql-preview"
+  | "query-stats"
+  | "activity"
+  | "completed"
+  | "failed";
 export type QueryStreamEmitter = (type: QueryStreamType, data: unknown) => void;
 
 export function querySseResponse(queryRunId: string, execute: (emit: QueryStreamEmitter) => Promise<void>): Response {
