@@ -1556,3 +1556,14 @@ Why this is the right approach:
 - Why the decision was made: The previous timeline UI hid what the agent was actually doing under the hood (e.g. only showing "5 rows" instead of the SQL query). Modern generative UIs (like ChatGPT or Vercel AI SDK) expose these tool invocations to build user trust.
 - Tradeoffs: Tool arguments might occasionally contain large JSON structures, so we truncate strings or rely on the UI's max-height limits if necessary (currently relying on simple Markdown blocks).
 - How to test it: Run a query that requires the agent to call tools. Expand the tool call block in the UI. You should see an "Input" section displaying the exact JSON or SQL the agent generated, followed by the "Result" section.
+
+## Streaming UX Redesign — Phase 2 (2026-07-03)
+
+- What changed:
+  1. Reverted the hacky `providerOptions.anthropic.thinking` and `temperature === "anthropic" ? 1 : 0.2` from `agent/index.ts`. The agent loop is now provider-agnostic again.
+  2. `set_chart` tool calls are now hidden from the user in both the live stream and the finalized transcript. The chart result card renders the outcome directly — showing the raw JSON config input was redundant noise.
+  3. Empty "Thinking..." boxes no longer appear. The `start-step` event was creating an empty thinking block on every new AI step (even for non-reasoning models). Now, the thinking block is only created when the first `reasoning-delta` chunk actually arrives.
+  4. Added a chart skeleton placeholder that appears after SQL executes but before the final text streams in, giving the user visual continuity ("something is being built").
+- Why: The previous UI was dumping every internal tool call (including `set_chart`) as a raw JSON block, which exposed implementation details. Empty thinking boxes appeared because `start-step` fires for every model, not just reasoning-capable ones.
+- Tradeoffs: Hiding `set_chart` means if chart configuration errors occur, the user won't see the error in the UI — but these errors are already handled internally by the agent retry loop.
+- How to test: Send a query that generates a chart. Verify: (1) no "Configured chart" block appears, (2) no empty "Thinking..." box appears, (3) a pulsing chart skeleton shows briefly before the real chart renders, (4) status always says "Analyzing your data..." not "Queued".
