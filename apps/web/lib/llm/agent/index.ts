@@ -85,6 +85,11 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       stopWhen: stepCountIs(AGENT_BUDGETS.maxSteps),
       maxOutputTokens: 2500,
       temperature: 0.2,
+      providerOptions: {
+        google: {
+          thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
+        },
+      },
       abortSignal: params.abortSignal,
     });
     let text = "";

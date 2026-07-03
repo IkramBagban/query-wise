@@ -28,7 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/ConversationResultCard";
-import { AgentSteps, ReasoningBlock, ToolCallBlock } from "@/components/AgentActivity";
+import { AgentSteps, BouncingDots, ReasoningBlock, ToolCallBlock } from "@/components/AgentActivity";
 import { ComposerBox } from "@/components/ChatComposer";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -919,9 +919,7 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
            </div>
         )}
         {!state.textDelta && state.activities.length === 0 && state.blocks.length === 0 && (
-           <div className="mt-3 flex items-center gap-2 text-sm text-text-3">
-             <Spinner size="sm" />Analyzing your data...
-           </div>
+           <BouncingDots />
         )}
       </div>
     </div>
