@@ -88,16 +88,23 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       abortSignal: params.abortSignal,
     });
     let text = "";
+    let reasoning = "";
     for await (const part of result.fullStream) {
       if (part.type === "text-delta" && part.text) {
         text += part.text;
         streamedText = true;
         params.onTextDelta?.(part.text);
+      } else if (part.type === "reasoning-delta" && part.text) {
+        reasoning += part.text;
+        params.onActivity?.({ kind: "thinking-delta" as any, label: "Thinking", chunk: part.text } as any);
       } else if (part.type === "start-step") {
         params.onActivity?.({ kind: "thinking", label: "Thinking" });
       } else if (part.type === "error") {
         throw part.error;
       }
+    }
+    if (reasoning.trim()) {
+      state.transcript.push({ tool: "thinking", input: {}, outcome: "ok", summary: reasoning.trim() });
     }
     return text;
   };

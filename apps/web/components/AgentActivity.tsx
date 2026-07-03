@@ -11,16 +11,18 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { Markdown } from "@/components/ui/markdown";
 
 export interface ActivityItem {
   kind: string;
   label: string;
   tool?: string;
+  content?: string;
 }
 
 export interface TranscriptStep {
   tool: string;
-  outcome: "ok" | "error";
+  outcome: "ok" | "error" | "thinking";
   summary: string;
 }
 
@@ -64,9 +66,23 @@ export function ActivityTimeline({ items, live }: { items: ActivityItem[]; live?
             >
               {active ? <Spinner size="sm" className="size-3" /> : <Icon className="size-3" />}
             </span>
-            <span className={`min-w-0 pt-0.5 text-xs ${active ? "text-text-1" : "text-text-3"}`}>
-              {item.label}
-            </span>
+            <div className="min-w-0 flex-1 pt-0.5">
+              {item.content ? (
+                <details className="group">
+                  <summary className={`flex cursor-pointer select-none items-center gap-1.5 text-xs font-medium ${active ? "text-text-1" : "text-text-2"} hover:text-text-1 transition-colors`}>
+                    {item.label}
+                    <ChevronDown className="size-3 text-text-3 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-1.5 rounded-md border border-border bg-surface-2 p-3 text-xs text-text-2 leading-relaxed">
+                    <Markdown>{item.content}</Markdown>
+                  </div>
+                </details>
+              ) : (
+                <span className={`text-xs ${active ? "text-text-1" : "text-text-3"}`}>
+                  {item.label}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
@@ -82,7 +98,7 @@ export function parseAgentTranscript(metadata: unknown): TranscriptStep[] {
     if (!step || typeof step !== "object") return [];
     const { tool, outcome, summary } = step as Partial<TranscriptStep>;
     if (typeof tool !== "string" || typeof summary !== "string") return [];
-    return [{ tool, outcome: outcome === "error" ? "error" : "ok", summary }];
+    return [{ tool, outcome: outcome as "ok" | "error" | "thinking", summary }];
   });
 }
 
@@ -100,9 +116,10 @@ export function AgentSteps({ metadata }: { metadata: unknown }) {
       <div className="border-t border-border px-3 py-2.5">
         <ActivityTimeline
           items={steps.map((step) => ({
-            kind: step.outcome === "error" ? "retry" : "tool-result",
+            kind: step.outcome === "error" ? "retry" : step.outcome === "thinking" ? "thinking" : "tool-result",
             tool: step.tool,
-            label: `${TOOL_LABELS[step.tool] ?? step.tool} — ${step.summary}`,
+            label: step.outcome === "thinking" ? "Thinking" : `${TOOL_LABELS[step.tool] ?? step.tool}`,
+            content: step.summary,
           }))}
         />
       </div>

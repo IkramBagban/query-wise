@@ -29,6 +29,7 @@ export interface AgentActivityEvent {
   label: string;
   tool?: string;
   blockIndex?: number | null;
+  content?: string;
 }
 
 export interface AgentSqlPreviewEvent {
@@ -68,7 +69,7 @@ export interface AgentResultBlock {
 export interface AgentTranscriptStep {
   tool: string;
   input: unknown;
-  outcome: "ok" | "error";
+  outcome: "ok" | "error" | "thinking";
   summary: string;
 }
 

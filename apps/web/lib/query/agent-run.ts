@@ -153,7 +153,6 @@ export async function runAgentQueryRun(input: {
   throwIfQueryRunAborted(abortSignal);
   run = await transitionQueryRun(run.id, "persisting");
   throwIfQueryRunAborted(abortSignal);
-  emit?.("status", statusEvent(run.status, run.statusVersion));
 
   const resultBlocks = buildResultBlocks(result.blocks);
   run = await completeQueryRun({

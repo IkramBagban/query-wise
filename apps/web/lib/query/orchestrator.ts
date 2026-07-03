@@ -53,7 +53,6 @@ export async function executeDurableQueryRun(input: {
     throwIfQueryRunAborted(abortSignal);
     run = await transitionQueryRun(run.id, "preparing");
     throwIfQueryRunAborted(abortSignal);
-    emit?.("status", statusEvent(run.status, run.statusVersion));
     const runtime = getQueryRuntimeDependencies();
     const context = {
       ownerUserId: run.ownerUserId,
@@ -76,7 +75,6 @@ export async function executeDurableQueryRun(input: {
 
     run = await transitionQueryRun(run.id, "generating");
     throwIfQueryRunAborted(abortSignal);
-    emit?.("status", statusEvent(run.status, run.statusVersion));
 
     if (process.env.QUERYWISE_AGENT_V3 === "true") {
       run = await runAgentQueryRun({
@@ -112,7 +110,6 @@ export async function executeDurableQueryRun(input: {
       history,
       schema,
       llm,
-      onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
     });
     devLog("info", "query.run.planning-completed", "Query run NL-to-SQL planning completed.", {
       queryRunId: run.id,
@@ -130,7 +127,6 @@ export async function executeDurableQueryRun(input: {
       const persistenceStartedAt = Date.now();
       run = await transitionQueryRun(run.id, "persisting");
       throwIfQueryRunAborted(abortSignal);
-      emit?.("status", statusEvent(run.status, run.statusVersion));
       run = await completeQueryRun({
         queryRunId: run.id,
         assistantContent,
@@ -153,7 +149,6 @@ export async function executeDurableQueryRun(input: {
         generatedQuery: providerQuery as unknown as Prisma.InputJsonValue,
         generatedAt: new Date(),
       });
-      emit?.("status", statusEvent(run.status, run.statusVersion));
       throwIfQueryRunAborted(abortSignal);
       const validation = await runtime.validateReadQuery(context, providerQuery);
       run = await recordQueryValidation(run.id, {
@@ -175,7 +170,6 @@ export async function executeDurableQueryRun(input: {
       }
       run = await transitionQueryRun(run.id, "executing");
       throwIfQueryRunAborted(abortSignal);
-      emit?.("status", statusEvent(run.status, run.statusVersion));
       const executionStartedAt = Date.now();
       const completedResult: BoundedQueryResult = await runtime.executeValidatedReadQuery(
         context,
@@ -200,7 +194,6 @@ export async function executeDurableQueryRun(input: {
         sql: providerQuery.text,
         result: completedResult,
         llm,
-        onStage: (label) => emit?.("status", { status: run.status, statusVersion: run.statusVersion, label }),
       });
 
       for await (const chunk of explanationStream) {
@@ -230,7 +223,6 @@ export async function executeDurableQueryRun(input: {
       const persistenceStartedAt = Date.now();
       run = await transitionQueryRun(run.id, "persisting");
       throwIfQueryRunAborted(abortSignal);
-      emit?.("status", statusEvent(run.status, run.statusVersion));
       run = await completeQueryRun({
         queryRunId: run.id,
         assistantContent: explanationText,

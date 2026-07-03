@@ -457,7 +457,7 @@ export interface StreamBlock {
 export interface StreamState {
   status: string | null;
   textDelta: string;
-  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null }>;
+  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null; content?: string }>;
   blocks: StreamBlock[];
 }
 
@@ -474,6 +474,14 @@ function makeQueryEventHandler(
       }
       if (event.type === "activity") {
         const data = event.data as any;
+        if (data.kind === "thinking-delta") {
+           const activities = [...state.activities];
+           const last = activities[activities.length - 1];
+           if (last && last.kind === "thinking") {
+             last.content = (last.content || "") + data.chunk;
+           }
+           return { ...state, status: "Working", activities };
+        }
         return { ...state, status: "Working", activities: [...state.activities, data] };
       }
       if (event.type === "sql-preview") {
