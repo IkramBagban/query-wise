@@ -31,12 +31,14 @@ const TOOL_LABELS: Record<string, string> = {
   run_sql: "Ran SQL query",
   describe_tables: "Explored database schema",
   sample_values: "Sampled data values",
-  set_chart: "Configured chart",
 };
+
+/** Internal tools that should never be shown to the user. */
+const HIDDEN_TOOLS = new Set(["set_chart"]);
 
 /** Render a single reasoning block (Thinking) */
 export function ReasoningBlock({ content, live }: { content: string; live?: boolean }) {
-  if (!content && !live) return null;
+  if (!content?.trim()) return null;
   return (
     <details className="group mt-2 rounded-lg border border-border bg-surface-2/60" open={live}>
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium text-text-2 transition hover:text-text-1">
@@ -54,6 +56,7 @@ export function ReasoningBlock({ content, live }: { content: string; live?: bool
 
 /** Render a single tool call block */
 export function ToolCallBlock({ step, live }: { step: TranscriptStep; live?: boolean }) {
+  if (HIDDEN_TOOLS.has(step.tool)) return null;
   const Icon = step.outcome === "error" ? AlertTriangle : toolIcon(step.tool);
   const label = TOOL_LABELS[step.tool] || step.tool;
   const isError = step.outcome === "error";
@@ -117,9 +120,10 @@ export function AgentSteps({ metadata }: { metadata: unknown }) {
   return (
     <div className="flex flex-col">
       {steps.map((step, idx) => {
-        if (step.outcome === "thinking") {
+        if (step.tool === "thinking") {
           return <ReasoningBlock key={idx} content={step.summary} />;
         }
+        if (HIDDEN_TOOLS.has(step.tool)) return null;
         return <ToolCallBlock key={idx} step={step} />;
       })}
     </div>

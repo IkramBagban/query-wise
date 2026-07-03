@@ -835,6 +835,13 @@ function UserMessage({ message }: { message: ConversationMessageDto }) {
 }
 
 function PendingAssistantMessage({ state }: { state: StreamState }) {
+  /** Internal tools that should never be rendered to the user. */
+  const HIDDEN_TOOLS = new Set(["set_chart"]);
+
+  /** Whether the agent has finished executing SQL and we should show a chart placeholder. */
+  const hasExecutedSql = state.blocks.some(b => b.rowCount !== undefined);
+  const hasNoTextYet = !state.textDelta;
+
   return (
     <div className="flex items-start gap-3">
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
@@ -845,10 +852,12 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
         {state.activities.length > 0 && (
           <div className="mt-3 flex flex-col gap-1">
             {state.activities.map((activity, idx) => {
-              if (activity.kind === "thinking-delta" || activity.kind === "thinking") {
-                return <ReasoningBlock key={idx} content={activity.content || ""} live={!state.textDelta} />;
+              if (activity.kind === "thinking" && !(activity.content?.trim())) return null;
+              if (activity.kind === "thinking") {
+                return <ReasoningBlock key={idx} content={activity.content || ""} live={hasNoTextYet} />;
               }
               if (activity.kind === "tool-call" || activity.kind === "tool-result" || activity.kind === "retry") {
+                if (HIDDEN_TOOLS.has(activity.tool || "")) return null;
                 const step = {
                   tool: activity.tool || "",
                   input: activity.input,
@@ -882,6 +891,28 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
             )}
           </details>
         ))}
+        {/* Chart skeleton placeholder: shows once SQL data is back but chart is still being configured */}
+        {hasExecutedSql && hasNoTextYet && (
+          <div className="mt-3 animate-pulse rounded-xl border border-border bg-surface-2/60 p-4">
+            <div className="flex items-center justify-between">
+              <div className="h-3 w-28 rounded bg-border" />
+              <div className="h-3 w-16 rounded bg-border" />
+            </div>
+            <div className="mt-4 flex items-end gap-1.5">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex-1 rounded-t bg-accent/15"
+                  style={{ height: `${20 + Math.sin(i * 0.8) * 40 + 40}px` }}
+                />
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2 text-xs text-text-3">
+              <Spinner size="sm" />
+              Preparing visualization...
+            </div>
+          </div>
+        )}
         {state.textDelta && (
            <div className="mt-3">
              <Markdown>{state.textDelta}</Markdown>
@@ -889,7 +920,7 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
         )}
         {!state.textDelta && state.activities.length === 0 && state.blocks.length === 0 && (
            <div className="mt-3 flex items-center gap-2 text-sm text-text-3">
-             <Spinner size="sm" />{state.status ?? "Analyzing your data..."}
+             <Spinner size="sm" />Analyzing your data...
            </div>
         )}
       </div>

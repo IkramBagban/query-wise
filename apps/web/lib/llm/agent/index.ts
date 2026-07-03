@@ -95,10 +95,12 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
         streamedText = true;
         params.onTextDelta?.(part.text);
       } else if (part.type === "reasoning-delta" && part.text) {
+        if (!reasoning) {
+          // First reasoning chunk: create the thinking activity block
+          params.onActivity?.({ kind: "thinking", label: "Thinking" });
+        }
         reasoning += part.text;
         params.onActivity?.({ kind: "thinking-delta" as any, label: "Thinking", chunk: part.text } as any);
-      } else if (part.type === "start-step") {
-        params.onActivity?.({ kind: "thinking", label: "Thinking" });
       } else if (part.type === "error") {
         throw part.error;
       }
