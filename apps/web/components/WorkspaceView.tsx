@@ -478,7 +478,10 @@ function makeQueryEventHandler(
            const activities = [...state.activities];
            const last = activities[activities.length - 1];
            if (last && last.kind === "thinking") {
-             last.content = (last.content || "") + data.chunk;
+             activities[activities.length - 1] = {
+               ...last,
+               content: (last.content || "") + data.chunk,
+             };
            }
            return { ...state, status: "Working", activities };
         }
