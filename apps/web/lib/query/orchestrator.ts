@@ -18,6 +18,7 @@ import { statusEvent, type QueryStreamEmitter } from "./sse";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { getBackendLlmConfig } from "@/lib/llm/client";
 import { runAgentQueryRun } from "./agent-run";
+import { AgentExecutionError } from "@/lib/llm/agent/types";
 import { elapsedMs, generateAndPersistTitle, toV2ChartConfig } from "./run-helpers";
 import {
   registerActiveQueryRun,
@@ -266,7 +267,18 @@ export async function executeDurableQueryRun(input: {
       status: run.status,
       errorCode: failure.code,
     });
-    run = await failQueryRun(run.id, failure.code, failure.message);
+    let partialMetadata: Prisma.InputJsonValue | undefined;
+    if (error instanceof AgentExecutionError) {
+      partialMetadata = {
+        schemaVersion: 3,
+        agentV3: {
+          transcript: error.partialResult.transcript,
+          mode: error.partialResult.mode,
+        },
+      } as unknown as Prisma.InputJsonValue;
+    }
+    
+    run = await failQueryRun(run.id, failure.code, failure.message, partialMetadata);
     emit?.("failed", { status: run.status, statusVersion: run.statusVersion, error: failure });
     return run;
   } finally {

@@ -15,6 +15,14 @@ export interface SqlValidationOutcome {
   normalizedSql: string | null;
 }
 
+/** Error thrown when the agent fails, carrying the partial state so the UI doesn't lose the transcript. */
+export class AgentExecutionError extends Error {
+  constructor(message: string, public partialResult: Omit<AnalystAgentResult, "answer">, public cause?: unknown) {
+    super(message);
+    this.name = "AgentExecutionError";
+  }
+}
+
 /** Connection-scoped SQL runtime injected by the orchestrator. */
 export interface AnalystAgentRuntime {
   validateSql(sql: string): Promise<SqlValidationOutcome>;

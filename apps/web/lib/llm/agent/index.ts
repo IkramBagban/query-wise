@@ -12,6 +12,7 @@ import { createSampleValuesTool } from "./tools/sample-values";
 import { createSetChartTool } from "./tools/set-chart";
 import {
   AGENT_BUDGETS,
+  AgentExecutionError,
   type AgentRunState,
   type AnalystAgentResult,
   type RunAnalystAgentParams,
@@ -85,11 +86,6 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       stopWhen: stepCountIs(AGENT_BUDGETS.maxSteps),
       maxOutputTokens: 2500,
       temperature: 0.2,
-      providerOptions: {
-        google: {
-          thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
-        },
-      },
       abortSignal: params.abortSignal,
     });
     let text = "";
@@ -127,12 +123,21 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     } catch (error) {
       const sideEffects = streamedText || state.transcript.length > 0;
       const lastCandidate = index === candidates.length - 1;
-      if (sideEffects || lastCandidate || !shouldFallbackToAnotherModel(error)) throw error;
+      if (sideEffects || lastCandidate || !shouldFallbackToAnotherModel(error)) {
+        throw new AgentExecutionError(
+          error instanceof Error ? error.message : "Agent execution failed",
+          { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript },
+          error
+        );
+      }
     }
   }
 
   if (!answer.trim()) {
-    throw new AppError("QUERY_GENERATION_FAILED", "The model returned no answer text.");
+    throw new AgentExecutionError(
+      "The model returned no answer text.",
+      { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript }
+    );
   }
 
   for (const block of state.blocks) {

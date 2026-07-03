@@ -338,7 +338,7 @@ export async function completeQueryRun(input: {
   });
 }
 
-export async function failQueryRun(queryRunId: string, code: string, message: string): Promise<QueryRun> {
+export async function failQueryRun(queryRunId: string, code: string, message: string, partialMetadata?: Prisma.InputJsonValue): Promise<QueryRun> {
   const current = await getOwnedQueryRun(queryRunId);
   if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
   const safeMessage = message.slice(0, 1000);
@@ -353,7 +353,11 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
       role: "assistant",
       content: safeMessage,
       queryRunId: fresh.id,
-      metadata: { schemaVersion: 1, errorCode: code },
+      metadata: { 
+        ...(typeof partialMetadata === "object" && partialMetadata !== null ? partialMetadata : {}),
+        schemaVersion: 1, 
+        errorCode: code 
+      } as Prisma.InputJsonValue,
     });
     const run = await tx.queryRun.update({
       where: { id: fresh.id },
