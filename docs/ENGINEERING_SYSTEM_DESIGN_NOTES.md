@@ -1577,3 +1577,14 @@ Why this is the right approach:
 - Why: Gemini 2.5 Flash is a thinking model but the thoughts weren't being surfaced because `includeThoughts` was not set. The bouncing dots are the industry standard for "waiting for first token."
 - Tradeoffs: The 2048 thinking budget is modest. For complex queries the model might benefit from a higher budget, but this keeps response times fast.
 - How to test: Send a query. You should see: (1) bouncing dots appear instantly, (2) a "Thinking..." block streams the model's internal reasoning, (3) tool calls show a pulsing green dot while running.
+
+## Persistent Partial State on Agent Failure (2026-07-03)
+
+- What changed:
+  1. Created `AgentExecutionError` in `types.ts` that holds the `partialResult` (transcript, blocks, mode) of the agent when it crashes.
+  2. Modified `runAnalystAgent` to catch stream errors, attach the current partial state, and re-throw `AgentExecutionError`.
+  3. Updated the `orchestrator.ts` catch block to look for `AgentExecutionError`, extract the `transcript` and `mode`, and package it into `partialMetadata`.
+  4. Updated `failQueryRun` in the DB layer to accept and merge `partialMetadata`.
+- Why: Previously, if the agent did a lot of work (thought process, multiple tool calls) but hit an error at the very end (like rate limit, or model returned no text), the orchestrator would overwrite the entire message metadata with just `{ errorCode }`. This caused the UI to completely drop all the tool call history when the request finished.
+- Tradeoffs: Errors now carry potentially large payloads (the transcript). This is fine since it's just kept in memory until the orchestrator writes it to the database, where it would have been written on success anyway.
+- How to test: Force an error in the agent loop (e.g., throw right after the first tool call). The UI should transition to the error state (red banner) but the "Thought process" and tool calls that executed before the crash should remain visible on the screen.
