@@ -28,7 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/ConversationResultCard";
-import { ActivityTimeline, AgentSteps } from "@/components/AgentActivity";
+import { AgentSteps, ReasoningBlock, ToolCallBlock } from "@/components/AgentActivity";
 import { ComposerBox } from "@/components/ChatComposer";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -457,7 +457,7 @@ export interface StreamBlock {
 export interface StreamState {
   status: string | null;
   textDelta: string;
-  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null; content?: string }>;
+  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null; content?: string; input?: unknown }>;
   blocks: StreamBlock[];
 }
 
@@ -830,8 +830,22 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
         </div>
         {state.activities.length > 0 && (
-          <div className="mt-3 rounded-lg border border-border bg-surface-2/60 px-3 py-2.5">
-            <ActivityTimeline items={state.activities} live={!state.textDelta} />
+          <div className="mt-3 flex flex-col gap-1">
+            {state.activities.map((activity, idx) => {
+              if (activity.kind === "thinking-delta" || activity.kind === "thinking") {
+                return <ReasoningBlock key={idx} content={activity.content || ""} live={!state.textDelta} />;
+              }
+              if (activity.kind === "tool-call" || activity.kind === "tool-result" || activity.kind === "retry") {
+                const step = {
+                  tool: activity.tool || "",
+                  input: activity.input,
+                  outcome: (activity.kind === "retry" ? "error" : activity.kind === "tool-result" ? "ok" : "thinking") as "error" | "ok" | "thinking",
+                  summary: activity.label || "",
+                };
+                return <ToolCallBlock key={idx} step={step} live={activity.kind === "tool-call"} />;
+              }
+              return null;
+            })}
           </div>
         )}
         {state.blocks.map(block => (

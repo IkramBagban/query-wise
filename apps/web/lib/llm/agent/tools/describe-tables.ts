@@ -26,7 +26,7 @@ export function createDescribeTablesTool(deps: {
       tables: z.array(z.string().trim().min(1)).min(1).max(8),
     }),
     execute: async ({ tables }) => {
-      emitters.onActivity?.({ kind: "tool-call", tool: "describe_tables", label: `Looking at ${tables.join(", ")}` });
+      emitters.onActivity?.({ kind: "tool-call", tool: "describe_tables", label: `Looking at ${tables.join(", ")}`, input: { tables } });
       const found: SchemaTable[] = [];
       const missing: string[] = [];
       for (const name of tables) {

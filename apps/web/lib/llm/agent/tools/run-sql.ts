@@ -41,7 +41,7 @@ export function createRunSqlTool(deps: {
         return { error: "Query budget exhausted. Answer with the results you already have." };
       }
       state.sqlAttempts += 1;
-      emitters.onActivity?.({ kind: "tool-call", tool: "run_sql", label: `Running: ${purpose}` });
+      emitters.onActivity?.({ kind: "tool-call", tool: "run_sql", label: `Running: ${purpose}`, input: { sql, purpose } });
 
       const validation = await runtime.validateSql(sql);
       if (!validation.valid || !validation.normalizedSql) {

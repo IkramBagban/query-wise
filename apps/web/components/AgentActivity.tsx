@@ -3,32 +3,23 @@
 import {
   AlertTriangle,
   BarChart3,
-  CheckCircle2,
   ChevronDown,
   Database,
   ListTree,
   Sparkles,
-  TerminalSquare,
+  TerminalSquare
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Markdown } from "@/components/ui/markdown";
 
-export interface ActivityItem {
-  kind: string;
-  label: string;
-  tool?: string;
-  content?: string;
-}
-
 export interface TranscriptStep {
   tool: string;
+  input?: unknown;
   outcome: "ok" | "error" | "thinking";
   summary: string;
 }
 
-function stepIcon(tool: string | undefined, kind?: string) {
-  if (kind === "retry") return AlertTriangle;
-  if (kind === "thinking") return Sparkles;
+function toolIcon(tool: string | undefined) {
   if (tool === "run_sql") return TerminalSquare;
   if (tool === "describe_tables") return ListTree;
   if (tool === "sample_values") return Database;
@@ -37,56 +28,72 @@ function stepIcon(tool: string | undefined, kind?: string) {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  run_sql: "Ran query",
-  describe_tables: "Explored schema",
-  sample_values: "Sampled values",
-  set_chart: "Chose chart",
+  run_sql: "Ran SQL query",
+  describe_tables: "Explored database schema",
+  sample_values: "Sampled data values",
+  set_chart: "Configured chart",
 };
 
-/** Live vertical timeline shown while the agent is working. */
-export function ActivityTimeline({ items, live }: { items: ActivityItem[]; live?: boolean }) {
-  if (items.length === 0) return null;
+/** Render a single reasoning block (Thinking) */
+export function ReasoningBlock({ content, live }: { content: string; live?: boolean }) {
+  if (!content && !live) return null;
   return (
-    <div className="relative flex flex-col gap-0.5">
-      {items.map((item, index) => {
-        const Icon = stepIcon(item.tool, item.kind);
-        const isLast = index === items.length - 1;
-        const active = live && isLast;
-        return (
-          <div key={index} className="relative flex items-start gap-2.5 pb-2 last:pb-0">
-            {!isLast ? <span className="absolute left-[11px] top-6 h-full w-px bg-border" aria-hidden /> : null}
-            <span
-              className={`relative z-10 mt-0.5 inline-flex size-[22px] shrink-0 items-center justify-center rounded-full border ${
-                item.kind === "retry"
-                  ? "border-warning/40 bg-warning/10 text-warning"
-                  : active
-                    ? "border-accent-2/50 bg-accent-dim text-accent-2"
-                    : "border-border bg-surface-2 text-text-3"
-              }`}
-            >
-              {active ? <Spinner size="sm" className="size-3" /> : <Icon className="size-3" />}
-            </span>
-            <div className="min-w-0 flex-1 pt-0.5">
-              {item.content ? (
-                <details className="group">
-                  <summary className={`flex cursor-pointer select-none items-center gap-1.5 text-xs font-medium ${active ? "text-text-1" : "text-text-2"} hover:text-text-1 transition-colors`}>
-                    {item.label}
-                    <ChevronDown className="size-3 text-text-3 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <div className="mt-1.5 rounded-md border border-border bg-surface-2 p-3 text-xs text-text-2 leading-relaxed">
-                    <Markdown>{item.content}</Markdown>
-                  </div>
-                </details>
-              ) : (
-                <span className={`text-xs ${active ? "text-text-1" : "text-text-3"}`}>
-                  {item.label}
-                </span>
-              )}
+    <details className="group mt-2 rounded-lg border border-border bg-surface-2/60" open={live}>
+      <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium text-text-2 transition hover:text-text-1">
+        {live ? <Spinner size="sm" className="size-3 text-accent-2" /> : <Sparkles className="size-3 text-accent-2" />}
+        {live ? "Thinking..." : "Thought Process"}
+        <ChevronDown className="ml-auto size-3 text-text-3 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-border px-3 py-2.5 text-[13px] leading-relaxed text-text-2">
+        <Markdown>{content}</Markdown>
+        {live && <span className="ml-1 inline-block size-1.5 animate-pulse rounded-full bg-accent-2" />}
+      </div>
+    </details>
+  );
+}
+
+/** Render a single tool call block */
+export function ToolCallBlock({ step, live }: { step: TranscriptStep; live?: boolean }) {
+  const Icon = step.outcome === "error" ? AlertTriangle : toolIcon(step.tool);
+  const label = TOOL_LABELS[step.tool] || step.tool;
+  const isError = step.outcome === "error";
+
+  let inputDisplay = "";
+  if (step.input && typeof step.input === "object") {
+    if ("sql" in step.input && typeof step.input.sql === "string") {
+      inputDisplay = "```sql\n" + step.input.sql + "\n```";
+    } else {
+      inputDisplay = "```json\n" + JSON.stringify(step.input, null, 2) + "\n```";
+    }
+  }
+
+  return (
+    <details className={`group mt-2 rounded-lg border ${isError ? "border-danger/30 bg-danger/5" : "border-border bg-surface-1"}`} open={live}>
+      <summary className={`flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium transition ${isError ? "text-danger" : "text-text-2 hover:text-text-1"}`}>
+        {live && step.outcome !== "error" && step.outcome !== "ok" ? <Spinner size="sm" className="size-3" /> : <Icon className="size-3" />}
+        <span>{label}</span>
+        {step.summary && !isError && <span className="text-text-3 font-normal truncate max-w-[200px] hidden sm:inline-block">— {step.summary}</span>}
+        <ChevronDown className="ml-auto size-3 text-text-3 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-border/50 px-3 py-2.5 text-[13px] text-text-2">
+        {inputDisplay && (
+          <div className="mb-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-3">Input</span>
+            <div className="mt-1">
+              <Markdown>{inputDisplay}</Markdown>
             </div>
           </div>
-        );
-      })}
-    </div>
+        )}
+        {step.summary && (
+          <div>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-3">Result</span>
+            <div className={`mt-1 ${isError ? "text-danger" : "text-text-3"}`}>
+              {step.summary}
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -96,33 +103,25 @@ export function parseAgentTranscript(metadata: unknown): TranscriptStep[] {
   if (!Array.isArray(transcript)) return [];
   return transcript.flatMap((step) => {
     if (!step || typeof step !== "object") return [];
-    const { tool, outcome, summary } = step as Partial<TranscriptStep>;
+    const { tool, outcome, summary, input } = step as Partial<TranscriptStep>;
     if (typeof tool !== "string" || typeof summary !== "string") return [];
-    return [{ tool, outcome: outcome as "ok" | "error" | "thinking", summary }];
+    return [{ tool, outcome: outcome as "ok" | "error" | "thinking", summary, input }];
   });
 }
 
-/** Collapsible "how I got this" history on completed assistant messages. */
+/** Render finalized steps (from transcript) */
 export function AgentSteps({ metadata }: { metadata: unknown }) {
   const steps = parseAgentTranscript(metadata);
   if (steps.length === 0) return null;
+
   return (
-    <details className="group mt-2 rounded-lg border border-border bg-surface-2/60">
-      <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-1.5 text-[11px] text-text-3 transition hover:text-text-2">
-        <Sparkles className="size-3" />
-        {steps.length} step{steps.length === 1 ? "" : "s"}
-        <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="border-t border-border px-3 py-2.5">
-        <ActivityTimeline
-          items={steps.map((step) => ({
-            kind: step.outcome === "error" ? "retry" : step.outcome === "thinking" ? "thinking" : "tool-result",
-            tool: step.tool,
-            label: step.outcome === "thinking" ? "Thinking" : `${TOOL_LABELS[step.tool] ?? step.tool}`,
-            content: step.summary,
-          }))}
-        />
-      </div>
-    </details>
+    <div className="flex flex-col">
+      {steps.map((step, idx) => {
+        if (step.outcome === "thinking") {
+          return <ReasoningBlock key={idx} content={step.summary} />;
+        }
+        return <ToolCallBlock key={idx} step={step} />;
+      })}
+    </div>
   );
 }

@@ -45,7 +45,7 @@ export function createSampleValuesTool(deps: {
         return { error: "Sampling budget exhausted. Proceed with what you know." };
       }
       state.sampleCalls += 1;
-      emitters.onActivity?.({ kind: "tool-call", tool: "sample_values", label: `Sampling ${table}.${column}` });
+      emitters.onActivity?.({ kind: "tool-call", tool: "sample_values", label: `Sampling ${table}.${column}`, input: { table, column } });
 
       const schemaTable = findTable(schema, table);
       if (!schemaTable) {

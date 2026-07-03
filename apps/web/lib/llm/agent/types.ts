@@ -30,6 +30,7 @@ export interface AgentActivityEvent {
   tool?: string;
   blockIndex?: number | null;
   content?: string;
+  input?: unknown;
 }
 
 export interface AgentSqlPreviewEvent {
