@@ -482,6 +482,19 @@ function makeQueryEventHandler(
            }
            return { ...state, status: "Working", activities };
         }
+        if (data.kind === "tool-result" || data.kind === "retry") {
+           const activities = [...state.activities];
+           const lastToolCallIndex = activities.findLastIndex(a => a.kind === "tool-call" && a.tool === data.tool);
+           if (lastToolCallIndex >= 0) {
+              activities[lastToolCallIndex] = {
+                 ...activities[lastToolCallIndex],
+                 kind: data.kind,
+                 label: data.label,
+                 blockIndex: data.blockIndex
+              };
+              return { ...state, status: "Working", activities };
+           }
+        }
         return { ...state, status: "Working", activities: [...state.activities, data] };
       }
       if (event.type === "sql-preview") {
@@ -1174,7 +1187,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
     setPendingQuestion(trimmed);
     setSubmitting(true);
     setError(null);
-    setStreamState({ status: "Queued", textDelta: "", activities: [], blocks: [] });
+    setStreamState({ status: null, textDelta: "", activities: [], blocks: [] });
     try {
       await conversationsApi.submitStream({ conversationId, question: trimmed }, handleQueryEvent);
       await refreshMessages();
