@@ -1588,3 +1588,9 @@ Why this is the right approach:
 - Why: Previously, if the agent did a lot of work (thought process, multiple tool calls) but hit an error at the very end (like rate limit, or model returned no text), the orchestrator would overwrite the entire message metadata with just `{ errorCode }`. This caused the UI to completely drop all the tool call history when the request finished.
 - Tradeoffs: Errors now carry potentially large payloads (the transcript). This is fine since it's just kept in memory until the orchestrator writes it to the database, where it would have been written on success anyway.
 - How to test: Force an error in the agent loop (e.g., throw right after the first tool call). The UI should transition to the error state (red banner) but the "Thought process" and tool calls that executed before the crash should remain visible on the screen.
+
+## Fix React Strict Mode Mutation in UI Stream (2026-07-03)
+
+- What changed:
+  1. Updated the `useStream` reducer in `WorkspaceView.tsx` so that when `thinking-delta` events arrive, the last activity object is deep-cloned before appending `data.chunk` to its `content`.
+- Why: React Strict Mode runs state updater functions twice in development. By mutating `last.content` in place instead of creating a new object, the text chunk was being appended twice during every render pass, resulting in duplicated words ("WeWe need need").
