@@ -1542,3 +1542,10 @@ Why this is the right approach:
   3. Complete an ingestion with a valid provider and verify `v2_schema_embeddings` rows are persisted (no runtime insert error).
   4. Inspect a generated prompt / `SchemaColumn.topValues` and confirm sampled values appear (e.g. `top['active', 'pending']`).
   5. On a very large DB, confirm sampling stops at ~30s and does not delay snapshot completion indefinitely.
+
+## UI Redesign for Agent Streaming and Finalized State (2026-07-03)
+
+- What changed: Removed raw technical backend states (`queued`, `preparing`, etc.) from being streamed to the frontend, instead falling back to generic "Thinking..." or just relying on `ActivityTimeline`. Added support for AI SDK `reasoning-delta` chunks to stream live "Thinking" reasoning text to the user. Redesigned `ActivityTimeline` and `AgentSteps` to support collapsible, detailed steps so that both thinking and tool execution inputs/outputs can be read in full.
+- Why the decision was made: The raw stages felt disjointed and technical. The user wanted to see what the agent was actually thinking and running, rather than generic single-line labels or obscure statuses.
+- Tradeoffs: Relying on the `reasoning` chunk is primarily supported by Anthropic's Claude 3.7+ models. For models that do not natively stream separate reasoning chunks, they simply won't show the "Thinking" block.
+- How to test it: Run a query that takes several steps. The UI should no longer show stages like "queued" or "persisting". The live activity feed should show an expandable "Thinking" block with live-streamed text, and tool calls should be expandable to see inputs/outputs. When completed, the chat history should preserve these collapsible details instead of collapsing into a single "2 steps" row.
