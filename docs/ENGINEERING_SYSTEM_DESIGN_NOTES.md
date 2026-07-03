@@ -1567,3 +1567,13 @@ Why this is the right approach:
 - Why: The previous UI was dumping every internal tool call (including `set_chart`) as a raw JSON block, which exposed implementation details. Empty thinking boxes appeared because `start-step` fires for every model, not just reasoning-capable ones.
 - Tradeoffs: Hiding `set_chart` means if chart configuration errors occur, the user won't see the error in the UI — but these errors are already handled internally by the agent retry loop.
 - How to test: Send a query that generates a chart. Verify: (1) no "Configured chart" block appears, (2) no empty "Thinking..." box appears, (3) a pulsing chart skeleton shows briefly before the real chart renders, (4) status always says "Analyzing your data..." not "Queued".
+
+## Gemini Thinking Mode & UI Polish (2026-07-03)
+
+- What changed:
+  1. Enabled Gemini 2.5 Flash native thinking via `providerOptions.google.thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 }`. This is provider-scoped — the AI SDK silently ignores it for non-Google providers.
+  2. Replaced the "Analyzing your data..." text label with a minimal three-dot bouncing animation. The old label was misleading (implied active work) when the real delay is just network TTFT.
+  3. Polished the reasoning and tool call block UI: gradient borders, ping animation for live tool calls, check icons for completed ones.
+- Why: Gemini 2.5 Flash is a thinking model but the thoughts weren't being surfaced because `includeThoughts` was not set. The bouncing dots are the industry standard for "waiting for first token."
+- Tradeoffs: The 2048 thinking budget is modest. For complex queries the model might benefit from a higher budget, but this keeps response times fast.
+- How to test: Send a query. You should see: (1) bouncing dots appear instantly, (2) a "Thinking..." block streams the model's internal reasoning, (3) tool calls show a pulsing green dot while running.
