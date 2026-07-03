@@ -1549,3 +1549,10 @@ Why this is the right approach:
 - Why the decision was made: The raw stages felt disjointed and technical. The user wanted to see what the agent was actually thinking and running, rather than generic single-line labels or obscure statuses.
 - Tradeoffs: Relying on the `reasoning` chunk is primarily supported by Anthropic's Claude 3.7+ models. For models that do not natively stream separate reasoning chunks, they simply won't show the "Thinking" block.
 - How to test it: Run a query that takes several steps. The UI should no longer show stages like "queued" or "persisting". The live activity feed should show an expandable "Thinking" block with live-streamed text, and tool calls should be expandable to see inputs/outputs. When completed, the chat history should preserve these collapsible details instead of collapsing into a single "2 steps" row.
+
+## Tool Call Input Rendering Redesign (2026-07-03)
+
+- What changed: Replaced the generic `ActivityTimeline` UI with native `ReasoningBlock` and `ToolCallBlock` components inside the message stream. Updated agent tools (`run-sql`, `describe-tables`, `sample-values`) to emit their inputs alongside the activity event. Updated the UI to parse and display these inputs (like the actual SQL run) as properly formatted Markdown blocks.
+- Why the decision was made: The previous timeline UI hid what the agent was actually doing under the hood (e.g. only showing "5 rows" instead of the SQL query). Modern generative UIs (like ChatGPT or Vercel AI SDK) expose these tool invocations to build user trust.
+- Tradeoffs: Tool arguments might occasionally contain large JSON structures, so we truncate strings or rely on the UI's max-height limits if necessary (currently relying on simple Markdown blocks).
+- How to test it: Run a query that requires the agent to call tools. Expand the tool call block in the UI. You should see an "Input" section displaying the exact JSON or SQL the agent generated, followed by the "Result" section.
