@@ -13,9 +13,9 @@ const buttonVariants = cva(
       variant: {
         primary: "bg-accent text-accent-foreground hover:brightness-110",
         ghost:
-          "border border-border bg-transparent text-text-2 hover:border-border-2 hover:bg-surface-2 hover:text-text-1",
+          "border border-border bg-transparent text-muted hover:border-border-2 hover:bg-surface-2 hover:text-text",
         danger: "bg-danger/20 text-danger hover:bg-danger/30",
-        icon: "h-9 w-9 border border-border bg-surface text-text-2 hover:text-text-1",
+        icon: "h-9 w-9 border border-border bg-surface text-muted hover:text-text",
       },
       size: {
         sm: "h-8 px-3 text-xs",

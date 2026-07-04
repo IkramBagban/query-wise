@@ -177,14 +177,14 @@ export function DashboardGrid({
   return (
     <div className="space-y-2">
       {isEditing && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm text-text-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm text-faint">
           <div className="flex items-center gap-2">
-            <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-accent-2" />
+            <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-accent-strong" />
             <span>Drag widgets to rearrange · Resize from any edge or corner</span>
           </div>
           <div aria-live="polite" aria-atomic="true">
             {saveState === "saving" ? (
-              <span className="flex items-center gap-1.5 text-text-2">
+              <span className="flex items-center gap-1.5 text-muted">
                 <Spinner size="sm" /> Saving layout…
               </span>
             ) : saveState === "saved" ? (

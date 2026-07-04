@@ -101,7 +101,7 @@ function DashboardOwnerActions({
             </form>
           ) : (
             <div className="mt-4 space-y-4">
-              <p className="text-sm text-text-2">Delete “{dashboardName}” and all of its widgets? This cannot be undone.</p>
+              <p className="text-sm text-muted">Delete “{dashboardName}” and all of its widgets? This cannot be undone.</p>
               {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="ghost" disabled={busy} onClick={() => setMode(null)}>Cancel</Button>
@@ -202,11 +202,11 @@ export function DashboardsListView() {
               <Card key={dashboard.id} hoverable className="p-4">
                 <Link href={`/dashboards/${dashboard.id}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                 <div className="flex items-center justify-between">
-                  <BarChart3 className="h-5 w-5 text-accent-2" />
-                  <span className="text-xs capitalize text-text-3">{dashboard.access}</span>
+                  <BarChart3 className="h-5 w-5 text-accent-strong" />
+                  <span className="text-xs capitalize text-faint">{dashboard.access}</span>
                 </div>
                 <h2 className="mt-4 font-syne text-lg font-semibold">{dashboard.name}</h2>
-                <p className="mt-1 text-xs text-text-3">
+                <p className="mt-1 text-xs text-faint">
                   {dashboard.widgetCount ?? 0} widgets · updated{" "}
                   {new Date(dashboard.updatedAt).toLocaleDateString()}
                 </p>

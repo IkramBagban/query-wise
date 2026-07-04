@@ -143,9 +143,9 @@ export default function QueryWiseLanding() {
 
   useEffect(() => {
     let t = 'dark';
-    try { t = localStorage.getItem('qw-theme') || 'dark'; } catch(e) {}
+    try { t = localStorage.getItem('querywise.theme') || 'dark'; } catch(e) {}
     setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.classList.toggle('dark', t !== 'light');
 
     playExample(0, true);
 
@@ -173,8 +173,8 @@ export default function QueryWiseLanding() {
 
   const toggleTheme = () => {
     const t = theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('qw-theme', t); } catch (e) {}
+    document.documentElement.classList.toggle('dark', t !== 'light');
+    try { localStorage.setItem('querywise.theme', t); } catch (e) {}
     setTheme(t);
   };
 
@@ -357,14 +357,14 @@ export default function QueryWiseLanding() {
             <div style={{"background": "var(--code-bg)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "18px 20px", "animation": "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both"}}>
               <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "12px"}}>
                 <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "#5F6F63"}}>GENERATED SQL</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "#5EE08A", "border": "1px solid rgba(94,224,138,0.3)", "borderRadius": "999px", "padding": "3px 10px"}}>✓ read-only</span>
+                <span style={{fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5EE08A", border: "1px solid rgba(94,224,138,0.3)", borderRadius: "999px", padding: "3px 10px"}}>✓ read-only</span>
               </div>
               {sqlLines.map((ln, i) => (
 <React.Fragment key={i}>
 
-                <div style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "13px", "lineHeight": "1.75", "whiteSpace": "pre-wrap"}}>{ln.toks.map((tok, i) => (
+                <div style={{fontFamily: "'JetBrains Mono',monospace", fontSize: "13px", lineHeight: "1.75", whiteSpace: "pre-wrap"}}>{ln.toks.map((tok, i) => (
 <React.Fragment key={i}>
-<span style={{"color": "{tok.c}"}}>{tok.t}</span>
+<span style={{color: tok.c}}>{tok.t}</span>
 </React.Fragment>
 ))}</div>
               

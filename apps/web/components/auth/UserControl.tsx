@@ -8,8 +8,8 @@ export function UserControl({ iconOnly = false }: { iconOnly?: boolean }) {
       showName={!iconOnly}
       appearance={{
         elements: {
-          userButtonBox: "text-text-1",
-          userButtonOuterIdentifier: "text-sm font-medium text-text-1",
+          userButtonBox: "text-text",
+          userButtonOuterIdentifier: "text-sm font-medium text-text",
         },
       }}
     />

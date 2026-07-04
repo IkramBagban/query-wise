@@ -54,7 +54,7 @@ function SchemaStatus({ value }: { value: string }) {
 
 function PostgresMark({ compact = false }: { compact?: boolean }) {
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-accent-dim ${compact ? "size-8" : "size-11"}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-border bg-accent-soft ${compact ? "size-8" : "size-11"}`}>
       <img src="/icons/postgresql.svg" alt="PostgreSQL" className={compact ? "size-5" : "size-6"} />
     </span>
   );
@@ -74,16 +74,16 @@ function StatCard({
   tone?: "default" | "warning";
 }) {
   const dotClass = tone === "warning" ? "bg-warning" : "bg-success";
-  const iconWrap = tone === "warning" ? "bg-warning/15 text-warning" : "bg-accent-dim text-accent-2";
+  const iconWrap = tone === "warning" ? "bg-warning/15 text-warning" : "bg-accent-soft text-accent-strong";
   return (
     <Card className="flex items-center gap-3 p-4" hoverable>
       <span className={`inline-flex size-11 shrink-0 items-center justify-center rounded-xl ${iconWrap}`}>
         <Icon className="size-5" />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-xs text-text-3">{label}</p>
+        <p className="truncate text-xs text-faint">{label}</p>
         <p className="font-syne text-2xl font-semibold leading-tight">{value}</p>
-        <p className="mt-0.5 inline-flex items-center gap-1.5 text-[11px] text-text-3">
+        <p className="mt-0.5 inline-flex items-center gap-1.5 text-[11px] text-faint">
           <span className={`size-1.5 rounded-full ${dotClass}`} />
           {hint}
         </p>
@@ -198,8 +198,8 @@ function ModeToggle({
           onClick={() => onChange(m)}
           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             mode === m
-              ? "bg-accent-dim text-accent-2 shadow-sm"
-              : "text-text-3 hover:text-text-1"
+              ? "bg-accent-soft text-accent-strong shadow-sm"
+              : "text-faint hover:text-text"
           }`}
         >
           {m === "fields" ? "Fields" : "URL"}
@@ -275,7 +275,7 @@ function ConnectionFormFields({
         />
         <span className="text-sm">Require SSL</span>
       </label>
-      <p className="text-xs text-text-3">Credentials are encrypted and never shown again.</p>
+      <p className="text-xs text-faint">Credentials are encrypted and never shown again.</p>
     </div>
   );
 }
@@ -333,9 +333,9 @@ function AddConnectionDialog({
     <Dialog open={open} onOpenChange={onOpenChange} panelClassName="max-w-xl max-h-[90vh] overflow-y-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-2">New data source</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-strong">New data source</p>
           <h2 className="mt-1 font-syne text-2xl font-semibold">Add connection</h2>
-          <p className="mt-1 text-sm text-text-3">Choose a database and enter its secure connection details.</p>
+          <p className="mt-1 text-sm text-faint">Choose a database and enter its secure connection details.</p>
         </div>
         <Button type="button" variant="icon" aria-label="Close dialog" onClick={() => onOpenChange(false)}>
           <X />
@@ -344,18 +344,18 @@ function AddConnectionDialog({
 
       <form onSubmit={submit} className="mt-6 flex flex-col gap-5">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-text-2">Database type</label>
+          <label className="text-xs font-medium text-muted">Database type</label>
           <Select
             value="postgresql"
             onChange={() => {}}
             disabled
             options={[{ value: "postgresql", label: "PostgreSQL — Connect using a PostgreSQL connection string" }]}
           />
-          <p className="text-xs text-text-3">More database providers will be available later.</p>
+          <p className="text-xs text-faint">More database providers will be available later.</p>
         </div>
 
         <div className="flex items-center justify-between gap-4">
-          <span className="text-xs font-medium text-text-2">Connection details</span>
+          <span className="text-xs font-medium text-muted">Connection details</span>
           <ModeToggle mode={mode} onChange={(m) => { setMode(m); setTestPassed(false); }} />
         </div>
 
@@ -371,17 +371,17 @@ function AddConnectionDialog({
           <ConnectionFormFields fields={fields} onChange={(f) => { setFields(f); setTestPassed(false); }} />
         ) : (
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-text-2">Connection URL</label>
+            <label className="text-xs font-medium text-muted">Connection URL</label>
             <textarea
               required
               value={rawUrl}
               onChange={(e) => { setRawUrl(e.target.value); setTestPassed(false); }}
               placeholder="postgresql://user:password@host:5432/database"
               rows={3}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-text-1 placeholder:text-text-3 focus:border-border-2 focus:outline-none resize-none"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-text placeholder:text-faint focus:border-border-2 focus:outline-none resize-none"
               autoComplete="off"
             />
-            <p className="text-xs text-text-3">Credentials are encrypted and never shown again.</p>
+            <p className="text-xs text-faint">Credentials are encrypted and never shown again.</p>
           </div>
         )}
 
@@ -410,7 +410,7 @@ function AddConnectionDialog({
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <dt className="text-text-3">{label}</dt>
+      <dt className="text-faint">{label}</dt>
       <dd className="max-w-[60%] break-words text-right font-medium">{value}</dd>
     </div>
   );
@@ -443,9 +443,9 @@ function ConnectionCard({
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2">
               <span className="truncate font-syne text-base font-semibold">{connection.name}</span>
-              <span className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-3">PostgreSQL</span>
+              <span className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-faint">PostgreSQL</span>
             </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-3">
+            <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
               <Status value={connection.status} />
               <span className="inline-flex items-center gap-1.5"><Table2 className="size-3.5" /><SchemaStatus value={connection.schemaSyncStatus} /></span>
               <span className="inline-flex items-center gap-1.5"><RefreshCw className="size-3.5" />Last synced {formatRelativeTime(connection.lastSchemaSyncAt)}</span>
@@ -467,7 +467,7 @@ function ConnectionCard({
             <Trash2 />Delete
           </Button>
         </div>
-        <button type="button" onClick={onToggle} aria-label={expanded ? "Collapse" : "Expand"} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-2 hover:text-text-1">
+        <button type="button" onClick={onToggle} aria-label={expanded ? "Collapse" : "Expand"} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text">
           <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
         </button>
       </div>
@@ -617,7 +617,7 @@ export function ConnectionsListView() {
 
             <div className="mt-8 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Your data sources</h2>
-              <span className="text-xs text-text-3">{items.length} data source{items.length === 1 ? "" : "s"}</span>
+              <span className="text-xs text-faint">{items.length} data source{items.length === 1 ? "" : "s"}</span>
             </div>
 
             <div className="mt-3 flex flex-col gap-3">
@@ -637,7 +637,7 @@ export function ConnectionsListView() {
               <button
                 type="button"
                 onClick={() => setDialogOpen(true)}
-                className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border-2 bg-surface/40 px-4 py-3.5 text-sm font-medium text-accent-2 transition hover:border-accent hover:bg-accent-dim"
+                className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border-2 bg-surface/40 px-4 py-3.5 text-sm font-medium text-accent-strong transition hover:border-accent hover:bg-accent-soft"
               >
                 <Plus className="size-4" />Add another source
               </button>
@@ -645,11 +645,11 @@ export function ConnectionsListView() {
 
             <div className="mt-8 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-text-2">Supported sources</span>
-                <span className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-xs"><Database className="size-4 text-accent-2" />PostgreSQL</span>
+                <span className="text-xs font-semibold text-muted">Supported sources</span>
+                <span className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-xs"><Database className="size-4 text-accent-strong" />PostgreSQL</span>
               </div>
-              <div className="inline-flex items-start gap-2 text-xs text-text-3">
-                <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-accent-2" />
+              <div className="inline-flex items-start gap-2 text-xs text-faint">
+                <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-accent-strong" />
                 <span className="max-w-md">QueryWise auto-analyzes tables, columns, relationships, and sample values on every sync.</span>
               </div>
             </div>
@@ -683,5 +683,5 @@ export function ConnectionDetailView({ connectionId }: { connectionId: string })
   if (connection.error || !connection.data) return <ErrorState error={connection.error ?? new Error("Connection not found")} onRetry={() => void connection.refresh()} />;
   const item = connection.data;
   const act = async (key: string, action: () => Promise<unknown>, message: string) => { setBusy(key); setNotice(null); try { await action(); setNotice(message); await connection.refresh(); await schema.refresh(); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Action failed"); } finally { setBusy(null); } };
-  return <div className="space-y-6"><PageHeader eyebrow="Connection" title={item.name} description={`${item.hostDisplay}${item.port ? `:${item.port}` : ""} / ${item.databaseName}`} actions={<><Button variant="ghost" loading={busy === "test"} onClick={() => void act("test", () => connectionsApi.test(connectionId), "Connection test completed.")}><TestTube2 className="h-4 w-4" />Test</Button><Button variant="ghost" loading={busy === "refresh"} onClick={() => void act("refresh", () => connectionsApi.refreshSchema(connectionId), "Schema refresh queued.")}><RefreshCw className="h-4 w-4" />Refresh schema</Button><Button variant="danger" loading={busy === "delete"} onClick={() => void act("delete", async () => { await connectionsApi.remove(connectionId); router.push("/connections"); }, "Connection deleted.")}><Trash2 className="h-4 w-4" />Delete</Button></>} />{notice ? <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><Card className="p-5"><h2 className="font-syne text-lg font-semibold">Safe connection metadata</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2">{[["Provider", item.providerId], ["Status", item.status], ["Schema sync", item.schemaSyncStatus], ["Last tested", item.lastTestedAt ? new Date(item.lastTestedAt).toLocaleString() : "Never"], ["Last schema sync", item.lastSchemaSyncAt ? new Date(item.lastSchemaSyncAt).toLocaleString() : "Never"], ["Capabilities", item.capabilities.join(", ") || "None reported"]].map(([label, value]) => <div key={label}><dt className="text-xs uppercase tracking-wide text-text-3">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>)}</dl></Card><Card className="p-4"><h2 className="mb-3 font-syne text-lg font-semibold">Schema</h2>{schema.loading && !schema.data ? <SchemaBrowserSkeleton rows={5} /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />}</Card></div></div>;
+  return <div className="space-y-6"><PageHeader eyebrow="Connection" title={item.name} description={`${item.hostDisplay}${item.port ? `:${item.port}` : ""} / ${item.databaseName}`} actions={<><Button variant="ghost" loading={busy === "test"} onClick={() => void act("test", () => connectionsApi.test(connectionId), "Connection test completed.")}><TestTube2 className="h-4 w-4" />Test</Button><Button variant="ghost" loading={busy === "refresh"} onClick={() => void act("refresh", () => connectionsApi.refreshSchema(connectionId), "Schema refresh queued.")}><RefreshCw className="h-4 w-4" />Refresh schema</Button><Button variant="danger" loading={busy === "delete"} onClick={() => void act("delete", async () => { await connectionsApi.remove(connectionId); router.push("/connections"); }, "Connection deleted.")}><Trash2 className="h-4 w-4" />Delete</Button></>} />{notice ? <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><Card className="p-5"><h2 className="font-syne text-lg font-semibold">Safe connection metadata</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2">{[["Provider", item.providerId], ["Status", item.status], ["Schema sync", item.schemaSyncStatus], ["Last tested", item.lastTestedAt ? new Date(item.lastTestedAt).toLocaleString() : "Never"], ["Last schema sync", item.lastSchemaSyncAt ? new Date(item.lastSchemaSyncAt).toLocaleString() : "Never"], ["Capabilities", item.capabilities.join(", ") || "None reported"]].map(([label, value]) => <div key={label}><dt className="text-xs uppercase tracking-wide text-faint">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>)}</dl></Card><Card className="p-4"><h2 className="mb-3 font-syne text-lg font-semibold">Schema</h2>{schema.loading && !schema.data ? <SchemaBrowserSkeleton rows={5} /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />}</Card></div></div>;
 }

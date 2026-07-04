@@ -63,14 +63,14 @@ export function TableView({ result }: TableViewProps) {
   return (
     <div className="max-h-[350px] overflow-auto rounded-md border border-border">
       <table className="min-w-full border-separate border-spacing-0 text-xs">
-        <thead className="sticky top-0 bg-surface-3">
+        <thead className="sticky top-0 bg-surface-2">
           <tr>
             {result.columns.map((column) => {
               const active = sortBy?.key === column;
               return (
                 <th
                   key={column}
-                  className="cursor-pointer border-b border-border px-3 py-2 text-left text-text-2"
+                  className="cursor-pointer border-b border-border px-3 py-2 text-left text-muted"
                   onClick={() =>
                     setSortBy((prev) => {
                       if (prev?.key === column) {
@@ -105,7 +105,7 @@ export function TableView({ result }: TableViewProps) {
         </tbody>
       </table>
       {result.rowCount > 50 ? (
-        <p className="border-t border-border bg-surface p-2 text-xs text-text-3">Showing 50 of {result.rowCount} rows</p>
+        <p className="border-t border-border bg-surface p-2 text-xs text-faint">Showing 50 of {result.rowCount} rows</p>
       ) : null}
     </div>
   );

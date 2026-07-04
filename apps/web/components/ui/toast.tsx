@@ -52,13 +52,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-text-1">{toast.title}</p>
+                <p className="text-sm font-medium text-text">{toast.title}</p>
                 {toast.description ? (
-                  <p className="text-xs text-text-2">{toast.description}</p>
+                  <p className="text-xs text-muted">{toast.description}</p>
                 ) : null}
               </div>
               <button onClick={() => dismiss(toast.id)} aria-label="Dismiss toast">
-                <X className="h-3.5 w-3.5 text-text-3" />
+                <X className="h-3.5 w-3.5 text-faint" />
               </button>
             </div>
           </div>

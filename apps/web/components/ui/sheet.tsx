@@ -32,7 +32,7 @@ export function Sheet({ open, onOpenChange, children }: SheetProps) {
         <button
           type="button"
           onClick={() => onOpenChange(false)}
-          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent text-text-2 transition-colors hover:bg-black/5 hover:text-text-1"
+          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent text-muted transition-colors hover:bg-black/5 hover:text-text"
           aria-label="Close panel"
         >
           <X className="h-4 w-4" />

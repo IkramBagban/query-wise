@@ -20,7 +20,7 @@ export function PublicShareView({ token }: { token: string }) {
   const passwordRequired = apiError?.requiresPassword || apiError?.code === "SHARE_PASSWORD_REQUIRED";
   async function unlock(event: FormEvent) { event.preventDefault(); setUnlocking(true); setUnlockError(null); try { await publicSharesApi.unlock(token, password); setPassword(""); await resource.refresh(); } catch (reason) { const error = reason instanceof V2ApiError && reason.code === "SHARE_PASSWORD_INVALID" ? new Error("Incorrect password") : reason; setUnlockError(error instanceof Error ? error.message : "Unable to unlock share"); } finally { setUnlocking(false); } }
   if (resource.loading) return <main className="mx-auto max-w-7xl p-4 sm:p-8"><Skeleton className="mb-6 h-16 max-w-lg" /><div className="grid auto-rows-[18rem] gap-4 lg:grid-cols-2">{Array.from({ length: 4 }).map((_, index) => <Card key={index} className="flex h-full flex-col overflow-hidden"><div className="border-b border-border p-4"><Skeleton className="h-4 w-2/5" /></div><div className="min-h-0 flex-1 overflow-hidden p-4"><Skeleton className="h-full w-full" /></div></Card>)}</div></main>;
-  if (passwordRequired) return <main className="flex min-h-screen items-center justify-center p-5"><Card className="w-full max-w-md p-6"><LockKeyhole className="h-7 w-7 text-accent-2" /><h1 className="mt-4 font-syne text-2xl font-semibold">Password required</h1><p className="mt-1 text-sm text-text-3">Enter the password provided by the dashboard owner.</p><form onSubmit={unlock} className="mt-5 space-y-3"><Input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} label="Share password" />{unlockError ? <p className="text-sm text-danger">{unlockError}</p> : null}<Button className="w-full" type="submit" loading={unlocking}>Unlock dashboard</Button></form></Card></main>;
+  if (passwordRequired) return <main className="flex min-h-screen items-center justify-center p-5"><Card className="w-full max-w-md p-6"><LockKeyhole className="h-7 w-7 text-accent-strong" /><h1 className="mt-4 font-syne text-2xl font-semibold">Password required</h1><p className="mt-1 text-sm text-faint">Enter the password provided by the dashboard owner.</p><form onSubmit={unlock} className="mt-5 space-y-3"><Input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} label="Share password" />{unlockError ? <p className="text-sm text-danger">{unlockError}</p> : null}<Button className="w-full" type="submit" loading={unlocking}>Unlock dashboard</Button></form></Card></main>;
   if (resource.error || !resource.data) {
     const title = apiError?.code === "SHARE_EXPIRED" ? "This link has expired" : apiError?.code === "SHARE_REVOKED_OR_NOT_FOUND" ? "This link has been revoked" : "Shared dashboard unavailable";
     const message = apiError?.code === "SHARE_EXPIRED" ? "Ask the dashboard owner for a new share link." : apiError?.code === "SHARE_REVOKED_OR_NOT_FOUND" ? "This share link is no longer available." : (resource.error?.message ?? "Share not found");
@@ -32,9 +32,9 @@ export function PublicShareView({ token }: { token: string }) {
       <header className="flex items-start gap-3">
         <BrandMark className="size-10 rounded-xl" />
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-text-3">Shared QueryWise dashboard</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-faint">Shared QueryWise dashboard</p>
           <h1 className="font-syne text-3xl font-semibold">{data.dashboard.name}</h1>
-          <p className="text-xs text-text-3">Updated {new Date(data.dashboard.updatedAt).toLocaleString()}</p>
+          <p className="text-xs text-faint">Updated {new Date(data.dashboard.updatedAt).toLocaleString()}</p>
         </div>
       </header>
 
@@ -51,7 +51,7 @@ export function PublicShareView({ token }: { token: string }) {
                 <div className="flex h-full flex-col items-center justify-center rounded-lg border border-warning/30 bg-warning/10 p-5 text-center">
                   <AlertTriangle className="h-6 w-6 text-warning" />
                   <p className="mt-2 text-sm font-medium">Chart unavailable</p>
-                  <p className="mt-1 max-w-md text-xs text-text-3">{widget.error?.message ?? "This chart could not be refreshed."}</p>
+                  <p className="mt-1 max-w-md text-xs text-faint">{widget.error?.message ?? "This chart could not be refreshed."}</p>
                 </div>
               )}
             </div>

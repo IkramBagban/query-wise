@@ -32,7 +32,7 @@ export function previewToQueryResult(preview: BoundedResultPreview): QueryResult
 export function V2Chart({ preview, config }: { preview: unknown; config: ChartConfig }) {
   if (!isBoundedResultPreview(preview)) {
     return (
-      <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">
+      <p className="rounded-lg border border-dashed border-border p-4 text-xs text-faint">
         No chart data is available for this response.
       </p>
     );

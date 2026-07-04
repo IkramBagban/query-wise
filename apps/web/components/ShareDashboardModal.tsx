@@ -72,7 +72,7 @@ function ShareLinkCard({ link, onCopy, onRevoke, onRemove, busy, copiedId }: Sha
               </p>
               {link.urlAvailable && link.url ? (
                 <p
-                  className="mt-0.5 max-w-xs truncate font-mono text-xs text-text-3"
+                  className="mt-0.5 max-w-xs truncate font-mono text-xs text-faint"
                   title={link.url}
                 >
                   {link.url}
@@ -84,7 +84,7 @@ function ShareLinkCard({ link, onCopy, onRevoke, onRemove, busy, copiedId }: Sha
           </div>
         </div>
 
-        <p className="text-xs text-text-3">
+        <p className="text-xs text-faint">
           Created {formatShortDate(link.createdAt)}
           {" · "}
           {link.viewCount} {link.viewCount === 1 ? "view" : "views"}
@@ -97,7 +97,7 @@ function ShareLinkCard({ link, onCopy, onRevoke, onRemove, busy, copiedId }: Sha
 
         {confirmRevoke ? (
           <div className="flex flex-col gap-2 rounded-md border border-danger/30 bg-danger/5 p-3">
-            <p className="text-xs text-text-2">
+            <p className="text-xs text-muted">
               Are you sure? This link will stop working immediately.
             </p>
             <div className="flex gap-2">
@@ -208,7 +208,7 @@ function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormPr
       <h3 className="mb-4 text-sm font-semibold">Create share link</h3>
       <div className="space-y-4">
         <div>
-          <p className="mb-2 text-xs font-medium text-text-2">Password protection</p>
+          <p className="mb-2 text-xs font-medium text-muted">Password protection</p>
           <div className="flex gap-4">
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
@@ -233,7 +233,7 @@ function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormPr
                 onChange={() => setPasswordOption("required")}
                 className="h-4 w-4 accent-accent-2"
               />
-              <Lock className="h-3.5 w-3.5 text-text-3" />
+              <Lock className="h-3.5 w-3.5 text-faint" />
               Password required
             </label>
           </div>
@@ -255,7 +255,7 @@ function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormPr
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-medium text-text-2">Link expiry</p>
+          <p className="mb-2 text-xs font-medium text-muted">Link expiry</p>
           <Select value={expiry} onChange={setExpiry} options={EXPIRY_OPTIONS} className="w-full" />
           {expiry === "custom" && (
             <div className="mt-3">
@@ -366,7 +366,7 @@ export function ShareDashboardModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-syne text-xl font-semibold">Share dashboard</h2>
-            <p className="mt-1 text-sm text-text-3">
+            <p className="mt-1 text-sm text-faint">
               Generate public links — no login required for viewers.
             </p>
           </div>
@@ -392,7 +392,7 @@ export function ShareDashboardModal({
         )}
 
         <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium text-text-2">Active share links</h3>
+          <h3 className="text-sm font-medium text-muted">Active share links</h3>
           {shares.loading ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-28 w-full" />
@@ -402,9 +402,9 @@ export function ShareDashboardModal({
             <ErrorState error={shares.error} onRetry={() => void shares.refresh()} />
           ) : links.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-2 bg-surface p-10 text-center">
-              <Link2 className="h-7 w-7 text-text-3" />
+              <Link2 className="h-7 w-7 text-faint" />
               <p className="mt-3 font-medium">No active share links</p>
-              <p className="mt-1 text-sm text-text-3">
+              <p className="mt-1 text-sm text-faint">
                 Share this dashboard with anyone — no login required.
               </p>
               <Button
@@ -433,7 +433,7 @@ export function ShareDashboardModal({
         </div>
 
         {activeLinks.length > 0 && (
-          <p className="text-xs text-text-3">
+          <p className="text-xs text-faint">
             Anyone with these links can view data from your connected databases.
           </p>
         )}

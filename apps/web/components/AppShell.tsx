@@ -39,9 +39,9 @@ function NavLink({ href, label, icon: Icon, onClick }: {
     <Link
       href={href}
       onClick={onClick}
-      className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-accent-dim text-accent-2" : "text-text-2 hover:bg-surface-3 hover:text-text-1"}`}
+      className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-2 hover:text-text"}`}
     >
-      <Icon className={`h-4 w-4 shrink-0 ${active ? "text-accent-2" : "text-text-3 group-hover:text-text-1"}`} />
+      <Icon className={`h-4 w-4 shrink-0 ${active ? "text-accent-strong" : "text-faint group-hover:text-text"}`} />
       <span className="truncate">{label}</span>
     </Link>
   );
@@ -52,9 +52,9 @@ function NavButton({ label, icon: Icon, onClick }: { label: string; icon: typeof
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-text-2 transition hover:bg-surface-3 hover:text-text-1"
+      className="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-text"
     >
-      <Icon className="h-4 w-4 shrink-0 text-text-3 group-hover:text-text-1" />
+      <Icon className="h-4 w-4 shrink-0 text-faint group-hover:text-text" />
       <span className="truncate">{label}</span>
     </button>
   );
@@ -67,11 +67,11 @@ function SidebarChatLink({ href, label, meta, onClick }: { href: string; label: 
     <Link
       href={href}
       onClick={onClick}
-      className={`group flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition ${active ? "bg-accent-dim text-accent-2" : "text-text-2 hover:bg-surface-3 hover:text-text-1"}`}
+      className={`group flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition ${active ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-2 hover:text-text"}`}
     >
-      <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${active ? "text-accent-2" : "text-text-3 group-hover:text-text-2"}`} />
+      <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${active ? "text-accent-strong" : "text-faint group-hover:text-muted"}`} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {meta ? <span className="shrink-0 text-[10px] text-text-3">{meta}</span> : null}
+      {meta ? <span className="shrink-0 text-[10px] text-faint">{meta}</span> : null}
     </Link>
   );
 }
@@ -150,13 +150,13 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <section>
       <div className="mb-1.5 flex items-center justify-between px-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Chats</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">Chats</p>
         <Link
           href="/workspace/new"
           onClick={onNavigate}
           aria-label="New chat"
           title="New chat"
-          className="rounded-md p-1 text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+          className="rounded-md p-1 text-faint transition hover:bg-surface-2 hover:text-text"
         >
           <Plus className="h-3.5 w-3.5" />
         </Link>
@@ -172,10 +172,10 @@ function SidebarChatHistory({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
           />
         ))}
-        {!loading && !items.length && !error ? <p className="px-3 py-2 text-xs text-text-3">No conversations yet</p> : null}
-        {error ? <button type="button" onClick={() => void loadMore()} className="w-full rounded-lg px-3 py-2 text-left text-xs text-danger hover:bg-surface-3">Retry loading chats</button> : null}
+        {!loading && !items.length && !error ? <p className="px-3 py-2 text-xs text-faint">No conversations yet</p> : null}
+        {error ? <button type="button" onClick={() => void loadMore()} className="w-full rounded-lg px-3 py-2 text-left text-xs text-danger hover:bg-surface-2">Retry loading chats</button> : null}
         <div ref={loadMoreRef} className="flex min-h-8 items-center justify-center">
-          {loading && items.length ? <Spinner size="sm" className="text-text-3" label="Loading more chats" /> : null}
+          {loading && items.length ? <Spinner size="sm" className="text-faint" label="Loading more chats" /> : null}
         </div>
       </div>
     </section>
@@ -195,7 +195,7 @@ function IconNavLink({ href, label, icon: Icon, onClick }: {
         href={href}
         onClick={onClick}
         aria-label={label}
-        className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${active ? "bg-accent-dim text-accent-2" : "text-text-3 hover:bg-surface-3 hover:text-text-1"}`}
+        className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${active ? "bg-accent-soft text-accent-strong" : "text-faint hover:bg-surface-2 hover:text-text"}`}
       >
         <Icon className="h-4 w-4 shrink-0" />
       </Link>
@@ -210,7 +210,7 @@ function IconNavButton({ label, icon: Icon, onClick }: { label: string; icon: ty
         type="button"
         aria-label={label}
         onClick={onClick}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-text"
       >
         <Icon className="h-4 w-4 shrink-0" />
       </button>
@@ -258,7 +258,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
             type="button"
             aria-label="Expand sidebar"
             onClick={onToggleCollapse}
-            className="group mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm transition hover:bg-surface-3 hover:text-text-1"
+            className="group mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm transition hover:bg-surface-2 hover:text-text"
           >
             <BrandMark className="size-9 rounded-lg group-hover:hidden" />
             <ChevronRight className="hidden h-4 w-4 group-hover:block" />
@@ -281,7 +281,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
             href="/workspace/new"
             onClick={onNavigate}
             aria-label="New chat"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-text"
           >
             <Pencil className="h-4 w-4" />
           </Link>
@@ -310,14 +310,14 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
           type="button"
           aria-label="Collapse sidebar"
           onClick={onToggleCollapse}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-text"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
       </div>
 
       <div className="border-b border-border pb-4">
-        <p className="mb-1 mt-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Main</p>
+        <p className="mb-1 mt-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">Main</p>
         <nav className="space-y-1">
           <NavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <NavButton label="Search chats" icon={Search} onClick={openSearch} />
@@ -329,13 +329,13 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
       <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
         <section className="border-b border-border pb-4">
           <div className="mb-1.5 flex items-center justify-between px-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Dashboards</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">Dashboards</p>
             <Link
               href="/dashboards"
               onClick={onNavigate}
               aria-label="Create or manage dashboards"
               title="Create or manage dashboards"
-              className="rounded-md p-1 text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+              className="rounded-md p-1 text-faint transition hover:bg-surface-2 hover:text-text"
             >
               <Plus className="h-3.5 w-3.5" />
             </Link>
@@ -346,17 +346,17 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
                 key={item.id}
                 href={`/dashboards/${item.id}`}
                 onClick={onNavigate}
-                className={`group flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs transition ${pathname === `/dashboards/${item.id}` ? "bg-accent-dim text-accent-2" : "text-text-2 hover:bg-surface-3 hover:text-text-1"}`}
+                className={`group flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs transition ${pathname === `/dashboards/${item.id}` ? "bg-accent-soft text-accent-strong" : "text-muted hover:bg-surface-2 hover:text-text"}`}
               >
-                <BarChart3 className={`h-3.5 w-3.5 shrink-0 ${pathname === `/dashboards/${item.id}` ? "text-accent-2" : "text-text-3 group-hover:text-text-2"}`} />
+                <BarChart3 className={`h-3.5 w-3.5 shrink-0 ${pathname === `/dashboards/${item.id}` ? "text-accent-strong" : "text-faint group-hover:text-muted"}`} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                {item.widgetCount ? <span className="shrink-0 text-[10px] text-text-3">{item.widgetCount}</span> : null}
+                {item.widgetCount ? <span className="shrink-0 text-[10px] text-faint">{item.widgetCount}</span> : null}
               </Link>
             ))}
             {dashboardsLoading && !allDashboards.length ? <SidebarRowsSkeleton rows={3} /> : null}
-            {!dashboardsLoading && !allDashboards.length ? <Link href="/dashboards" onClick={onNavigate} className="block rounded-lg px-3 py-2 text-xs text-text-3 hover:bg-surface-3 hover:text-text-1">Create your first dashboard</Link> : null}
+            {!dashboardsLoading && !allDashboards.length ? <Link href="/dashboards" onClick={onNavigate} className="block rounded-lg px-3 py-2 text-xs text-faint hover:bg-surface-2 hover:text-text">Create your first dashboard</Link> : null}
             {hasMoreDashboards ? (
-              <Link href="/dashboards" onClick={onNavigate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-text-3 transition hover:text-text-1">
+              <Link href="/dashboards" onClick={onNavigate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-faint transition hover:text-text">
                 View all <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             ) : null}

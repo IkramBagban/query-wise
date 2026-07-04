@@ -77,18 +77,18 @@ export function ChatSearchDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} panelClassName="max-w-xl p-0 overflow-hidden">
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <Search className="size-4 shrink-0 text-text-3" />
+        <Search className="size-4 shrink-0 text-faint" />
         <input
           ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Search chats by title..."
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-text-3"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
           autoComplete="off"
           spellCheck={false}
         />
-        <kbd className="hidden shrink-0 rounded border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-3 sm:inline">esc</kbd>
+        <kbd className="hidden shrink-0 rounded border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] text-faint sm:inline">esc</kbd>
       </div>
 
       <div className="max-h-[60vh] overflow-y-auto p-2">
@@ -97,7 +97,7 @@ export function ChatSearchDialog({
         ) : error ? (
           <p className="px-3 py-8 text-center text-sm text-danger">{error}</p>
         ) : !results.length ? (
-          <p className="px-3 py-10 text-center text-sm text-text-3">
+          <p className="px-3 py-10 text-center text-sm text-faint">
             {query.trim() ? `No chats matching "${query.trim()}"` : "No conversations yet"}
           </p>
         ) : (
@@ -111,11 +111,11 @@ export function ChatSearchDialog({
                     go(item);
                   }}
                   onMouseEnter={() => setActiveIndex(index)}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${index === activeIndex ? "bg-accent-dim text-accent-2" : "text-text-2"}`}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${index === activeIndex ? "bg-accent-soft text-accent-strong" : "text-muted"}`}
                 >
-                  <MessageSquare className={`size-4 shrink-0 ${index === activeIndex ? "text-accent-2" : "text-text-3"}`} />
+                  <MessageSquare className={`size-4 shrink-0 ${index === activeIndex ? "text-accent-strong" : "text-faint"}`} />
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                  <span className="shrink-0 text-[10px] text-text-3">{formatRelativeTime(item.lastActivityAt, "")}</span>
+                  <span className="shrink-0 text-[10px] text-faint">{formatRelativeTime(item.lastActivityAt, "")}</span>
                 </Link>
               </li>
             ))}
