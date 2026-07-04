@@ -73,7 +73,7 @@ function ChartTypeSwitcher({
             aria-pressed={value === type}
             onClick={() => onChange(type)}
             className={`inline-flex size-7 items-center justify-center rounded-md transition ${
-              value === type ? "bg-accent-dim text-accent-2 shadow-sm" : "text-text-3 hover:text-text-1"
+              value === type ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
             }`}
           >
             <Icon className="size-3.5" />
@@ -97,7 +97,7 @@ function ChartSkeleton({ label }: { label: string }) {
           />
         ))}
       </div>
-      <p className="flex items-center gap-2 text-xs text-text-3">
+      <p className="flex items-center gap-2 text-xs text-faint">
         <span className="relative flex size-2">
           <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
           <span className="relative inline-flex size-2 rounded-full bg-accent" />
@@ -147,13 +147,13 @@ export function ResultBlockCard({
       : null;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_8px_28px_rgba(0,0,0,0.16)]">
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/80 bg-surface-2/40 px-4 py-2.5">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text-1">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">
           {title || "Query result"}
         </span>
         {running ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-dim px-2 py-0.5 text-[10px] font-medium text-accent-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-strong">
             <span className="relative flex size-1.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
               <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
@@ -161,7 +161,7 @@ export function ResultBlockCard({
             Running
           </span>
         ) : statsLabel ? (
-          <span className="tabular-nums text-[11px] text-text-3">{statsLabel}</span>
+          <span className="tabular-nums text-[11px] text-faint">{statsLabel}</span>
         ) : null}
       </div>
 
@@ -175,7 +175,7 @@ export function ResultBlockCard({
               aria-selected={tab === value}
               onClick={() => setTab(value)}
               className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
-                tab === value ? "bg-surface text-text-1 shadow-sm" : "text-text-3 hover:text-text-1"
+                tab === value ? "bg-surface text-text shadow-sm" : "text-faint hover:text-text"
               }`}
             >
               <Icon className="size-3.5" />
@@ -207,16 +207,16 @@ export function ResultBlockCard({
               <TableView result={previewToQueryResult(preview)} />
             </div>
           ) : (
-            <p className="rounded-xl border border-dashed border-border p-4 text-xs text-text-3">
+            <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">
               {running ? "The query is still running." : "No rows to show yet."}
             </p>
           )
         ) : null}
         {tab === "sql" ? (
           sql ? (
-            <CodeBlock sql={sql} variant="dark" />
+            <CodeBlock sql={sql} />
           ) : (
-            <p className="rounded-xl border border-dashed border-border p-4 text-xs text-text-3">
+            <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">
               No SQL was generated for this response.
             </p>
           )

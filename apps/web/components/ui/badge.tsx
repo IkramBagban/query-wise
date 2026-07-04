@@ -5,7 +5,7 @@ const variantClasses = {
   warning: "bg-warning/20 text-warning",
   danger: "bg-danger/20 text-danger",
   info: "bg-accent text-accent-foreground",
-  neutral: "bg-surface-3 text-text-2",
+  neutral: "bg-surface-2 text-muted",
 } as const;
 
 interface BadgeProps {

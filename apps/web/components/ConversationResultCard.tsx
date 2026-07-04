@@ -63,7 +63,7 @@ function IconAction({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="inline-flex size-7 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-2 hover:text-text-1"
+      className="inline-flex size-7 items-center justify-center rounded-md text-faint transition hover:bg-surface-2 hover:text-text"
     >
       {children}
     </button>
@@ -166,7 +166,7 @@ function DashboardMenu({
       )}
       {open ? (
         <div className="absolute right-0 top-9 z-50 w-64 rounded-xl border border-border bg-surface p-2 shadow-xl">
-          <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Choose dashboard</p>
+          <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">Choose dashboard</p>
           <div className="flex max-h-52 flex-col gap-0.5 overflow-y-auto">
             {dashboardOptions.map((dashboard) => (
               <button key={dashboard.value} type="button" disabled={busyId !== null} onClick={() => void save(dashboard.value)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-xs font-medium hover:bg-surface-2 disabled:opacity-60">
@@ -174,19 +174,19 @@ function DashboardMenu({
                 {busyId === dashboard.value ? <Spinner size="sm" label={`Saving to ${dashboard.label}`} /> : null}
               </button>
             ))}
-            {!dashboardOptions.length ? <p className="px-2 py-3 text-xs text-text-3">No dashboards yet.</p> : null}
+            {!dashboardOptions.length ? <p className="px-2 py-3 text-xs text-faint">No dashboards yet.</p> : null}
           </div>
           <div className="mt-2 border-t border-border pt-2">
             {creating ? (
               <div className="flex flex-col gap-2">
                 <input autoFocus value={newName} onChange={(event) => setNewName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createAndSave(); }} placeholder="Dashboard name" className="h-9 rounded-md border border-border bg-surface px-3 text-xs outline-none focus:border-accent" />
                 <div className="flex justify-end gap-2">
-                  <button type="button" className="px-2 py-1 text-xs text-text-3 hover:text-text-1" onClick={() => setCreating(false)}>Cancel</button>
-                  <button type="button" disabled={!newName.trim() || busyId !== null} className="px-2 py-1 text-xs font-semibold text-accent-2 disabled:opacity-50" onClick={() => void createAndSave()}>{busyId === "new" ? "Creating..." : "Create and save"}</button>
+                  <button type="button" className="px-2 py-1 text-xs text-faint hover:text-text" onClick={() => setCreating(false)}>Cancel</button>
+                  <button type="button" disabled={!newName.trim() || busyId !== null} className="px-2 py-1 text-xs font-semibold text-accent-strong disabled:opacity-50" onClick={() => void createAndSave()}>{busyId === "new" ? "Creating..." : "Create and save"}</button>
                 </div>
               </div>
             ) : (
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold text-accent-2 hover:bg-accent-dim" onClick={() => setCreating(true)}><Plus className="size-3.5" />Create new dashboard</button>
+              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold text-accent-strong hover:bg-accent-soft" onClick={() => setCreating(true)}><Plus className="size-3.5" />Create new dashboard</button>
             )}
             {error ? <p className="mt-2 px-2 text-xs text-danger">{error}</p> : null}
           </div>
@@ -264,23 +264,23 @@ export function ConversationResultCard({
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen} panelClassName="max-h-[92vh] max-w-[96vw] overflow-y-auto p-4 sm:max-w-6xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-2">Chart details {block ? `(Block ${block.index})` : ""}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-strong">Chart details {block ? `(Block ${block.index})` : ""}</p>
             <h2 className="mt-1 font-syne text-2xl font-semibold">{config.title ?? block?.purpose ?? "Query result"}</h2>
-            <p className="mt-1 text-xs text-text-3">{formatNumber(rowCount)} rows{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</p>
+            <p className="mt-1 text-xs text-faint">{formatNumber(rowCount)} rows{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</p>
           </div>
-          <button type="button" aria-label="Close chart details" onClick={() => setDetailsOpen(false)} className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text-1 shadow-sm transition hover:bg-surface-2"><X className="size-5" /></button>
+          <button type="button" aria-label="Close chart details" onClick={() => setDetailsOpen(false)} className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text shadow-sm transition hover:bg-surface-2"><X className="size-5" /></button>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
           <div className="flex flex-wrap gap-1.5" aria-label="Chart type">
             {CHART_TYPES.map(({ label, value, icon: Icon }) => (
-              <button key={value} type="button" title={label} aria-label={`${label} chart`} onClick={() => setChartType(value)} className={`inline-flex size-9 items-center justify-center rounded-lg border transition ${chartType === value ? "border-accent bg-accent-dim text-accent-2" : "border-border text-text-3 hover:bg-surface-2 hover:text-text-1"}`}><Icon className="size-4" /></button>
+              <button key={value} type="button" title={label} aria-label={`${label} chart`} onClick={() => setChartType(value)} className={`inline-flex size-9 items-center justify-center rounded-lg border transition ${chartType === value ? "border-accent bg-accent-soft text-accent-strong" : "border-border text-faint hover:bg-surface-2 hover:text-text"}`}><Icon className="size-4" /></button>
             ))}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-lg border border-border p-0.5">
-              <button type="button" title="Chart view" aria-label="Show chart" onClick={() => setDetailsView("chart")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "chart" ? "bg-accent-dim text-accent-2" : "text-text-3 hover:text-text-1"}`}><BarChart3 className="size-4" /></button>
-              <button type="button" title="Table view" aria-label="Show raw data table" onClick={() => setDetailsView("table")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "table" ? "bg-accent-dim text-accent-2" : "text-text-3 hover:text-text-1"}`}><Table2 className="size-4" /></button>
+              <button type="button" title="Chart view" aria-label="Show chart" onClick={() => setDetailsView("chart")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "chart" ? "bg-accent-soft text-accent-strong" : "text-faint hover:text-text"}`}><BarChart3 className="size-4" /></button>
+              <button type="button" title="Table view" aria-label="Show raw data table" onClick={() => setDetailsView("table")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "table" ? "bg-accent-soft text-accent-strong" : "text-faint hover:text-text"}`}><Table2 className="size-4" /></button>
             </div>
             <ExportMenu onExport={exportResult} />
             {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="label" />}
@@ -290,13 +290,13 @@ export function ConversationResultCard({
         <div className="mt-5 h-90 rounded-xl border border-border bg-surface-2/40 p-3">
           {detailsView === "chart" ? <V2Chart preview={preview} config={config} /> : <TableView result={result} />}
         </div>
-        <details className="mt-5 overflow-hidden rounded-xl border border-border bg-[#102117] text-white shadow-sm">
+        <details className="mt-5 overflow-hidden rounded-xl border border-border bg-surface-2 shadow-sm">
           <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold">
             <span className="inline-flex items-center gap-2"><Code2 className="size-4 text-accent" />Generated SQL</span>
-            <ChevronDown className="size-4 text-text-3" />
+            <ChevronDown className="size-4 text-faint" />
           </summary>
-          <div className="border-t border-white/10 p-3">
-            {sqlText ? <CodeBlock sql={sqlText} variant="dark" /> : <p className="text-sm text-white/60">No SQL was generated for this response.</p>}
+          <div className="border-t border-border p-3">
+            {sqlText ? <CodeBlock sql={sqlText} /> : <p className="text-sm text-muted">No SQL was generated for this response.</p>}
           </div>
         </details>
       </Dialog>

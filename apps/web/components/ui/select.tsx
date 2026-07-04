@@ -67,16 +67,16 @@ export function Select({
         type="button"
         disabled={disabled}
         className={cn(
-          "h-9 w-full cursor-pointer rounded-md border border-border bg-surface px-3 text-left text-xs text-text-1",
+          "h-9 w-full cursor-pointer rounded-md border border-border bg-surface px-3 text-left text-xs text-text",
           "inline-flex items-center justify-between gap-2 transition-colors",
           open ? "border-border-2" : "hover:border-border-2",
           disabled && "cursor-not-allowed opacity-50",
         )}
         onClick={() => !disabled && setOpen((prev) => !prev)}
       >
-        {icon ? <span className="flex shrink-0 items-center text-text-3">{icon}</span> : null}
+        {icon ? <span className="flex shrink-0 items-center text-faint">{icon}</span> : null}
         <span className="truncate">{selected?.label ?? "Select"}</span>
-        <ChevronDown className={cn("h-3.5 w-3.5 text-text-3 transition-transform", open && "rotate-180")} />
+        <ChevronDown className={cn("h-3.5 w-3.5 text-faint transition-transform", open && "rotate-180")} />
       </button>
 
       {open ? (
@@ -101,7 +101,7 @@ export function Select({
                 type="button"
                 className={cn(
                   "flex w-full cursor-pointer items-start justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors",
-                  isActive ? "bg-accent/20 text-text-1" : "text-text-2 hover:bg-surface-3 hover:text-text-1",
+                  isActive ? "bg-accent/20 text-text" : "text-muted hover:bg-surface-2 hover:text-text",
                 )}
                 onClick={() => {
                   onChange(option.value);

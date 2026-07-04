@@ -86,8 +86,8 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
 
   if (connections.loading) {
     return (
-      <div className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs text-text-3">
-        <Database className="size-3.5 shrink-0 text-text-3" />
+      <div className="flex h-9 min-w-40 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs text-faint">
+        <Database className="size-3.5 shrink-0 text-faint" />
         <Spinner size="sm" />
         <span>Loading…</span>
       </div>
@@ -216,16 +216,16 @@ function DataSourceStatusPicker({
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen((current) => !current)}
-        className="flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface/80 px-4 py-2 text-xs text-text-2 shadow-[0_10px_40px_rgba(0,0,0,0.18)] backdrop-blur transition hover:border-border-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface/80 px-4 py-2 text-xs text-muted shadow-[0_10px_40px_rgba(0,0,0,0.18)] backdrop-blur transition hover:border-border-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="inline-flex max-w-[170px] items-center gap-1.5 truncate">
-          <Database className="size-3.5 shrink-0 text-text-3" />
-          <span className="truncate font-medium text-text-1">{sourceName}</span>
-          <ChevronDown className={`size-3.5 shrink-0 text-text-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          <Database className="size-3.5 shrink-0 text-faint" />
+          <span className="truncate font-medium text-text">{sourceName}</span>
+          <ChevronDown className={`size-3.5 shrink-0 text-faint transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
         <span className="hidden h-3 w-px bg-border sm:block" />
         <span className="inline-flex items-center gap-1.5">
-          <Database className="size-3.5 text-accent-2" />
+          <Database className="size-3.5 text-accent-strong" />
           PostgreSQL
         </span>
         <span className="hidden h-3 w-px bg-border sm:block" />
@@ -237,7 +237,7 @@ function DataSourceStatusPicker({
           <>
             <span className="hidden h-3 w-px bg-border sm:block" />
             <span className="inline-flex items-center gap-1.5">
-              {schemaLoading ? <Spinner size="sm" className="text-text-3" /> : <Table2 className="size-3.5 text-text-3" />}
+              {schemaLoading ? <Spinner size="sm" className="text-faint" /> : <Table2 className="size-3.5 text-faint" />}
               {tableCount} tables
             </span>
           </>
@@ -249,11 +249,11 @@ function DataSourceStatusPicker({
           <button
             type="button"
             onClick={() => choose("__demo__")}
-            className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-xs transition ${isDemo ? "bg-accent/20 text-text-1" : "text-text-2 hover:bg-surface-3 hover:text-text-1"}`}
+            className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-xs transition ${isDemo ? "bg-accent/20 text-text" : "text-muted hover:bg-surface-2 hover:text-text"}`}
           >
             <span className="min-w-0">
               <span className="block truncate font-medium">demo</span>
-              <span className="block text-[11px] text-text-3">Server-managed ecommerce demo</span>
+              <span className="block text-[11px] text-faint">Server-managed ecommerce demo</span>
             </span>
             <span className="shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-[10px] text-success">Ready</span>
           </button>
@@ -268,19 +268,19 @@ function DataSourceStatusPicker({
                 key={connection.id}
                 type="button"
                 onClick={() => choose(connection.id)}
-                className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-xs transition ${selected ? "bg-accent/20 text-text-1" : "text-text-2 hover:bg-surface-3 hover:text-text-1"}`}
+                className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-xs transition ${selected ? "bg-accent/20 text-text" : "text-muted hover:bg-surface-2 hover:text-text"}`}
               >
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{connection.name}</span>
-                  <span className="block truncate text-[11px] text-text-3">{connection.databaseName}</span>
+                  <span className="block truncate text-[11px] text-faint">{connection.databaseName}</span>
                 </span>
-                <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] text-text-3">{ingestion.label}</span>
+                <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] text-faint">{ingestion.label}</span>
               </button>
             );
           })}
 
           {!connections.length ? (
-            <p className="px-3 py-2 text-xs text-text-3">No saved connections yet.</p>
+            <p className="px-3 py-2 text-xs text-faint">No saved connections yet.</p>
           ) : null}
 
           <div className="my-1 border-t border-border" />
@@ -291,7 +291,7 @@ function DataSourceStatusPicker({
                 setOpen(false);
                 router.push("/connections/new");
               }}
-              className="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium text-accent-2 transition hover:bg-accent-dim"
+              className="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium text-accent-strong transition hover:bg-accent-soft"
             >
               <Plus className="size-3.5" />
               Add source
@@ -302,7 +302,7 @@ function DataSourceStatusPicker({
                 setOpen(false);
                 onRetry();
               }}
-              className="rounded-md px-3 py-2 text-xs font-medium text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+              className="rounded-md px-3 py-2 text-xs font-medium text-faint transition hover:bg-surface-2 hover:text-text"
             >
               Refresh
             </button>
@@ -328,9 +328,9 @@ export function WorkspaceHomeView() {
       {conversations.loading && !conversations.data ? (
         <ConnectionRowsSkeleton rows={5} />
       ) : conversations.error ? (
-        <p className="py-6 text-center text-sm text-text-3">
+        <p className="py-6 text-center text-sm text-faint">
           Couldn't load conversations.{" "}
-          <button type="button" onClick={() => void conversations.refresh()} className="underline underline-offset-2 hover:text-text-1">
+          <button type="button" onClick={() => void conversations.refresh()} className="underline underline-offset-2 hover:text-text">
             Retry
           </button>
         </p>
@@ -343,9 +343,9 @@ export function WorkspaceHomeView() {
               <Card hoverable className="flex items-center justify-between gap-4 p-4">
                 <div className="min-w-0">
                   <h2 className="truncate font-medium">{conversation.title}</h2>
-                  <p className="text-xs text-text-3">Updated {formatRelativeTime(conversation.lastActivityAt, "just now")}</p>
+                  <p className="text-xs text-faint">Updated {formatRelativeTime(conversation.lastActivityAt, "just now")}</p>
                 </div>
-                <span className="text-xs capitalize text-text-3">{conversation.status}</span>
+                <span className="text-xs capitalize text-faint">{conversation.status}</span>
               </Card>
             </Link>
           ))}
@@ -411,7 +411,7 @@ export function NewConversationView() {
       <Card className="p-5">
         <div className="mb-5 rounded-lg border border-border bg-surface-2 p-4">
           <h2 className="font-medium">Try the ecommerce demo</h2>
-          <p className="mt-1 text-xs text-text-3">Connect to the server-managed pre-seeded database and start querying immediately.</p>
+          <p className="mt-1 text-xs text-faint">Connect to the server-managed pre-seeded database and start querying immediately.</p>
           <Button className="mt-3" variant="ghost" loading={creatingDemo} onClick={() => void connectDemo()}><Database className="h-4 w-4" />Use demo database</Button>
         </div>
         {connections.loading && !connections.data ? (
@@ -427,7 +427,7 @@ export function NewConversationView() {
               return { value: item.id, label: `${item.name} · ${item.databaseName} · ${ingestion.label}` };
             })} />
             {selectedConnection ? (
-              <div className="flex items-start gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-text-3">
+              <div className="flex items-start gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-faint">
                 <Badge variant={selectedIngestion.tone}>{selectedIngestion.label}</Badge>
                 <span>{selectedIngestion.description}</span>
               </div>
@@ -635,14 +635,14 @@ function HeroComposer({
             type="button"
             disabled={disabled || submitting}
             onClick={() => setQuestion(suggestion)}
-            className="rounded-full border border-border bg-surface/80 px-3.5 py-1.5 text-xs text-text-2 transition hover:border-accent-2/40 hover:bg-accent-dim hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full border border-border bg-surface/80 px-3.5 py-1.5 text-xs text-muted transition hover:border-accent-2/40 hover:bg-accent-soft hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
           >
             {suggestion}
           </button>
         ))}
       </div>
       {error ? <p className="mt-3 text-center text-xs text-danger">{error}</p> : null}
-      <p className="mt-3 text-center text-[11px] text-text-3">AI-generated results. Please verify accuracy before making decisions.</p>
+      <p className="mt-3 text-center text-[11px] text-faint">AI-generated results. Please verify accuracy before making decisions.</p>
     </div>
   );
 }
@@ -813,8 +813,8 @@ export function EmptyWorkspaceView() {
       <div className="relative z-10 w-full">
         <div className="mx-auto mb-5 flex max-w-3xl flex-col items-center text-center">
           <BrandMark className="size-14 rounded-2xl shadow-[0_0_60px_rgba(46,213,46,0.22)]" />
-          <h1 className="mt-4 font-syne text-4xl font-semibold tracking-normal text-text-1 sm:text-5xl">Ask your data</h1>
-          <p className="mt-2 text-base text-text-2">Get instant insights from your connected databases.</p>
+          <h1 className="mt-4 font-syne text-4xl font-semibold tracking-normal text-text sm:text-5xl">Ask your data</h1>
+          <p className="mt-2 text-base text-muted">Get instant insights from your connected databases.</p>
         </div>
 
         <div className="mb-4 min-h-10">
@@ -854,7 +854,7 @@ export function EmptyWorkspaceView() {
           disabled={disableComposer}
         />
         {streamState && submitting ? (
-          <p className="mt-2 text-center text-xs text-text-3">
+          <p className="mt-2 text-center text-xs text-faint">
             <Spinner size="sm" className="mr-1" />
             {streamState.status ?? "Analyzing your data..."}
           </p>
@@ -892,8 +892,8 @@ function UserMessage({ message, initial }: { message: ConversationMessageDto; in
   return (
     <div className="flex items-start justify-end gap-3">
       <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-success/20 bg-success/10 px-4 py-3 shadow-sm">
-        <p className="whitespace-pre-wrap text-sm text-text-1">{message.content}</p>
-        <p className="mt-1.5 text-right text-[10px] text-text-3">{formatClockTime(message.createdAt)}</p>
+        <p className="whitespace-pre-wrap text-sm text-text">{message.content}</p>
+        <p className="mt-1.5 text-right text-[10px] text-faint">{formatClockTime(message.createdAt)}</p>
       </div>
       <UserAvatar initial={initial} />
     </div>
@@ -951,9 +951,9 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2.5">
-          <span className="text-sm font-semibold text-text-1">QueryWise</span>
+          <span className="text-sm font-semibold text-text">QueryWise</span>
           {state.status && state.status !== "Complete" ? (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-text-3">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-faint">
               {state.status}
               <BouncingDots />
             </span>
@@ -1052,8 +1052,8 @@ function AssistantMessage({
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-text-1">QueryWise</span>
-          <span className="text-[10px] text-text-3">{formatClockTime(message.createdAt)}</span>
+          <span className="text-sm font-semibold text-text">QueryWise</span>
+          <span className="text-[10px] text-faint">{formatClockTime(message.createdAt)}</span>
         </div>
         {timeline}
         {!hasBlocks && message.content && !message.metadata.errorCode ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
@@ -1128,7 +1128,7 @@ function Composer({
         ) : null}
         {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
         {disabledReason ? <p className="mt-2 text-center text-xs text-warning">{disabledReason}</p> : null}
-        <p className="mt-2 text-center text-[11px] text-text-3">AI-generated results. Please verify accuracy before making decisions.</p>
+        <p className="mt-2 text-center text-[11px] text-faint">AI-generated results. Please verify accuracy before making decisions.</p>
       </div>
     </div>
   );
@@ -1144,16 +1144,16 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
   return (
     <aside className="flex min-h-0 w-[320px] flex-col border-l border-border bg-surface">
       <div className="border-b border-border p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-3">Active data source</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">Active data source</p>
         <h2 className="mt-1 truncate font-medium">{connection.data?.name ?? "Loading connection"}</h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge variant={ingestion.tone}>{ingestion.label}</Badge>
-          <span className="text-xs capitalize text-text-3">{connection.data?.status ?? ""}</span>
+          <span className="text-xs capitalize text-faint">{connection.data?.status ?? ""}</span>
         </div>
       </div>
       <div className="grid grid-cols-3 border-b border-border text-xs">
         {(["schema", "sql", "summary"] as const).map((value) => (
-          <button key={value} onClick={() => setTab(value)} className={`px-2 py-3 capitalize transition ${tab === value ? "border-b-2 border-accent font-medium text-accent-2" : "text-text-3 hover:text-text-1"}`}>
+          <button key={value} onClick={() => setTab(value)} className={`px-2 py-3 capitalize transition ${tab === value ? "border-b-2 border-accent font-medium text-accent-strong" : "text-faint hover:text-text"}`}>
             {value === "sql" ? "SQL" : value}
           </button>
         ))}
@@ -1163,13 +1163,13 @@ function ContextPanel({ connectionId, latestRun }: { connectionId: string; lates
           schema.loading && !schema.data ? <SchemaBrowserSkeleton /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />
         ) : null}
         {tab === "sql" ? (
-          latestRun?.generatedQuery ? <CodeBlock sql={latestRun.generatedQuery.text} /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">Run a query to see its generated SQL.</p>
+          latestRun?.generatedQuery ? <CodeBlock sql={latestRun.generatedQuery.text} /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-faint">Run a query to see its generated SQL.</p>
         ) : null}
         {tab === "summary" ? (
           <div className="space-y-3 text-sm">
             <p>{schema.data?.summary ?? "No saved database summary is available."}</p>
-            <p className="text-xs text-text-3">Schema status: {ingestion.description}</p>
-            <Link href={`/connections/${connectionId}`} className="text-xs font-semibold text-accent-2 underline">Open connection settings</Link>
+            <p className="text-xs text-faint">Schema status: {ingestion.description}</p>
+            <Link href={`/connections/${connectionId}`} className="text-xs font-semibold text-accent-strong underline">Open connection settings</Link>
           </div>
         ) : null}
       </div>
@@ -1412,18 +1412,18 @@ export function ConversationView({ conversationId }: { conversationId: string })
         {/* Conversation header */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
           <div className="pointer-events-auto absolute left-0 flex h-14 min-w-0 max-w-[calc(100%-11rem)] items-center gap-2.5 rounded-br-xl border border-l-0 border-t-0 border-border/70 bg-surface/65 px-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-            <Database className="size-4 shrink-0 text-accent-2" />
-            <span className="truncate text-sm font-medium text-text-1">{connection.data?.name ?? conversation.data?.title ?? ""}</span>
+            <Database className="size-4 shrink-0 text-accent-strong" />
+            <span className="truncate text-sm font-medium text-text">{connection.data?.name ?? conversation.data?.title ?? ""}</span>
           </div>
           <div className="pointer-events-auto absolute right-0 flex h-14 shrink-0 items-center gap-1.5 rounded-bl-xl border border-r-0 border-t-0 border-border/70 bg-surface/65 px-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-            <button type="button" aria-label="Favorite chat" title="Favorite chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Star className="size-4" /></button>
-            <button type="button" aria-label="Share chat" title="Share chat" className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"><Share2 className="size-4" /></button>
+            <button type="button" aria-label="Favorite chat" title="Favorite chat" className="inline-flex size-8 items-center justify-center rounded-md text-faint transition hover:bg-surface-2 hover:text-text"><Star className="size-4" /></button>
+            <button type="button" aria-label="Share chat" title="Share chat" className="inline-flex size-8 items-center justify-center rounded-md text-faint transition hover:bg-surface-2 hover:text-text"><Share2 className="size-4" /></button>
             <Tooltip content={contextPanelOpen ? "Hide schema panel" : "Show schema panel"} side="top">
               <button
                 type="button"
                 aria-label={contextPanelOpen ? "Hide schema panel" : "Show schema panel"}
                 onClick={() => setContextPanelOpen(!contextPanelOpen)}
-                className="inline-flex size-8 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-3 hover:text-text-1"
+                className="inline-flex size-8 items-center justify-center rounded-md text-faint transition hover:bg-surface-2 hover:text-text"
               >
                 {contextPanelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
               </button>
@@ -1439,7 +1439,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             <div className="mx-auto max-w-2xl pt-10 text-center">
               <BrandMark className="mx-auto size-12 rounded-2xl" />
               <h2 className="mt-4 font-syne text-2xl font-semibold">Ask a question about your data</h2>
-              <p className="mt-1 text-sm text-text-3">Try one of these to get started.</p>
+              <p className="mt-1 text-sm text-faint">Try one of these to get started.</p>
               <div className="mt-5 grid gap-2 sm:grid-cols-3">
                 {suggestions.map((suggestion) => (
                   <button key={suggestion} disabled={Boolean(composerDisabledReason)} onClick={() => setQuestion(suggestion)} className="rounded-lg border border-border bg-surface p-3 text-left text-xs transition hover:border-border-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60">{suggestion}</button>
@@ -1478,7 +1478,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               {pendingQuestion ? (
                 <div className="flex items-start justify-end gap-3">
                   <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-success/20 bg-success/10 px-4 py-3 shadow-sm opacity-70">
-                    <p className="whitespace-pre-wrap text-sm text-text-1">{pendingQuestion}</p>
+                    <p className="whitespace-pre-wrap text-sm text-text">{pendingQuestion}</p>
                   </div>
                   <UserAvatar initial={userInitial} />
                 </div>

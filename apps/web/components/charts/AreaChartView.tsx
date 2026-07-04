@@ -20,7 +20,7 @@ interface AreaChartViewProps {
   yKeys?: string[];
 }
 
-const AREA_STROKES = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
+const AREA_STROKES = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 const AREA_FILLS = [
   "rgba(46,213,46,0.28)",
   "rgba(245,158,11,0.22)",

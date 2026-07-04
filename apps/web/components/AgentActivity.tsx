@@ -194,15 +194,15 @@ function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "th
         open={isOpen} 
         onToggle={(e) => setIsOpen(e.currentTarget.open)}
       >
-        <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs text-text-3 transition hover:text-text-2">
+        <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs text-faint transition hover:text-muted">
           <span className="font-medium">{step.live ? "Thinking" : "Thought process"}</span>
           {step.live ? <BouncingDots /> : null}
           {step.live ? (
-            <span className="min-w-0 truncate text-[11px] text-text-3/70">{liveTail(step.content)}</span>
+            <span className="min-w-0 truncate text-[11px] text-faint/70">{liveTail(step.content)}</span>
           ) : null}
-          <ChevronRight className="size-3 shrink-0 text-text-3/60 transition-transform group-open:rotate-90" />
+          <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-open:rotate-90" />
         </summary>
-        <div className="mb-1 mt-1.5 border-l-2 border-border/70 pl-3 text-[12.5px] leading-relaxed text-text-3">
+        <div className="mb-1 mt-1.5 border-l-2 border-border/70 pl-3 text-[12.5px] leading-relaxed text-faint">
           <Markdown>{step.content}</Markdown>
         </div>
       </details>
@@ -240,10 +240,10 @@ function ToolRow({
 
   const summaryLine = (
     <>
-      <span className={`font-medium ${isError ? "text-danger" : "text-text-2"}`}>{label}</span>
+      <span className={`font-medium ${isError ? "text-danger" : "text-muted"}`}>{label}</span>
       {isPending ? <BouncingDots /> : null}
       {step.summary && (
-        <span className={`min-w-0 truncate text-[11px] ${isError ? "text-danger/75" : "text-text-3"}`}>
+        <span className={`min-w-0 truncate text-[11px] ${isError ? "text-danger/75" : "text-faint"}`}>
           {step.summary}
         </span>
       )}
@@ -256,7 +256,7 @@ function ToolRow({
         <details className="group">
           <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs">
             {summaryLine}
-            <ChevronRight className="size-3 shrink-0 text-text-3/60 transition-transform group-open:rotate-90" />
+            <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-open:rotate-90" />
           </summary>
           <div className="mb-1 mt-1.5 space-y-2 border-l-2 border-border/70 pl-3">
             {sql && (
@@ -270,7 +270,7 @@ function ToolRow({
               </div>
             )}
             {step.summary && (
-              <p className={`text-[12px] ${isError ? "text-danger" : "text-text-3"}`}>{step.summary}</p>
+              <p className={`text-[12px] ${isError ? "text-danger" : "text-faint"}`}>{step.summary}</p>
             )}
           </div>
         </details>

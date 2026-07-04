@@ -20,7 +20,7 @@ interface BarChartViewProps {
   yKeys?: string[];
 }
 
-const SERIES_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
+const SERIES_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 const labelize = (value: string) => value.replace(/_/g, " ");
 const isDateLikeValue = (value: unknown): boolean => {
   const text = String(value ?? "");
