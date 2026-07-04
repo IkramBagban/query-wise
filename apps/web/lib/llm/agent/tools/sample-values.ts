@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SchemaInfo } from "@/types";
+import { devLog } from "@query-wise/shared/observability";
 import { getErrorMessage } from "../../client";
 import {
   AGENT_BUDGETS,
@@ -46,6 +47,7 @@ export function createSampleValuesTool(deps: {
       }
       state.sampleCalls += 1;
       const callId = `sample_values-${state.sampleCalls}`;
+      devLog("debug", "agent.tool.sample_values.started", `Sampling ${table}.${column}`, { table, column, limit });
       emitters.onActivity?.({ kind: "tool-call", tool: "sample_values", callId, label: `Sampling ${table}.${column}`, input: { table, column } });
 
       const schemaTable = findTable(schema, table);
@@ -76,6 +78,7 @@ export function createSampleValuesTool(deps: {
           outcome: "ok",
           summary: `${values.length} values`,
         });
+        devLog("debug", "agent.tool.sample_values.completed", `sample_values completed`, { valuesCount: values.length });
         emitters.onActivity?.({ kind: "tool-result", tool: "sample_values", callId, label: `${values.length} values` });
         return { table: schemaTable.name, column: schemaColumn.name, values };
       } catch (error) {
@@ -86,6 +89,7 @@ export function createSampleValuesTool(deps: {
           outcome: "error",
           summary: message,
         });
+        devLog("error", "agent.tool.sample_values.error", `sample_values failed: ${message}`, {}, error);
         emitters.onActivity?.({ kind: "retry", tool: "sample_values", callId, label: message.slice(0, 120) });
         return { error: `Sampling failed: ${message}` };
       }

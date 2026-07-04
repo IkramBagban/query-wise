@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { BoundedQueryResult } from "@query-wise/shared/types";
+import { devLog } from "@query-wise/shared/observability";
 import { resolveChartConfig } from "@/lib/charts";
 import { createResultPreview } from "@/lib/query/preview";
 import { getErrorMessage } from "../../client";
@@ -44,12 +45,15 @@ export function createRunSqlTool(deps: {
       }
       state.sqlAttempts += 1;
       const callId = `run_sql-${state.sqlAttempts}`;
+      const start = Date.now(); // only for logging
+      devLog("debug", "agent.tool.run_sql.started", `Starting run_sql: ${purpose}`, { sql, purpose });
       emitters.onActivity?.({ kind: "tool-call", tool: "run_sql", callId, label: `Running: ${purpose}`, input: { sql, purpose } });
 
       const validation = await runtime.validateSql(sql);
       if (!validation.valid || !validation.normalizedSql) {
         emitters.onSqlPreview?.({ blockIndex: null, sql, purpose, validation: "blocked" });
         const reason = validation.violations.join("; ") || "unspecified violation";
+        devLog("debug", "agent.tool.run_sql.blocked", `run_sql blocked: ${reason}`, { sql, reason, durationMs: Date.now() - start });
         emitters.onActivity?.({ kind: "retry", tool: "run_sql", callId, label: `Blocked: ${reason.slice(0, 120)}` });
         state.transcript.push({ tool: "run_sql", input: { sql, purpose }, outcome: "error", summary: `blocked: ${reason}` });
         return { error: `Blocked by the read-only safety policy: ${reason}. Rewrite the SQL to comply.` };
@@ -60,6 +64,7 @@ export function createRunSqlTool(deps: {
         result = await runtime.executeSql(validation.normalizedSql);
       } catch (error) {
         const message = getErrorMessage(error) || "Query execution failed.";
+        devLog("error", "agent.tool.run_sql.error", `run_sql failed: ${message}`, { sql, durationMs: Date.now() - start }, error);
         emitters.onActivity?.({ kind: "retry", tool: "run_sql", callId, label: `Query failed: ${message.slice(0, 120)}` });
         state.transcript.push({ tool: "run_sql", input: { sql, purpose }, outcome: "error", summary: message });
         return { error: `Database error: ${message}. Fix the SQL and retry.` };
@@ -105,6 +110,11 @@ export function createRunSqlTool(deps: {
         callId,
         blockIndex,
         label: `${result.returnedRowCount} rows in ${result.executionTimeMs}ms`,
+      });
+      devLog("debug", "agent.tool.run_sql.completed", `run_sql completed`, { 
+        rowCount: result.returnedRowCount, 
+        executionTimeMs: result.executionTimeMs,
+        durationMs: Date.now() - start,
       });
       state.transcript.push({
         tool: "run_sql",

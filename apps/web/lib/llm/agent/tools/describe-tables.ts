@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { SchemaInfo, SchemaTable } from "@/types";
+import { devLog } from "@query-wise/shared/observability";
 import { buildStructuredTableContext } from "../../prompts";
 import type { AgentRunState, AnalystAgentEmitters } from "../types";
 import { findTable, suggestTables } from "./schema-lookup";
@@ -26,7 +27,9 @@ export function createDescribeTablesTool(deps: {
       tables: z.array(z.string().trim().min(1)).min(1).max(8),
     }),
     execute: async ({ tables }) => {
+      const start = Date.now(); // only 4 logging to see see how long this tool takes to run
       const callId = `describe_tables-${state.transcript.length}-${tables.join(",").slice(0, 40)}`;
+      devLog("debug", "agent.tool.describe_tables.started", `describe_tables: ${tables.join(", ")}`, { tables });
       emitters.onActivity?.({ kind: "tool-call", tool: "describe_tables", callId, label: `Looking at ${tables.join(", ")}`, input: { tables } });
       const found: SchemaTable[] = [];
       const missing: string[] = [];
@@ -48,6 +51,7 @@ export function createDescribeTablesTool(deps: {
         callId,
         label: summary,
       });
+      devLog("debug", "agent.tool.describe_tables.completed", `describe_tables completed`, { summary, durationMs: Date.now() - start });
       if (found.length === 0) {
         return {
           error: `No matching tables for: ${missing.join(", ")}.`,

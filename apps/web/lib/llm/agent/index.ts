@@ -81,6 +81,12 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   const messages = buildMessages(params.history, params.question);
   const tools = buildTools(params, state);
 
+  devLog("debug", "agent.run.started", "Analyst agent run started.", {
+    question: params.question,
+    model: params.model,
+    indexRegime: usesIndexRegime(params.schema),
+  });
+
   let streamedText = false;
   const streamOnce = async (candidateModel: string): Promise<string> => {
     const result = streamText({
@@ -98,11 +104,13 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     // Reasoning is captured per segment: each contiguous run of thoughts (before
     // the model calls a tool or writes text) becomes its own ordered transcript
     // step, so the finalized view matches the live interleaving instead of
-    // collapsing every thought into one block appended at the end.
+    // collapsing every thought into one block appended
     let segment = "";
     const flushReasoning = () => {
       if (segment.trim()) {
-        state.transcript.push({ tool: "thinking", input: {}, outcome: "ok", summary: segment.trim() });
+        const text = segment.trim();
+        devLog("debug", "agent.thought.completed", "Thought block completed", { text });
+        state.transcript.push({ tool: "thinking", input: {}, outcome: "ok", summary: text });
       }
       segment = "";
     };
@@ -110,7 +118,10 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       if (part.type === "reasoning-delta" && part.text) {
         // Start a fresh thinking block whenever reasoning resumes after a tool
         // call or text — otherwise later thoughts get dropped by the UI reducer.
-        if (!segment) params.onActivity?.({ kind: "thinking", label: "Thinking" });
+        if (!segment) {
+          params.onActivity?.({ kind: "thinking", label: "Thinking" });
+          devLog("debug", "agent.thought.started", "Thought block started");
+        }
         segment += part.text;
         params.onActivity?.({ kind: "thinking-delta", label: "Thinking", chunk: part.text });
       } else if (part.type === "text-delta" && part.text) {
