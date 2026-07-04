@@ -901,14 +901,47 @@ function UserMessage({ message, initial }: { message: ConversationMessageDto; in
 }
 
 /**
- * The in-flight assistant message. Renders the same result cards as the
- * finalized message so completion is a seamless reconcile: skeleton while a
- * query runs, live chart the moment its data streams in.
+ * The in-flight assistant message. Result cards are rendered inline within the
+ * timeline via `renderBlock`, creating a true chronological feed:
+ * thinking → query → chart → thinking → query → chart → answer.
  */
 function PendingAssistantMessage({ state }: { state: StreamState }) {
   const hasNoTextYet = !state.textDelta;
-  // Queries still executing (their tool-call has not resolved yet) render as
-  // skeleton cards below the finished blocks.
+  const steps = activitiesToSteps(state.activities, { streaming: hasNoTextYet });
+
+  // Track which blocks were rendered inline by the timeline so we can render
+  // orphans (blocks whose timeline step hasn't resolved yet) as a fallback.
+  const renderedBlockIndices = new Set<number>();
+
+  const renderBlock = (blockIndex: number): React.ReactNode => {
+    renderedBlockIndices.add(blockIndex);
+    const block = state.blocks.find((b) => b.index === blockIndex && b.validation !== "blocked");
+    if (!block) return null;
+    return (
+      <ResultBlockCard
+        title={block.chartConfig?.title ?? block.purpose}
+        preview={block.preview ?? null}
+        sql={block.sql}
+        rowCount={block.rowCount}
+        executionTimeMs={block.executionTimeMs}
+        chartConfig={block.chartConfig ?? null}
+        running={!block.preview}
+      />
+    );
+  };
+
+  // Compute orphan blocks after rendering the timeline (blocks that exist but
+  // have no matching resolved tool step, e.g. pending queries).
+  const timeline = (
+    <AgentTimeline steps={steps} renderBlock={renderBlock} />
+  );
+
+  const orphanBlocks = state.blocks.filter(
+    (block) => block.validation !== "blocked" && !renderedBlockIndices.has(block.index),
+  );
+
+  // Queries still executing (tool-call not yet resolved) render as skeleton
+  // cards. Since they haven't resolved, they won't have a block yet.
   const runningQueries = state.activities.filter(
     (activity) => activity.kind === "tool-call" && activity.tool === "run_sql",
   );
@@ -926,23 +959,22 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
             </span>
           ) : null}
         </div>
-        <AgentTimeline steps={activitiesToSteps(state.activities, { streaming: hasNoTextYet })} />
-        {(state.blocks.length > 0 || runningQueries.length > 0) && (
+        {timeline}
+        {/* Orphan blocks + running skeletons — safety fallback so data is never hidden */}
+        {(orphanBlocks.length > 0 || runningQueries.length > 0) && (
           <div className="mt-3 space-y-4">
-            {state.blocks
-              .filter((block) => block.validation !== "blocked")
-              .map((block) => (
-                <ResultBlockCard
-                  key={block.index}
-                  title={block.chartConfig?.title ?? block.purpose}
-                  preview={block.preview ?? null}
-                  sql={block.sql}
-                  rowCount={block.rowCount}
-                  executionTimeMs={block.executionTimeMs}
-                  chartConfig={block.chartConfig ?? null}
-                  running={!block.preview}
-                />
-              ))}
+            {orphanBlocks.map((block) => (
+              <ResultBlockCard
+                key={block.index}
+                title={block.chartConfig?.title ?? block.purpose}
+                preview={block.preview ?? null}
+                sql={block.sql}
+                rowCount={block.rowCount}
+                executionTimeMs={block.executionTimeMs}
+                chartConfig={block.chartConfig ?? null}
+                running={!block.preview}
+              />
+            ))}
             {runningQueries.map((query, index) => {
               const input = (query.input ?? {}) as { purpose?: string; sql?: string };
               return (
@@ -987,6 +1019,34 @@ function AssistantMessage({
   const hasBlocks = blocks && blocks.length > 0;
   const legacyHasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
 
+  // Track which blocks got rendered inline so we can render orphans as fallback.
+  const renderedBlockIndices = new Set<number>();
+
+  const renderBlock = hasBlocks
+    ? (blockIndex: number): React.ReactNode => {
+        renderedBlockIndices.add(blockIndex);
+        const block = blocks.find((b) => b.index === blockIndex);
+        if (!block) return null;
+        return (
+          <ConversationResultCard
+            message={message}
+            block={block}
+            dashboardOptions={dashboardOptions}
+            onCreateDashboard={onCreateDashboard}
+            onSave={onSave}
+          />
+        );
+      }
+    : undefined;
+
+  const timeline = <AgentSteps metadata={message.metadata} renderBlock={renderBlock} />;
+
+  // Orphan blocks: any blocks not rendered inline by the timeline (possible
+  // with old messages whose transcript doesn't carry blockIndex).
+  const orphanBlocks = hasBlocks
+    ? blocks.filter((block) => !renderedBlockIndices.has(block.index))
+    : [];
+
   return (
     <div className="flex items-start gap-3">
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
@@ -995,12 +1055,13 @@ function AssistantMessage({
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
           <span className="text-[10px] text-text-3">{formatClockTime(message.createdAt)}</span>
         </div>
-        <AgentSteps metadata={message.metadata} />
+        {timeline}
         {!hasBlocks && message.content && !message.metadata.errorCode ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
         {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.content || "Something went wrong while processing your query. Please try again."}</p> : null}
-        {hasBlocks ? (
+        {/* Orphan blocks that weren't rendered inline by the timeline */}
+        {orphanBlocks.length > 0 ? (
            <div className="mt-3 space-y-4">
-             {blocks.map((block) => (
+             {orphanBlocks.map((block) => (
                 <ConversationResultCard
                    key={block.index}
                    message={message}
@@ -1009,9 +1070,11 @@ function AssistantMessage({
                    onCreateDashboard={onCreateDashboard}
                    onSave={onSave}
                 />
-             ))}
+              ))}
            </div>
-        ) : legacyHasResult ? (
+        ) : null}
+        {/* Legacy single-result V2 messages (no resultBlocks) */}
+        {!hasBlocks && legacyHasResult ? (
            <ConversationResultCard
              message={message}
              dashboardOptions={dashboardOptions}
@@ -1019,7 +1082,7 @@ function AssistantMessage({
              onSave={onSave}
            />
         ) : null}
-        {hasBlocks && message.content ? <div className="mt-3"><Markdown>{message.content}</Markdown></div> : null}
+        {(hasBlocks || orphanBlocks.length > 0) && message.content ? <div className="mt-3"><Markdown>{message.content}</Markdown></div> : null}
       </div>
     </div>
   );

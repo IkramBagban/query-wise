@@ -111,6 +111,7 @@ export function createRunSqlTool(deps: {
         input: { sql, purpose },
         outcome: "ok",
         summary: `${result.returnedRowCount.toLocaleString()} rows in ${result.executionTimeMs}ms`,
+        blockIndex,
       });
       return { blockIndex, ...compactResultForModel(result) };
     },

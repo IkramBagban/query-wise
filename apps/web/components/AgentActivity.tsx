@@ -8,7 +8,7 @@ import { Markdown } from "@/components/ui/markdown";
 /** Normalized step consumed by the timeline, from either live events or the persisted transcript. */
 export type TimelineStep =
   | { kind: "thinking"; content: string; live?: boolean }
-  | { kind: "tool"; tool: string; input?: unknown; status: "pending" | "ok" | "error"; summary: string };
+  | { kind: "tool"; tool: string; input?: unknown; status: "pending" | "ok" | "error"; summary: string; blockIndex?: number | null };
 
 /** Raw live-activity element accumulated in StreamState.activities. */
 export interface StreamActivity {
@@ -58,6 +58,7 @@ export function activitiesToSteps(
         input: activity.input,
         status: activity.kind === "retry" ? "error" : activity.kind === "tool-result" ? "ok" : "pending",
         summary: activity.label ?? "",
+        blockIndex: activity.blockIndex,
       });
     }
   }
@@ -72,18 +73,41 @@ export function activitiesToSteps(
 export function parseAgentTranscript(metadata: unknown): TimelineStep[] {
   const transcript = (metadata as { agentV3?: { transcript?: unknown } } | null)?.agentV3?.transcript;
   if (!Array.isArray(transcript)) return [];
+
+  // Count successful run_sql steps so we can fallback-assign blockIndex for
+  // old messages that don't have it persisted.
+  let successfulRunSqlCount = 0;
+
   return transcript.flatMap((raw): TimelineStep[] => {
     if (!raw || typeof raw !== "object") return [];
-    const { tool, outcome, summary, input } = raw as {
+    const { tool, outcome, summary, input, blockIndex: persistedBlockIndex } = raw as {
       tool?: string;
       outcome?: string;
       summary?: string;
       input?: unknown;
+      blockIndex?: number;
     };
     if (typeof tool !== "string" || typeof summary !== "string") return [];
     if (tool === "thinking") return summary.trim() ? [{ kind: "thinking", content: summary }] : [];
     if (HIDDEN_TOOLS.has(tool)) return [];
-    return [{ kind: "tool", tool, input, status: outcome === "error" ? "error" : "ok", summary }];
+
+    // Determine blockIndex: use persisted value if available, otherwise for
+    // successful run_sql steps, fallback to sequential assignment (the n-th
+    // successful query → block index n). This keeps old conversations working.
+    let resolvedBlockIndex: number | undefined;
+    if (tool === "run_sql" && outcome === "ok") {
+      resolvedBlockIndex = typeof persistedBlockIndex === "number" ? persistedBlockIndex : successfulRunSqlCount;
+      successfulRunSqlCount++;
+    }
+
+    return [{
+      kind: "tool",
+      tool,
+      input,
+      status: outcome === "error" ? "error" : "ok",
+      summary,
+      blockIndex: resolvedBlockIndex,
+    }];
   });
 }
 
@@ -175,7 +199,16 @@ function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "th
   );
 }
 
-function ToolRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "tool" }>; isLast: boolean }) {
+function ToolRow({
+  step,
+  isLast,
+  afterContent,
+}: {
+  step: Extract<TimelineStep, { kind: "tool" }>;
+  isLast: boolean;
+  /** Content (e.g. a result card) rendered below the tool row, still inside the timeline rail. */
+  afterContent?: React.ReactNode;
+}) {
   const isError = step.status === "error";
   const isPending = step.status === "pending";
   const label = isPending
@@ -207,7 +240,7 @@ function ToolRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "tool" 
   );
 
   return (
-    <TimelineRow isLast={isLast} tone={tone}>
+    <TimelineRow isLast={isLast && !afterContent} tone={tone}>
       {expandable ? (
         <details className="group">
           <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs">
@@ -233,21 +266,59 @@ function ToolRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "tool" 
       ) : (
         <p className="flex items-center gap-1.5 py-0.5 text-xs">{summaryLine}</p>
       )}
+      {afterContent ? (
+        <div className="relative mt-2 mb-3">
+          {/* Continue the vertical rail line past the card */}
+          {!isLast && (
+            <span
+              className="absolute -left-[calc(0.625rem+1.5px)] top-0 bottom-0 w-px bg-border/60"
+              aria-hidden
+            />
+          )}
+          {afterContent}
+        </div>
+      ) : null}
     </TimelineRow>
   );
 }
 
-/** Unified ordered feed of the agent's reasoning and tool activity. */
-export function AgentTimeline({ steps }: { steps: TimelineStep[] }) {
+/**
+ * Unified ordered feed of the agent's reasoning and tool activity.
+ *
+ * When `renderBlock` is provided, result cards are rendered inline directly
+ * below the `run_sql` step that produced them — creating a true chronological
+ * feed instead of a stacked layout.
+ */
+export function AgentTimeline({
+  steps,
+  renderBlock,
+}: {
+  steps: TimelineStep[];
+  /** Called to render a result block card inline after the matching tool row. */
+  renderBlock?: (blockIndex: number) => React.ReactNode;
+}) {
   if (steps.length === 0) return null;
   return (
     <div className="mt-2.5 flex flex-col">
       {steps.map((step, idx) => {
         const isLast = idx === steps.length - 1;
-        return step.kind === "thinking" ? (
-          <ThinkingRow key={idx} step={step} isLast={isLast} />
-        ) : (
-          <ToolRow key={idx} step={step} isLast={isLast} />
+        if (step.kind === "thinking") {
+          return <ThinkingRow key={idx} step={step} isLast={isLast} />;
+        }
+        // Determine if this tool step should render a block card inline.
+        const shouldRenderBlock =
+          renderBlock &&
+          step.tool === "run_sql" &&
+          step.status === "ok" &&
+          step.blockIndex != null;
+
+        return (
+          <ToolRow
+            key={idx}
+            step={step}
+            isLast={isLast}
+            afterContent={shouldRenderBlock ? renderBlock(step.blockIndex!) : undefined}
+          />
         );
       })}
     </div>
@@ -255,6 +326,12 @@ export function AgentTimeline({ steps }: { steps: TimelineStep[] }) {
 }
 
 /** Finalized steps rendered from persisted message metadata. */
-export function AgentSteps({ metadata }: { metadata: unknown }) {
-  return <AgentTimeline steps={parseAgentTranscript(metadata)} />;
+export function AgentSteps({
+  metadata,
+  renderBlock,
+}: {
+  metadata: unknown;
+  renderBlock?: (blockIndex: number) => React.ReactNode;
+}) {
+  return <AgentTimeline steps={parseAgentTranscript(metadata)} renderBlock={renderBlock} />;
 }

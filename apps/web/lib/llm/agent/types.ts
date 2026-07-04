@@ -113,6 +113,8 @@ export interface AgentTranscriptStep {
   input: unknown;
   outcome: "ok" | "error" | "thinking";
   summary: string;
+  /** Links a successful run_sql step to its result block for chronological UI interleaving. */
+  blockIndex?: number;
 }
 
 export interface AnalystAgentResult {
