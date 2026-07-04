@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 
@@ -180,9 +181,19 @@ function liveTail(content: string): string {
 }
 
 function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "thinking" }>; isLast: boolean }) {
+  const [isOpen, setIsOpen] = useState(!!step.live);
+
+  useEffect(() => {
+    setIsOpen(!!step.live);
+  }, [step.live]);
+
   return (
     <TimelineRow isLast={isLast} tone={step.live ? "pending" : "accent"}>
-      <details className="group">
+      <details 
+        className="group" 
+        open={isOpen} 
+        onToggle={(e) => setIsOpen(e.currentTarget.open)}
+      >
         <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs text-text-3 transition hover:text-text-2">
           <span className="font-medium">{step.live ? "Thinking" : "Thought process"}</span>
           {step.live ? <BouncingDots /> : null}
