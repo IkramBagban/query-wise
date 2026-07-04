@@ -1,196 +1,260 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  Database,
-  ListTree,
-  Sparkles,
-  TerminalSquare,
-} from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 
-export interface TranscriptStep {
-  tool: string;
+/* ------------------------------- Model ---------------------------------- */
+
+/** Normalized step consumed by the timeline, from either live events or the persisted transcript. */
+export type TimelineStep =
+  | { kind: "thinking"; content: string; live?: boolean }
+  | { kind: "tool"; tool: string; input?: unknown; status: "pending" | "ok" | "error"; summary: string };
+
+/** Raw live-activity element accumulated in StreamState.activities. */
+export interface StreamActivity {
+  kind: string;
+  label?: string;
+  tool?: string;
+  blockIndex?: number | null;
+  content?: string;
   input?: unknown;
-  outcome: "ok" | "error" | "thinking";
-  summary: string;
+  callId?: string;
 }
 
-function toolIcon(tool: string | undefined) {
-  if (tool === "run_sql") return TerminalSquare;
-  if (tool === "describe_tables") return ListTree;
-  if (tool === "sample_values") return Database;
-  return Sparkles;
-}
+/** Internal tools that must never surface to the user. */
+const HIDDEN_TOOLS = new Set(["set_chart"]);
 
 const TOOL_LABELS: Record<string, string> = {
   run_sql: "Ran SQL query",
-  describe_tables: "Explored database schema",
-  sample_values: "Sampled data values",
+  describe_tables: "Explored schema",
+  sample_values: "Sampled values",
 };
 
-/** Internal tools that should never be shown to the user. */
-const HIDDEN_TOOLS = new Set(["set_chart"]);
+const TOOL_PENDING_LABELS: Record<string, string> = {
+  run_sql: "Running SQL query",
+  describe_tables: "Exploring schema",
+  sample_values: "Sampling values",
+};
 
-/* -------------------------------- Bouncing Dots -------------------------------- */
+/* ------------------------------ Adapters -------------------------------- */
+
+/** Live SSE activities → ordered timeline steps (tool-call/result already merged upstream). */
+export function activitiesToSteps(
+  activities: StreamActivity[],
+  opts?: { streaming?: boolean },
+): TimelineStep[] {
+  const steps: TimelineStep[] = [];
+  let lastThinking = -1;
+  for (const activity of activities) {
+    if (activity.kind === "thinking") {
+      if (!activity.content?.trim()) continue;
+      lastThinking = steps.length;
+      steps.push({ kind: "thinking", content: activity.content });
+    } else if (["tool-call", "tool-result", "retry"].includes(activity.kind)) {
+      if (HIDDEN_TOOLS.has(activity.tool ?? "")) continue;
+      steps.push({
+        kind: "tool",
+        tool: activity.tool ?? "",
+        input: activity.input,
+        status: activity.kind === "retry" ? "error" : activity.kind === "tool-result" ? "ok" : "pending",
+        summary: activity.label ?? "",
+      });
+    }
+  }
+  // Mark the trailing thinking block as live while it is still the newest thing on screen.
+  if (opts?.streaming && lastThinking === steps.length - 1 && steps[lastThinking]?.kind === "thinking") {
+    steps[lastThinking] = { ...steps[lastThinking], live: true } as TimelineStep;
+  }
+  return steps;
+}
+
+/** Persisted message metadata → ordered timeline steps. */
+export function parseAgentTranscript(metadata: unknown): TimelineStep[] {
+  const transcript = (metadata as { agentV3?: { transcript?: unknown } } | null)?.agentV3?.transcript;
+  if (!Array.isArray(transcript)) return [];
+  return transcript.flatMap((raw): TimelineStep[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const { tool, outcome, summary, input } = raw as {
+      tool?: string;
+      outcome?: string;
+      summary?: string;
+      input?: unknown;
+    };
+    if (typeof tool !== "string" || typeof summary !== "string") return [];
+    if (tool === "thinking") return summary.trim() ? [{ kind: "thinking", content: summary }] : [];
+    if (HIDDEN_TOOLS.has(tool)) return [];
+    return [{ kind: "tool", tool, input, status: outcome === "error" ? "error" : "ok", summary }];
+  });
+}
+
+/* ---------------------------- Bouncing Dots ----------------------------- */
 
 /** A minimal three-dot typing indicator. */
 export function BouncingDots() {
   return (
-    <span className="mt-2 inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="size-1.5 rounded-full bg-accent"
-          style={{
-            animation: "agent-bounce 1.2s ease-in-out infinite",
-            animationDelay: `${i * 0.15}s`,
-          }}
+          className="size-1 rounded-full bg-accent"
+          style={{ animation: "agent-bounce 1.2s ease-in-out infinite", animationDelay: `${i * 0.15}s` }}
         />
       ))}
-      <style>{`
-        @keyframes agent-bounce {
-          0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
-          30% { opacity: 1; transform: translateY(-3px); }
-        }
-      `}</style>
+      <style>{`@keyframes agent-bounce {
+        0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+        30% { opacity: 1; transform: translateY(-2.5px); }
+      }`}</style>
     </span>
   );
 }
 
-/* -------------------------------- Reasoning -------------------------------- */
+/* ------------------------------ Timeline -------------------------------- */
 
-/** Render a single reasoning block (Thinking) */
-export function ReasoningBlock({ content, live }: { content: string; live?: boolean }) {
-  if (!content?.trim()) return null;
+type Tone = "accent" | "success" | "danger" | "pending";
+
+const DOT_CLASS: Record<Tone, string> = {
+  accent: "bg-accent-2/50",
+  success: "bg-success/80",
+  danger: "bg-danger",
+  pending: "bg-accent",
+};
+
+/**
+ * Shared row: a slim rail with a status dot on the left, expandable content on
+ * the right. Deliberately icon-free — the dot carries the status, the text
+ * carries the meaning.
+ */
+function TimelineRow({
+  tone,
+  isLast,
+  children,
+}: {
+  tone: Tone;
+  isLast: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <details
-      className="group mt-2.5 overflow-hidden rounded-xl border border-accent-2/20 bg-gradient-to-b from-accent-2/5 to-transparent"
-      open={live}
-    >
-      <summary className="flex cursor-pointer select-none items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-accent-2 transition-colors hover:text-accent">
-        <Sparkles className="size-3.5" />
-        {live ? "Thinking..." : "Thought process"}
-        {live && <BouncingDots />}
-        <ChevronDown className="ml-auto size-3.5 text-text-3 transition-transform duration-200 group-open:rotate-180" />
-      </summary>
-      <div className="border-t border-accent-2/10 px-3.5 py-3 text-[13px] leading-relaxed text-text-2">
-        <Markdown>{content}</Markdown>
-      </div>
-    </details>
+    <div className="relative flex gap-2.5">
+      <span className="relative flex w-3 shrink-0 justify-center" aria-hidden>
+        {!isLast && <span className="absolute bottom-0 top-[18px] w-px bg-border/60" />}
+        <span className="relative mt-[9px] flex size-1.5">
+          {tone === "pending" && (
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
+          )}
+          <span className={`relative inline-flex size-1.5 rounded-full ${DOT_CLASS[tone]}`} />
+        </span>
+      </span>
+      <div className="min-w-0 flex-1 pb-1.5">{children}</div>
+    </div>
   );
 }
 
-/* -------------------------------- Tool Call -------------------------------- */
+/** Trailing tail of the live thought, so the timeline feels alive without dumping raw reasoning. */
+function liveTail(content: string): string {
+  const compact = content.replaceAll(/\s+/g, " ").trim();
+  return compact.length > 90 ? `…${compact.slice(-90)}` : compact;
+}
 
-/** Render a single tool call block */
-export function ToolCallBlock({ step, live }: { step: TranscriptStep; live?: boolean }) {
-  if (HIDDEN_TOOLS.has(step.tool)) return null;
-  const Icon = step.outcome === "error" ? AlertTriangle : toolIcon(step.tool);
-  const label = TOOL_LABELS[step.tool] || step.tool;
-  const isError = step.outcome === "error";
-  const isDone = step.outcome === "ok";
+function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "thinking" }>; isLast: boolean }) {
+  return (
+    <TimelineRow isLast={isLast} tone={step.live ? "pending" : "accent"}>
+      <details className="group">
+        <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs text-text-3 transition hover:text-text-2">
+          <span className="font-medium">{step.live ? "Thinking" : "Thought process"}</span>
+          {step.live ? <BouncingDots /> : null}
+          {step.live ? (
+            <span className="min-w-0 truncate text-[11px] text-text-3/70">{liveTail(step.content)}</span>
+          ) : null}
+          <ChevronRight className="size-3 shrink-0 text-text-3/60 transition-transform group-open:rotate-90" />
+        </summary>
+        <div className="mb-1 mt-1.5 border-l-2 border-border/70 pl-3 text-[12.5px] leading-relaxed text-text-3">
+          <Markdown>{step.content}</Markdown>
+        </div>
+      </details>
+    </TimelineRow>
+  );
+}
 
-  let inputDisplay = "";
+function ToolRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "tool" }>; isLast: boolean }) {
+  const isError = step.status === "error";
+  const isPending = step.status === "pending";
+  const label = isPending
+    ? TOOL_PENDING_LABELS[step.tool] ?? step.tool
+    : TOOL_LABELS[step.tool] ?? step.tool;
+
+  let sql: string | null = null;
+  let inputJson: string | null = null;
   if (step.input && typeof step.input === "object") {
-    if ("sql" in step.input && typeof step.input.sql === "string") {
-      inputDisplay = "```sql\n" + step.input.sql + "\n```";
+    if ("sql" in step.input && typeof (step.input as { sql?: unknown }).sql === "string") {
+      sql = (step.input as { sql: string }).sql;
     } else {
-      inputDisplay = "```json\n" + JSON.stringify(step.input, null, 2) + "\n```";
+      inputJson = JSON.stringify(step.input, null, 2);
     }
   }
+  const expandable = Boolean(sql || inputJson);
+  const tone: Tone = isError ? "danger" : isPending ? "pending" : "success";
+
+  const summaryLine = (
+    <>
+      <span className={`font-medium ${isError ? "text-danger" : "text-text-2"}`}>{label}</span>
+      {isPending ? <BouncingDots /> : null}
+      {step.summary && (
+        <span className={`min-w-0 truncate text-[11px] ${isError ? "text-danger/75" : "text-text-3"}`}>
+          {step.summary}
+        </span>
+      )}
+    </>
+  );
 
   return (
-    <details
-      className={`group mt-2 overflow-hidden rounded-xl border transition-colors ${
-        isError
-          ? "border-danger/25 bg-danger/5"
-          : "border-border/60 bg-surface-1 hover:border-border"
-      }`}
-      open={live}
-    >
-      <summary
-        className={`flex cursor-pointer select-none items-center gap-2.5 px-3.5 py-2.5 text-xs font-medium transition-colors ${
-          isError ? "text-danger" : "text-text-2 hover:text-text-1"
-        }`}
-      >
-        {live && !isDone && !isError ? (
-          <span className="relative flex size-3.5">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-40" />
-            <span className="relative inline-flex size-3.5 rounded-full bg-accent" />
-          </span>
-        ) : isDone ? (
-          <Check className="size-3.5 text-success" />
-        ) : (
-          <Icon className="size-3.5" />
-        )}
-        <span>{label}</span>
-        {step.summary && !isError && (
-          <span className="truncate max-w-[220px] font-normal text-text-3 hidden sm:inline-block">
-            — {step.summary}
-          </span>
-        )}
-        <ChevronDown className="ml-auto size-3.5 text-text-3 transition-transform duration-200 group-open:rotate-180" />
-      </summary>
-      <div className="border-t border-border/40 px-3.5 py-3 text-[13px] text-text-2">
-        {inputDisplay && (
-          <div className="mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-text-3/70">
-              Input
-            </span>
-            <div className="mt-1.5 overflow-x-auto rounded-lg bg-surface-2/80 text-[12px]">
-              <Markdown>{inputDisplay}</Markdown>
-            </div>
+    <TimelineRow isLast={isLast} tone={tone}>
+      {expandable ? (
+        <details className="group">
+          <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs">
+            {summaryLine}
+            <ChevronRight className="size-3 shrink-0 text-text-3/60 transition-transform group-open:rotate-90" />
+          </summary>
+          <div className="mb-1 mt-1.5 space-y-2 border-l-2 border-border/70 pl-3">
+            {sql && (
+              <div className="overflow-x-auto rounded-lg bg-surface-2/80 text-[12px]">
+                <Markdown>{"```sql\n" + sql + "\n```"}</Markdown>
+              </div>
+            )}
+            {inputJson && (
+              <div className="overflow-x-auto rounded-lg bg-surface-2/80 text-[12px]">
+                <Markdown>{"```json\n" + inputJson + "\n```"}</Markdown>
+              </div>
+            )}
+            {step.summary && (
+              <p className={`text-[12px] ${isError ? "text-danger" : "text-text-3"}`}>{step.summary}</p>
+            )}
           </div>
-        )}
-        {step.summary && (
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-text-3/70">
-              Result
-            </span>
-            <p className={`mt-1 text-[12px] ${isError ? "text-danger" : "text-text-3"}`}>
-              {step.summary}
-            </p>
-          </div>
-        )}
-      </div>
-    </details>
+        </details>
+      ) : (
+        <p className="flex items-center gap-1.5 py-0.5 text-xs">{summaryLine}</p>
+      )}
+    </TimelineRow>
   );
 }
 
-/* -------------------------------- Parsing -------------------------------- */
-
-/** Defensive read of the agent transcript persisted in message metadata. */
-export function parseAgentTranscript(metadata: unknown): TranscriptStep[] {
-  const transcript = (metadata as { agentV3?: { transcript?: unknown } } | null)?.agentV3
-    ?.transcript;
-  if (!Array.isArray(transcript)) return [];
-  return transcript.flatMap((step) => {
-    if (!step || typeof step !== "object") return [];
-    const { tool, outcome, summary, input } = step as Partial<TranscriptStep>;
-    if (typeof tool !== "string" || typeof summary !== "string") return [];
-    return [{ tool, outcome: outcome as "ok" | "error" | "thinking", summary, input }];
-  });
-}
-
-/* -------------------------------- Finalized Steps -------------------------------- */
-
-/** Render finalized steps (from transcript) */
-export function AgentSteps({ metadata }: { metadata: unknown }) {
-  const steps = parseAgentTranscript(metadata);
+/** Unified ordered feed of the agent's reasoning and tool activity. */
+export function AgentTimeline({ steps }: { steps: TimelineStep[] }) {
   if (steps.length === 0) return null;
-
   return (
-    <div className="flex flex-col">
+    <div className="mt-2.5 flex flex-col">
       {steps.map((step, idx) => {
-        if (step.tool === "thinking") {
-          return <ReasoningBlock key={idx} content={step.summary} />;
-        }
-        if (HIDDEN_TOOLS.has(step.tool)) return null;
-        return <ToolCallBlock key={idx} step={step} />;
+        const isLast = idx === steps.length - 1;
+        return step.kind === "thinking" ? (
+          <ThinkingRow key={idx} step={step} isLast={isLast} />
+        ) : (
+          <ToolRow key={idx} step={step} isLast={isLast} />
+        );
       })}
     </div>
   );
+}
+
+/** Finalized steps rendered from persisted message metadata. */
+export function AgentSteps({ metadata }: { metadata: unknown }) {
+  return <AgentTimeline steps={parseAgentTranscript(metadata)} />;
 }

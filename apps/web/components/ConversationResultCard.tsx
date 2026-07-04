@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AreaChart,
   BarChart3,
@@ -20,11 +20,10 @@ import {
 } from "lucide-react";
 
 import { TableView } from "@/components/charts/TableView";
+import { ResultBlockCard } from "@/components/ResultBlockCard";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Dialog } from "@/components/ui/dialog";
-import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { previewToQueryResult, V2Chart } from "@/components/V2Chart";
 import { useToast } from "@/hooks/useToast";
@@ -64,7 +63,7 @@ function IconAction({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-surface text-text-2 transition hover:border-border-2 hover:bg-surface-2 hover:text-text-1"
+      className="inline-flex size-7 items-center justify-center rounded-md text-text-3 transition hover:bg-surface-2 hover:text-text-1"
     >
       {children}
     </button>
@@ -92,7 +91,7 @@ function ExportMenu({ onExport }: { onExport: (format: "csv" | "xlsx" | "json") 
     <div ref={rootRef} className="relative">
       <IconAction label="Download data" onClick={() => setOpen((value) => !value)}><Download className="size-4" /></IconAction>
       {open ? (
-        <div className="absolute right-0 top-11 z-50 w-44 rounded-lg border border-border bg-surface p-1 shadow-xl">
+        <div className="absolute right-0 top-9 z-50 w-44 rounded-lg border border-border bg-surface p-1 shadow-xl">
           <button type="button" onClick={() => choose("csv")} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-surface-2"><FileSpreadsheet className="size-4" />Export CSV</button>
           <button type="button" onClick={() => choose("xlsx")} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-surface-2"><FileSpreadsheet className="size-4" />Export Excel</button>
           <button type="button" onClick={() => choose("json")} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-surface-2"><FileJson className="size-4" />Export JSON</button>
@@ -166,7 +165,7 @@ function DashboardMenu({
         <Button size="sm" onClick={() => setOpen((value) => !value)}><Bookmark />Save to Dashboard</Button>
       )}
       {open ? (
-        <div className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-surface p-2 shadow-xl">
+        <div className="absolute right-0 top-9 z-50 w-64 rounded-xl border border-border bg-surface p-2 shadow-xl">
           <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">Choose dashboard</p>
           <div className="flex max-h-52 flex-col gap-0.5 overflow-y-auto">
             {dashboardOptions.map((dashboard) => (
@@ -207,13 +206,12 @@ export function ConversationResultCard({
   const run = message.queryRun;
   const preview = block ? block.resultPreview : run?.resultPreview;
   const baseConfig = (block?.chartConfig ?? message.metadata.chartConfig ?? { schemaVersion: 1, type: "table" }) as ChartConfig;
-  const [tab, setTab] = useState<"chart" | "sql">("chart");
   const [chartType, setChartType] = useState<ChartType>(baseConfig.type === "table" ? "bar" : baseConfig.type);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<"chart" | "table">("chart");
   const { pushToast } = useToast();
 
-  const config = useMemo(() => ({ ...baseConfig, type: chartType }), [baseConfig, chartType]);
+  const config: ChartConfig = { ...baseConfig, type: chartType };
 
   if (!run || !preview || !Array.isArray(preview.rows) || !Array.isArray(preview.columns)) return null;
   const result = previewToQueryResult(preview);
@@ -246,35 +244,28 @@ export function ConversationResultCard({
 
   return (
     <>
-      <Card className="mt-3 overflow-visible rounded-xl border-border bg-surface shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 pt-3">
-          <button type="button" onClick={() => setTab("chart")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "chart" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}><BarChart3 className="size-3.5" />Chart</button>
-          <button type="button" onClick={() => setTab("sql")} className={`flex items-center gap-1.5 border-b-2 px-2 pb-2 text-xs font-medium transition ${tab === "sql" ? "border-accent text-accent-2" : "border-transparent text-text-3 hover:text-text-1"}`}><Code2 className="size-3.5" />SQL</button>
-          <span className="ml-auto pb-2 text-[11px] text-text-3">{formatNumber(rowCount)} row{rowCount === 1 ? "" : "s"}{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</span>
-        </div>
-
-        <div className="p-3 sm:p-4">
-          {tab === "chart" ? (
-            <>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <Select className="min-w-28" value={chartType} onChange={(value) => setChartType(value as ChartType)} options={CHART_TYPES} />
-                <div className="flex items-center gap-1.5">
-                  <IconAction label="Open chart details" onClick={() => setDetailsOpen(true)}><Maximize2 className="size-4" /></IconAction>
-                  <ExportMenu onExport={exportResult} />
-                  {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />}
-                </div>
-              </div>
-              <div className="min-w-0 h-[21rem] rounded-lg border border-border bg-surface-2/40 p-2"><V2Chart preview={preview} config={config} /></div>
-            </>
-          ) : sqlText ? <CodeBlock sql={sqlText} variant="dark" /> : <p className="rounded-lg border border-dashed border-border p-4 text-xs text-text-3">No SQL was generated for this response.</p>}
-        </div>
-      </Card>
+      <ResultBlockCard
+        title={config.title ?? block?.purpose}
+        preview={preview}
+        sql={sqlText}
+        rowCount={rowCount}
+        executionTimeMs={executionTimeMs}
+        chartConfig={baseConfig}
+        onChartTypeChange={setChartType}
+        actions={
+          <>
+            <IconAction label="Open chart details" onClick={() => setDetailsOpen(true)}><Maximize2 className="size-4" /></IconAction>
+            <ExportMenu onExport={exportResult} />
+            {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />}
+          </>
+        }
+      />
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen} panelClassName="max-h-[92vh] max-w-[96vw] overflow-y-auto p-4 sm:max-w-6xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-2">Chart details {block ? `(Block ${block.index})` : ""}</p>
-            <h2 className="mt-1 font-syne text-2xl font-semibold">{config.title ?? "Query result"}</h2>
+            <h2 className="mt-1 font-syne text-2xl font-semibold">{config.title ?? block?.purpose ?? "Query result"}</h2>
             <p className="mt-1 text-xs text-text-3">{formatNumber(rowCount)} rows{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</p>
           </div>
           <button type="button" aria-label="Close chart details" onClick={() => setDetailsOpen(false)} className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text-1 shadow-sm transition hover:bg-surface-2"><X className="size-5" /></button>
@@ -312,4 +303,3 @@ export function ConversationResultCard({
     </>
   );
 }
-

@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import {
   AlertTriangle,
   ChevronDown,
-  CheckCircle2,
-  Code2,
   Database,
   MessageSquarePlus,
   PanelRightClose,
@@ -28,7 +27,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/ConversationResultCard";
-import { AgentSteps, BouncingDots, ReasoningBlock, ToolCallBlock } from "@/components/AgentActivity";
+import { ResultBlockCard } from "@/components/ResultBlockCard";
+import { AgentSteps, AgentTimeline, BouncingDots, activitiesToSteps } from "@/components/AgentActivity";
 import { ComposerBox } from "@/components/ChatComposer";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -53,7 +53,7 @@ import {
   type ConnectionListItem,
   type QueryStreamEvent,
 } from "@/lib/api-client";
-import type { ChartConfig } from "@query-wise/shared/types";
+import type { BoundedResultPreview, ChartConfig } from "@query-wise/shared/types";
 
 const suggestions = [
   "What changed in the last 30 days?",
@@ -452,13 +452,25 @@ export interface StreamBlock {
   rowCount?: number;
   executionTimeMs?: number;
   truncated?: boolean;
+  /** Full renderable rows, streamed by the agent the moment the query succeeds. */
+  preview?: BoundedResultPreview;
+  /** Default config streamed with the data; refined when the agent calls set_chart. */
+  chartConfig?: ChartConfig;
 }
 
 export interface StreamState {
   status: string | null;
   textDelta: string;
-  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null; content?: string; input?: unknown }>;
+  activities: Array<{ kind: string; label: string; tool?: string; blockIndex?: number | null; content?: string; input?: unknown; callId?: string }>;
   blocks: StreamBlock[];
+}
+
+function upsertBlock(blocks: StreamBlock[], index: number, patch: Partial<StreamBlock>): StreamBlock[] {
+  const next = [...blocks];
+  const existing = next.findIndex((block) => block.index === index);
+  if (existing >= 0) next[existing] = { ...next[existing], ...patch };
+  else next.push({ index, ...patch });
+  return next;
 }
 
 function makeQueryEventHandler(
@@ -483,14 +495,18 @@ function makeQueryEventHandler(
                content: (last.content || "") + data.chunk,
              };
            }
-           return { ...state, status: "Working", activities };
+           return { ...state, status: "Thinking", activities };
         }
         if (data.kind === "tool-result" || data.kind === "retry") {
            const activities = [...state.activities];
-           const lastToolCallIndex = activities.findLastIndex(a => a.kind === "tool-call" && a.tool === data.tool);
-           if (lastToolCallIndex >= 0) {
-              activities[lastToolCallIndex] = {
-                 ...activities[lastToolCallIndex],
+           // Match by callId when present so parallel calls of the same tool
+           // resolve the right row; otherwise take the oldest unresolved call.
+           const callIndex = data.callId
+             ? activities.findIndex(a => a.kind === "tool-call" && a.callId === data.callId)
+             : activities.findIndex(a => a.kind === "tool-call" && a.tool === data.tool);
+           if (callIndex >= 0) {
+              activities[callIndex] = {
+                 ...activities[callIndex],
                  kind: data.kind,
                  label: data.label,
                  blockIndex: data.blockIndex
@@ -502,28 +518,62 @@ function makeQueryEventHandler(
       }
       if (event.type === "sql-preview") {
         const data = event.data as any;
-        // V2 events and blocked previews carry no blockIndex; fold them into block 0.
-        const index = data.blockIndex ?? 0;
-        const blocks = [...state.blocks];
-        const idx = blocks.findIndex(b => b.index === index);
-        if (idx >= 0) {
-          blocks[idx] = { ...blocks[idx], sql: data.text, purpose: data.purpose, validation: data.validation };
-        } else {
-          blocks.push({ index, sql: data.text, purpose: data.purpose, validation: data.validation });
-        }
-        return { ...state, status: "Validating SQL", blocks };
+        // Blocked attempts carry no blockIndex — they surface in the timeline
+        // as a failed step and must never overwrite a real result block.
+        if (data.blockIndex == null || data.validation === "blocked") return state;
+        return {
+          ...state,
+          status: "Preparing results",
+          blocks: upsertBlock(state.blocks, data.blockIndex, { sql: data.text, purpose: data.purpose, validation: data.validation }),
+        };
       }
       if (event.type === "query-stats") {
         const data = event.data as any;
-        const index = data.blockIndex ?? 0;
-        const blocks = [...state.blocks];
-        const idx = blocks.findIndex(b => b.index === index);
-        if (idx >= 0) {
-          blocks[idx] = { ...blocks[idx], rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated };
-        } else {
-          blocks.push({ index, rowCount: data.rowCount, executionTimeMs: data.executionTimeMs, truncated: data.truncated });
-        }
-        return { ...state, status: "Preparing results", blocks };
+        if (data.blockIndex == null) return state;
+        return {
+          ...state,
+          status: "Preparing results",
+          blocks: upsertBlock(state.blocks, data.blockIndex, {
+            rowCount: data.rowCount,
+            executionTimeMs: data.executionTimeMs,
+            truncated: data.truncated,
+          }),
+        };
+      }
+      if (event.type === "block-data") {
+        const data = event.data as {
+          blockIndex?: number | null;
+          purpose?: string;
+          sql?: string;
+          preview?: BoundedResultPreview;
+          rowCount?: number;
+          executionTimeMs?: number;
+          truncated?: boolean;
+          chartConfig?: ChartConfig;
+        };
+        if (data.blockIndex == null) return state;
+        return {
+          ...state,
+          status: "Rendering results",
+          blocks: upsertBlock(state.blocks, data.blockIndex, {
+            purpose: data.purpose,
+            sql: data.sql,
+            preview: data.preview,
+            rowCount: data.rowCount,
+            executionTimeMs: data.executionTimeMs,
+            truncated: data.truncated,
+            chartConfig: data.chartConfig,
+            validation: "valid",
+          }),
+        };
+      }
+      if (event.type === "chart-config") {
+        const data = event.data as { blockIndex?: number | null; chartConfig?: ChartConfig };
+        if (data.blockIndex == null) return state;
+        return {
+          ...state,
+          blocks: upsertBlock(state.blocks, data.blockIndex, { chartConfig: data.chartConfig }),
+        };
       }
       if (event.type === "text-delta") {
         const data = event.data as { chunk: string };
@@ -822,107 +872,100 @@ export function EmptyWorkspaceView() {
 
 /* -------------------------------- Messages -------------------------------- */
 
-function UserMessage({ message }: { message: ConversationMessageDto }) {
+/** First letter of the signed-in user's name for the message avatar. */
+function useUserInitial(): string {
+  const { user } = useUser();
+  const source =
+    user?.firstName ?? user?.fullName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress ?? "";
+  return source.trim().charAt(0).toUpperCase() || "?";
+}
+
+function UserAvatar({ initial }: { initial: string }) {
+  return (
+    <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-semibold text-accent-foreground shadow-sm">
+      {initial}
+    </span>
+  );
+}
+
+function UserMessage({ message, initial }: { message: ConversationMessageDto; initial: string }) {
   return (
     <div className="flex items-start justify-end gap-3">
-      <div className="max-w-[78%] rounded-xl border border-success/20 bg-success/10 px-4 py-3 shadow-sm">
+      <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-success/20 bg-success/10 px-4 py-3 shadow-sm">
         <p className="whitespace-pre-wrap text-sm text-text-1">{message.content}</p>
-        <p className="mt-1.5 flex items-center justify-end gap-1 text-[10px] text-text-3">
-          {formatClockTime(message.createdAt)}
-          <CheckCircle2 className="size-3 text-success" />
-        </p>
+        <p className="mt-1.5 text-right text-[10px] text-text-3">{formatClockTime(message.createdAt)}</p>
       </div>
-      <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-semibold text-accent-foreground shadow-sm">N</span>
+      <UserAvatar initial={initial} />
     </div>
   );
 }
 
+/**
+ * The in-flight assistant message. Renders the same result cards as the
+ * finalized message so completion is a seamless reconcile: skeleton while a
+ * query runs, live chart the moment its data streams in.
+ */
 function PendingAssistantMessage({ state }: { state: StreamState }) {
-  /** Internal tools that should never be rendered to the user. */
-  const HIDDEN_TOOLS = new Set(["set_chart"]);
-
-  /** Whether the agent has finished executing SQL and we should show a chart placeholder. */
-  const hasExecutedSql = state.blocks.some(b => b.rowCount !== undefined);
   const hasNoTextYet = !state.textDelta;
+  // Queries still executing (their tool-call has not resolved yet) render as
+  // skeleton cards below the finished blocks.
+  const runningQueries = state.activities.filter(
+    (activity) => activity.kind === "tool-call" && activity.tool === "run_sql",
+  );
 
   return (
     <div className="flex items-start gap-3">
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-baseline gap-2.5">
           <span className="text-sm font-semibold text-text-1">QueryWise</span>
+          {state.status && state.status !== "Complete" ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-text-3">
+              {state.status}
+              <BouncingDots />
+            </span>
+          ) : null}
         </div>
-        {state.activities.length > 0 && (
-          <div className="mt-3 flex flex-col gap-1">
-            {state.activities.map((activity, idx) => {
-              if (activity.kind === "thinking" && !(activity.content?.trim())) return null;
-              if (activity.kind === "thinking") {
-                return <ReasoningBlock key={idx} content={activity.content || ""} live={hasNoTextYet} />;
-              }
-              if (activity.kind === "tool-call" || activity.kind === "tool-result" || activity.kind === "retry") {
-                if (HIDDEN_TOOLS.has(activity.tool || "")) return null;
-                const step = {
-                  tool: activity.tool || "",
-                  input: activity.input,
-                  outcome: (activity.kind === "retry" ? "error" : activity.kind === "tool-result" ? "ok" : "thinking") as "error" | "ok" | "thinking",
-                  summary: activity.label || "",
-                };
-                return <ToolCallBlock key={idx} step={step} live={activity.kind === "tool-call"} />;
-              }
-              return null;
+        <AgentTimeline steps={activitiesToSteps(state.activities, { streaming: hasNoTextYet })} />
+        {(state.blocks.length > 0 || runningQueries.length > 0) && (
+          <div className="mt-3 space-y-4">
+            {state.blocks
+              .filter((block) => block.validation !== "blocked")
+              .map((block) => (
+                <ResultBlockCard
+                  key={block.index}
+                  title={block.chartConfig?.title ?? block.purpose}
+                  preview={block.preview ?? null}
+                  sql={block.sql}
+                  rowCount={block.rowCount}
+                  executionTimeMs={block.executionTimeMs}
+                  chartConfig={block.chartConfig ?? null}
+                  running={!block.preview}
+                />
+              ))}
+            {runningQueries.map((query, index) => {
+              const input = (query.input ?? {}) as { purpose?: string; sql?: string };
+              return (
+                <ResultBlockCard
+                  key={query.callId ?? `running-${index}`}
+                  title={input.purpose}
+                  preview={null}
+                  sql={input.sql}
+                  running
+                />
+              );
             })}
           </div>
         )}
-        {state.blocks.map(block => (
-          <details key={block.index} className="mt-3 overflow-hidden rounded-xl border border-border bg-[#102117] text-white shadow-sm" open>
-            <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold">
-              <span className="inline-flex items-center gap-2">
-                <Code2 className="size-4 text-accent" />
-                {block.purpose ?? `Query ${block.index + 1}`}
-              </span>
-              <ChevronDown className="size-4 text-text-3" />
-            </summary>
-            {block.sql && (
-              <div className="border-t border-white/10 p-3">
-                <CodeBlock sql={block.sql} variant="dark" />
-                {block.rowCount !== undefined && (
-                   <p className="mt-2 text-xs text-white/60">
-                     {block.rowCount.toLocaleString()} rows in {block.executionTimeMs}ms
-                   </p>
-                )}
-              </div>
-            )}
-          </details>
-        ))}
-        {/* Chart skeleton placeholder: shows once SQL data is back but chart is still being configured */}
-        {hasExecutedSql && hasNoTextYet && (
-          <div className="mt-3 animate-pulse rounded-xl border border-border bg-surface-2/60 p-4">
-            <div className="flex items-center justify-between">
-              <div className="h-3 w-28 rounded bg-border" />
-              <div className="h-3 w-16 rounded bg-border" />
-            </div>
-            <div className="mt-4 flex items-end gap-1.5">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-accent/15"
-                  style={{ height: `${20 + Math.sin(i * 0.8) * 40 + 40}px` }}
-                />
-              ))}
-            </div>
-            <div className="mt-3 flex items-center gap-2 text-xs text-text-3">
-              <Spinner size="sm" />
-              Preparing visualization...
-            </div>
+        {state.textDelta && (
+          <div className="mt-3">
+            <Markdown>{state.textDelta}</Markdown>
           </div>
         )}
-        {state.textDelta && (
-           <div className="mt-3">
-             <Markdown>{state.textDelta}</Markdown>
-           </div>
-        )}
         {!state.textDelta && state.activities.length === 0 && state.blocks.length === 0 && (
-           <BouncingDots />
+          <div className="mt-2">
+            <BouncingDots />
+          </div>
         )}
       </div>
     </div>
@@ -1097,6 +1140,9 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const olderScrollPosition = useRef<{ height: number; top: number } | null>(null);
+  /** Pinned-to-bottom: keep following the stream unless the user scrolled up. */
+  const pinnedToBottom = useRef(true);
+  const userInitial = useUserInitial();
 
   const ordered = useMemo(
     () => messageState.items.slice().sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id)),
@@ -1197,6 +1243,24 @@ export function ConversationView({ conversationId }: { conversationId: string })
     }
     scrollContainer.scrollTo({ top: scrollContainer.scrollHeight });
   }, [ordered.length, submitting]);
+
+  // Follow the live stream as it grows, but never fight the user: once they
+  // scroll up, stay put until they return to the bottom.
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer || !streamState) return;
+    if (pinnedToBottom.current) {
+      scrollContainer.scrollTo({ top: scrollContainer.scrollHeight });
+    }
+  }, [streamState]);
+
+  function handleScroll() {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) return;
+    const distanceFromBottom =
+      scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+    pinnedToBottom.current = distanceFromBottom < 96;
+  }
 
   useEffect(() => {
     if (!connection.data || ingestion.terminal) return;
@@ -1303,7 +1367,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
             </Tooltip>
           </div>
         </div>
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
+        <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
           {(conversation.loading || messagesLoading) && !ordered.length && !pendingQuestion && !submitting ? (
             <MessageListSkeleton messages={4} />
           ) : messagesError && !ordered.length ? (
@@ -1337,7 +1401,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               {messagesError ? <p role="alert" className="text-center text-xs text-danger">{messagesError.message}</p> : null}
               {ordered.map((message) =>
                 message.role === "user" ? (
-                  <UserMessage key={message.id} message={message} />
+                  <UserMessage key={message.id} message={message} initial={userInitial} />
                 ) : (
                   <AssistantMessage
                     key={message.id}
@@ -1350,10 +1414,10 @@ export function ConversationView({ conversationId }: { conversationId: string })
               )}
               {pendingQuestion ? (
                 <div className="flex items-start justify-end gap-3">
-                  <div className="max-w-[78%] rounded-xl border border-success/20 bg-success/10 px-4 py-3 shadow-sm opacity-70">
+                  <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-success/20 bg-success/10 px-4 py-3 shadow-sm opacity-70">
                     <p className="whitespace-pre-wrap text-sm text-text-1">{pendingQuestion}</p>
                   </div>
-                  <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success text-[12px] font-semibold text-accent-foreground shadow-sm">N</span>
+                  <UserAvatar initial={userInitial} />
                 </div>
               ) : null}
               {submitting && streamState ? (
