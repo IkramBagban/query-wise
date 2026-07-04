@@ -10,6 +10,29 @@ const DENIED_FUNCTIONS = new Set([
   "pg_stat_file", "pg_terminate_backend", "set_config",
 ]);
 
+/** Statement shapes pgsql-ast-parser produces for read-only queries. */
+const READ_ONLY_STATEMENT_TYPES = new Set(["select", "union", "union all", "values"]);
+
+/**
+ * A statement is read-only when it is a SELECT/UNION/VALUES, or a WITH (CTE)
+ * whose body — and every CTE definition — is itself read-only. `WITH ... SELECT`
+ * parses as type "with", not "select"; treating it as a write was a false
+ * positive that blocked legitimate CTE analytics queries.
+ */
+function isReadOnlyStatement(statement: Record<string, unknown> | undefined): boolean {
+  if (!statement) return false;
+  const type = typeof statement.type === "string" ? statement.type : "";
+  if (READ_ONLY_STATEMENT_TYPES.has(type)) return true;
+  if (type !== "with") return false;
+  const body = statement.in as Record<string, unknown> | undefined;
+  if (!isReadOnlyStatement(body)) return false;
+  const ctes = Array.isArray(statement.bind) ? statement.bind : [];
+  return ctes.every((cte) => {
+    const cteStatement = (cte as { statement?: Record<string, unknown> } | null)?.statement;
+    return isReadOnlyStatement(cteStatement);
+  });
+}
+
 function walk(value: unknown, visit: (node: Record<string, unknown>) => void): void {
   if (Array.isArray(value)) return void value.forEach((item) => walk(item, visit));
   if (!value || typeof value !== "object") return;
@@ -32,7 +55,7 @@ export function validatePostgresQuery(query: ProviderQuery, policy: QuerySafetyP
   }
   if (statements.length !== 1) violations.push({ code: "SINGLE_STATEMENT_REQUIRED", message: "Exactly one SQL statement is required." });
   const statement = statements[0] as unknown as Record<string, unknown> | undefined;
-  if (statement?.type !== "select") violations.push({ code: "READ_ONLY_REQUIRED", message: "Only read-only SELECT queries are allowed." });
+  if (!isReadOnlyStatement(statement)) violations.push({ code: "READ_ONLY_REQUIRED", message: "Only read-only SELECT queries are allowed." });
 
   if (statement) {
     walk(statement, (node) => {

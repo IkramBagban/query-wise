@@ -45,14 +45,17 @@ export function createSampleValuesTool(deps: {
         return { error: "Sampling budget exhausted. Proceed with what you know." };
       }
       state.sampleCalls += 1;
-      emitters.onActivity?.({ kind: "tool-call", tool: "sample_values", label: `Sampling ${table}.${column}`, input: { table, column } });
+      const callId = `sample_values-${state.sampleCalls}`;
+      emitters.onActivity?.({ kind: "tool-call", tool: "sample_values", callId, label: `Sampling ${table}.${column}`, input: { table, column } });
 
       const schemaTable = findTable(schema, table);
       if (!schemaTable) {
+        emitters.onActivity?.({ kind: "retry", tool: "sample_values", callId, label: `Unknown table "${table}"` });
         return { error: `Unknown table "${table}".`, suggestions: suggestTables(schema, table) };
       }
       const schemaColumn = schemaTable.columns.find((c) => c.name.toLowerCase() === column.trim().toLowerCase());
       if (!schemaColumn) {
+        emitters.onActivity?.({ kind: "retry", tool: "sample_values", callId, label: `No column "${column}" on ${schemaTable.name}` });
         return {
           error: `Table ${schemaTable.name} has no column "${column}".`,
           availableColumns: schemaTable.columns.map((c) => c.name),
@@ -73,6 +76,7 @@ export function createSampleValuesTool(deps: {
           outcome: "ok",
           summary: `${values.length} values`,
         });
+        emitters.onActivity?.({ kind: "tool-result", tool: "sample_values", callId, label: `${values.length} values` });
         return { table: schemaTable.name, column: schemaColumn.name, values };
       } catch (error) {
         const message = getErrorMessage(error) || "Sampling failed.";
@@ -82,6 +86,7 @@ export function createSampleValuesTool(deps: {
           outcome: "error",
           summary: message,
         });
+        emitters.onActivity?.({ kind: "retry", tool: "sample_values", callId, label: message.slice(0, 120) });
         return { error: `Sampling failed: ${message}` };
       }
     },

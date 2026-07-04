@@ -65,6 +65,24 @@ export function getModel(provider: Provider, model: string, apiKey: string) {
   return createAnthropic({ apiKey })(model);
 }
 
+/**
+ * Dynamic-thinking provider options for the agent loop. `thinkingBudget: -1`
+ * lets Gemini 2.5/3 decide how much to reason per turn (down to zero on simple
+ * questions) instead of a fixed budget, while `includeThoughts` surfaces the
+ * thought summaries we stream to the UI. Keys are provider-scoped, so the AI
+ * SDK ignores them for non-Google providers.
+ */
+export function getThinkingProviderOptions(provider: Provider) {
+  if (provider === "google") {
+    return {
+      google: {
+        thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
+      },
+    };
+  }
+  return undefined;
+}
+
 export function getStatusCode(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
   const withStatus = error as { statusCode?: unknown; status?: unknown };

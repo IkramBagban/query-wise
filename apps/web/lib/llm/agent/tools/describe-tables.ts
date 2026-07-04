@@ -26,7 +26,8 @@ export function createDescribeTablesTool(deps: {
       tables: z.array(z.string().trim().min(1)).min(1).max(8),
     }),
     execute: async ({ tables }) => {
-      emitters.onActivity?.({ kind: "tool-call", tool: "describe_tables", label: `Looking at ${tables.join(", ")}`, input: { tables } });
+      const callId = `describe_tables-${state.transcript.length}-${tables.join(",").slice(0, 40)}`;
+      emitters.onActivity?.({ kind: "tool-call", tool: "describe_tables", callId, label: `Looking at ${tables.join(", ")}`, input: { tables } });
       const found: SchemaTable[] = [];
       const missing: string[] = [];
       for (const name of tables) {
@@ -34,11 +35,18 @@ export function createDescribeTablesTool(deps: {
         if (table) found.push(table);
         else missing.push(name);
       }
+      const summary = `found ${found.map((t) => t.name).join(", ") || "none"}${missing.length ? `; unknown: ${missing.join(", ")}` : ""}`;
       state.transcript.push({
         tool: "describe_tables",
         input: { tables },
         outcome: missing.length === tables.length ? "error" : "ok",
-        summary: `found ${found.map((t) => t.name).join(", ") || "none"}${missing.length ? `; unknown: ${missing.join(", ")}` : ""}`,
+        summary,
+      });
+      emitters.onActivity?.({
+        kind: missing.length === tables.length ? "retry" : "tool-result",
+        tool: "describe_tables",
+        callId,
+        label: summary,
       });
       if (found.length === 0) {
         return {

@@ -142,6 +142,22 @@ export async function runAgentQueryRun(input: {
         executionTimeMs: event.executionTimeMs,
         truncated: event.truncated,
       }),
+    onBlockData: (event) =>
+      emit?.("block-data", {
+        blockIndex: event.blockIndex,
+        purpose: event.purpose,
+        sql: event.sql,
+        preview: event.preview,
+        rowCount: event.rowCount,
+        executionTimeMs: event.executionTimeMs,
+        truncated: event.truncated,
+        chartConfig: toV2ChartConfig(event.chartConfig),
+      }),
+    onChartConfig: (event) =>
+      emit?.("chart-config", {
+        blockIndex: event.blockIndex,
+        chartConfig: toV2ChartConfig(event.chartConfig),
+      }),
   });
   devLog("info", "query.run.agent-completed", "Analyst agent produced a result.", {
     queryRunId: run.id,

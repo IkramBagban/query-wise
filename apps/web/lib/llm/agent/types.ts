@@ -1,4 +1,4 @@
-import type { BoundedQueryResult } from "@query-wise/shared/types";
+import type { BoundedQueryResult, BoundedResultPreview } from "@query-wise/shared/types";
 import type { ChartConfig, ChartHint, ChatMessage, SchemaInfo } from "@/types";
 import type { Provider } from "../client";
 
@@ -30,7 +30,12 @@ export interface AnalystAgentRuntime {
   executeSql(normalizedSql: string): Promise<BoundedQueryResult>;
 }
 
-export type AgentActivityKind = "thinking" | "tool-call" | "tool-result" | "retry";
+export type AgentActivityKind =
+  | "thinking"
+  | "thinking-delta"
+  | "tool-call"
+  | "tool-result"
+  | "retry";
 
 export interface AgentActivityEvent {
   kind: AgentActivityKind;
@@ -39,6 +44,13 @@ export interface AgentActivityEvent {
   blockIndex?: number | null;
   content?: string;
   input?: unknown;
+  /** Incremental reasoning text carried by `thinking-delta` events. */
+  chunk?: string;
+  /**
+   * Correlates a tool-result/retry with its originating tool-call so parallel
+   * calls of the same tool merge into the right live-timeline row.
+   */
+  callId?: string;
 }
 
 export interface AgentSqlPreviewEvent {
@@ -55,12 +67,33 @@ export interface AgentQueryStatsEvent {
   truncated: boolean;
 }
 
+/** Full renderable result data for a block, streamed the moment SQL succeeds. */
+export interface AgentBlockDataEvent {
+  blockIndex: number;
+  purpose: string;
+  sql: string;
+  preview: BoundedResultPreview;
+  rowCount: number;
+  executionTimeMs: number;
+  truncated: boolean;
+  /** Heuristic default config so the UI can draw immediately; set_chart may refine it. */
+  chartConfig: ChartConfig;
+}
+
+/** Refined chart choice for an existing block (agent called set_chart). */
+export interface AgentChartConfigEvent {
+  blockIndex: number;
+  chartConfig: ChartConfig;
+}
+
 /** Every backend action surfaces through one of these (live activity feed). */
 export interface AnalystAgentEmitters {
   onTextDelta?(chunk: string): void;
   onActivity?(event: AgentActivityEvent): void;
   onSqlPreview?(event: AgentSqlPreviewEvent): void;
   onQueryStats?(event: AgentQueryStatsEvent): void;
+  onBlockData?(event: AgentBlockDataEvent): void;
+  onChartConfig?(event: AgentChartConfigEvent): void;
 }
 
 /** One executed query with its result and chart, rendered as a UI block. */

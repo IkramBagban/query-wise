@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { BoundedQueryResult, ResultColumn } from "@query-wise/shared/types";
+import { resolveChartConfig } from "@/lib/charts";
 import type { ChartHint, ChartType } from "@/types";
 import type { AgentRunState, AnalystAgentEmitters } from "../types";
 
@@ -87,7 +88,8 @@ export function createSetChartTool(deps: { state: AgentRunState; emitters: Analy
 
       const errors = validateChartHint(hint, block.result);
       if (errors.length > 0) {
-        state.transcript.push({ tool: "set_chart", input: { blockIndex: block.index, ...hint }, outcome: "error", summary: errors.join(" ") });
+        // set_chart is an internal, user-hidden tool — keep it out of the
+        // persisted transcript so the finalized timeline stays clean.
         return {
           error: errors.join(" "),
           columns: block.result.columns.map((column) => ({
@@ -98,13 +100,25 @@ export function createSetChartTool(deps: { state: AgentRunState; emitters: Analy
       }
 
       block.chartHint = hint;
+      // Resolve immediately so the refined chart streams to the UI now instead
+      // of waiting for the whole agent run to finish.
+      const resolved = resolveChartConfig(
+        {
+          columns: block.result.columns.map((column) => column.name),
+          rows: block.result.rows,
+          rowCount: block.result.returnedRowCount,
+          executionTimeMs: block.result.executionTimeMs,
+        },
+        hint,
+      );
+      block.chartConfig = title ? { ...resolved, title } : resolved;
+      emitters.onChartConfig?.({ blockIndex: block.index, chartConfig: block.chartConfig });
       emitters.onActivity?.({
         kind: "tool-result",
         tool: "set_chart",
         blockIndex: block.index,
         label: `Chart: ${hint.type}${title ? ` — ${title}` : ""}`,
       });
-      state.transcript.push({ tool: "set_chart", input: { blockIndex: block.index, ...hint }, outcome: "ok", summary: hint.type });
       return { ok: true, blockIndex: block.index };
     },
   });

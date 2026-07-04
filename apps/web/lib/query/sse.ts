@@ -5,6 +5,8 @@ export type QueryStreamType =
   | "text-delta"
   | "sql-preview"
   | "query-stats"
+  | "block-data"
+  | "chart-config"
   | "activity"
   | "completed"
   | "failed";

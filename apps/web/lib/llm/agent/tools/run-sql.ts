@@ -1,6 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import type { BoundedQueryResult } from "@query-wise/shared/types";
+import { resolveChartConfig } from "@/lib/charts";
+import { createResultPreview } from "@/lib/query/preview";
 import { getErrorMessage } from "../../client";
 import {
   AGENT_BUDGETS,
@@ -41,12 +43,14 @@ export function createRunSqlTool(deps: {
         return { error: "Query budget exhausted. Answer with the results you already have." };
       }
       state.sqlAttempts += 1;
-      emitters.onActivity?.({ kind: "tool-call", tool: "run_sql", label: `Running: ${purpose}`, input: { sql, purpose } });
+      const callId = `run_sql-${state.sqlAttempts}`;
+      emitters.onActivity?.({ kind: "tool-call", tool: "run_sql", callId, label: `Running: ${purpose}`, input: { sql, purpose } });
 
       const validation = await runtime.validateSql(sql);
       if (!validation.valid || !validation.normalizedSql) {
         emitters.onSqlPreview?.({ blockIndex: null, sql, purpose, validation: "blocked" });
         const reason = validation.violations.join("; ") || "unspecified violation";
+        emitters.onActivity?.({ kind: "retry", tool: "run_sql", callId, label: `Blocked: ${reason.slice(0, 120)}` });
         state.transcript.push({ tool: "run_sql", input: { sql, purpose }, outcome: "error", summary: `blocked: ${reason}` });
         return { error: `Blocked by the read-only safety policy: ${reason}. Rewrite the SQL to comply.` };
       }
@@ -56,13 +60,24 @@ export function createRunSqlTool(deps: {
         result = await runtime.executeSql(validation.normalizedSql);
       } catch (error) {
         const message = getErrorMessage(error) || "Query execution failed.";
-        emitters.onActivity?.({ kind: "retry", tool: "run_sql", label: `Query failed: ${message.slice(0, 120)}` });
+        emitters.onActivity?.({ kind: "retry", tool: "run_sql", callId, label: `Query failed: ${message.slice(0, 120)}` });
         state.transcript.push({ tool: "run_sql", input: { sql, purpose }, outcome: "error", summary: message });
         return { error: `Database error: ${message}. Fix the SQL and retry.` };
       }
 
       const blockIndex = state.blocks.length;
-      state.blocks.push({ index: blockIndex, purpose, sql, result, chartHint: null, chartConfig: null });
+      // Resolve a heuristic default chart right away so the streamed block is
+      // immediately renderable; a later set_chart call refines it.
+      const chartConfig = resolveChartConfig(
+        {
+          columns: result.columns.map((column) => column.name),
+          rows: result.rows,
+          rowCount: result.returnedRowCount,
+          executionTimeMs: result.executionTimeMs,
+        },
+        null,
+      );
+      state.blocks.push({ index: blockIndex, purpose, sql, result, chartHint: null, chartConfig });
       emitters.onSqlPreview?.({ blockIndex, sql, purpose, validation: "valid" });
       emitters.onQueryStats?.({
         blockIndex,
@@ -70,9 +85,24 @@ export function createRunSqlTool(deps: {
         executionTimeMs: result.executionTimeMs,
         truncated: result.truncated,
       });
+      try {
+        emitters.onBlockData?.({
+          blockIndex,
+          purpose,
+          sql,
+          preview: createResultPreview(result),
+          rowCount: result.returnedRowCount,
+          executionTimeMs: result.executionTimeMs,
+          truncated: result.truncated,
+          chartConfig,
+        });
+      } catch {
+        // Preview overflow must not fail the run; the block still arrives with the persisted message.
+      }
       emitters.onActivity?.({
         kind: "tool-result",
         tool: "run_sql",
+        callId,
         blockIndex,
         label: `${result.returnedRowCount} rows in ${result.executionTimeMs}ms`,
       });
@@ -80,7 +110,7 @@ export function createRunSqlTool(deps: {
         tool: "run_sql",
         input: { sql, purpose },
         outcome: "ok",
-        summary: `block ${blockIndex}: ${result.returnedRowCount} rows`,
+        summary: `${result.returnedRowCount.toLocaleString()} rows in ${result.executionTimeMs}ms`,
       });
       return { blockIndex, ...compactResultForModel(result) };
     },

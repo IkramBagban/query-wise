@@ -4,7 +4,12 @@ import { AppError } from "@query-wise/shared/dal/core";
 import { devLog } from "@query-wise/shared/observability";
 import { resolveChartConfig } from "@/lib/charts";
 import type { ChatMessage } from "@/types";
-import { getModel, getModelCandidates, shouldFallbackToAnotherModel } from "../client";
+import {
+  getModel,
+  getModelCandidates,
+  getThinkingProviderOptions,
+  shouldFallbackToAnotherModel,
+} from "../client";
 import { buildAnalystAgentSystemPrompt, usesIndexRegime } from "./system-prompt";
 import { createDescribeTablesTool } from "./tools/describe-tables";
 import { createRunSqlTool } from "./tools/run-sql";
@@ -86,29 +91,40 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       stopWhen: stepCountIs(AGENT_BUDGETS.maxSteps),
       maxOutputTokens: 2500,
       temperature: 0.2,
+      providerOptions: getThinkingProviderOptions(params.provider),
       abortSignal: params.abortSignal,
     });
     let text = "";
-    let reasoning = "";
+    // Reasoning is captured per segment: each contiguous run of thoughts (before
+    // the model calls a tool or writes text) becomes its own ordered transcript
+    // step, so the finalized view matches the live interleaving instead of
+    // collapsing every thought into one block appended at the end.
+    let segment = "";
+    const flushReasoning = () => {
+      if (segment.trim()) {
+        state.transcript.push({ tool: "thinking", input: {}, outcome: "ok", summary: segment.trim() });
+      }
+      segment = "";
+    };
     for await (const part of result.fullStream) {
-      if (part.type === "text-delta" && part.text) {
+      if (part.type === "reasoning-delta" && part.text) {
+        // Start a fresh thinking block whenever reasoning resumes after a tool
+        // call or text — otherwise later thoughts get dropped by the UI reducer.
+        if (!segment) params.onActivity?.({ kind: "thinking", label: "Thinking" });
+        segment += part.text;
+        params.onActivity?.({ kind: "thinking-delta", label: "Thinking", chunk: part.text });
+      } else if (part.type === "text-delta" && part.text) {
+        flushReasoning();
         text += part.text;
         streamedText = true;
         params.onTextDelta?.(part.text);
-      } else if (part.type === "reasoning-delta" && part.text) {
-        if (!reasoning) {
-          // First reasoning chunk: create the thinking activity block
-          params.onActivity?.({ kind: "thinking", label: "Thinking" });
-        }
-        reasoning += part.text;
-        params.onActivity?.({ kind: "thinking-delta" as any, label: "Thinking", chunk: part.text } as any);
+      } else if (part.type === "tool-call") {
+        flushReasoning();
       } else if (part.type === "error") {
         throw part.error;
       }
     }
-    if (reasoning.trim()) {
-      state.transcript.push({ tool: "thinking", input: {}, outcome: "ok", summary: reasoning.trim() });
-    }
+    flushReasoning();
     return text;
   };
 
@@ -140,7 +156,10 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     );
   }
 
+  // Charts are resolved eagerly (default in run_sql, refined in set_chart) so
+  // they stream live; this is only a safety net for blocks missing a config.
   for (const block of state.blocks) {
+    if (block.chartConfig) continue;
     block.chartConfig = resolveChartConfig(
       {
         columns: block.result.columns.map((column) => column.name),
