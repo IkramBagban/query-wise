@@ -21,6 +21,7 @@ export function toV2ChartConfig(chart: ReturnType<typeof resolveChartConfig>): C
     yKeys: chart.yKeys,
     nameKey: chart.nameKey,
     valueKey: chart.valueKey,
+    seriesKey: chart.seriesKey,
     title: chart.title,
   };
 }

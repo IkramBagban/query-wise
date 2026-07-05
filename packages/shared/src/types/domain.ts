@@ -64,7 +64,7 @@ export interface QueryRunRecord extends OwnedResource {
 }
 export type QueryRunDto = Omit<QueryRunRecord, "ownerUserId" | "requestFingerprint"> & { contractVersion: ContractVersion };
 export type ChartType = "bar" | "line" | "pie" | "scatter" | "area" | "table";
-export interface ChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; title?: string }
+export interface ChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; seriesKey?: string; title?: string }
 export interface PublicChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; title?: string }
 export interface WidgetLayout { schemaVersion: 1; x: number; y: number; w: number; h: number }
 export interface DashboardRecord extends OwnedResource, SoftDeletableResource { name: string }

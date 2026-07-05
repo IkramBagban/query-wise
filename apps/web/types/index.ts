@@ -104,6 +104,12 @@ export interface ChartConfig {
   yKeys?: string[];
   nameKey?: string;
   valueKey?: string;
+  /**
+   * Long-format pivot: when set, rows are reshaped so each distinct value of
+   * this column becomes its own series (e.g. "category_name" → one line per
+   * category). yKey is the measure that fills each series.
+   */
+  seriesKey?: string;
   title?: string;
   availableTypes: ChartType[];
 }
