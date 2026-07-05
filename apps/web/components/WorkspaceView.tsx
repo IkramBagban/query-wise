@@ -655,84 +655,6 @@ function HeroComposer({
 
 /* -------------------------- Empty workspace ------------------------------- */
 
-function CursorRevealBackground() {
-  const imageRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    const image = imageRef.current;
-    const supportsCursorReveal = window.matchMedia("(hover: hover) and (pointer: fine)");
-    if (!image || !supportsCursorReveal.matches) return;
-    const revealImage = image;
-
-    let frameId: number | null = null;
-    let pointerX = 0;
-    let pointerY = 0;
-
-    function hideReveal() {
-      revealImage.style.opacity = "0";
-    }
-
-    function paintReveal() {
-      frameId = null;
-      const bounds = revealImage.getBoundingClientRect();
-      const isInside =
-        pointerX >= bounds.left &&
-        pointerX <= bounds.right &&
-        pointerY >= bounds.top &&
-        pointerY <= bounds.bottom;
-
-      if (!isInside) {
-        hideReveal();
-        return;
-      }
-
-      revealImage.style.setProperty("--reveal-x", `${pointerX - bounds.left}px`);
-      revealImage.style.setProperty("--reveal-y", `${pointerY - bounds.top}px`);
-      revealImage.style.opacity = "1";
-    }
-
-    function handlePointerMove(event: PointerEvent) {
-      if (event.pointerType !== "mouse") return;
-      pointerX = event.clientX;
-      pointerY = event.clientY;
-      if (frameId === null) frameId = window.requestAnimationFrame(paintReveal);
-    }
-
-    function handlePointerOut(event: PointerEvent) {
-      if (event.relatedTarget === null) hideReveal();
-    }
-
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("pointerout", handlePointerOut);
-    window.addEventListener("blur", hideReveal);
-
-    return () => {
-      if (frameId !== null) window.cancelAnimationFrame(frameId);
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerout", handlePointerOut);
-      window.removeEventListener("blur", hideReveal);
-    };
-  }, []);
-
-  return (
-    <div
-      ref={imageRef}
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 motion-reduce:transition-none"
-      style={{
-        backgroundImage: "url('/bg-5.png')",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        backgroundSize: "cover",
-        maskImage:
-          "radial-gradient(circle 260px at var(--reveal-x, 50%) var(--reveal-y, 50%), black 0%, rgba(0,0,0,0.96) 42%, transparent 100%)",
-        WebkitMaskImage:
-          "radial-gradient(circle 260px at var(--reveal-x, 50%) var(--reveal-y, 50%), black 0%, rgba(0,0,0,0.96) 42%, transparent 100%)",
-      }}
-    />
-  );
-}
-
 export function EmptyWorkspaceView() {
   const router = useRouter();
   const { bumpChatVersion } = useAppState();
@@ -814,8 +736,7 @@ export function EmptyWorkspaceView() {
 
   return (
     <div className="relative flex h-[calc(100vh-3.5rem)] min-h-[640px] flex-col items-center justify-center overflow-hidden bg-bg px-4 py-10 lg:h-screen">
-      <CursorRevealBackground />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(46,213,46,0.16),transparent_34%),linear-gradient(180deg,rgba(9,12,10,0),rgba(9,12,10,0.24))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--accent)/0.12),transparent_50%)]" />
       <div className="relative z-10 w-full">
         <div className="mx-auto mb-5 flex max-w-3xl flex-col items-center text-center">
           <BrandMark className="size-14 rounded-2xl" />
