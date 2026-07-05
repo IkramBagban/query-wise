@@ -29,7 +29,19 @@ export function previewToQueryResult(preview: BoundedResultPreview): QueryResult
   };
 }
 
-export function V2Chart({ preview, config }: { preview: unknown; config: ChartConfig }) {
+import type { BarStackMode } from "@/components/charts/BarChartView";
+
+export function V2Chart({
+  preview,
+  config,
+  normalize,
+  stackMode,
+}: {
+  preview: unknown;
+  config: ChartConfig;
+  normalize?: boolean;
+  stackMode?: BarStackMode;
+}) {
   if (!isBoundedResultPreview(preview)) {
     return (
       <p className="rounded-lg border border-dashed border-border p-4 text-xs text-faint">
@@ -43,6 +55,8 @@ export function V2Chart({ preview, config }: { preview: unknown; config: ChartCo
     <ChartRenderer
       result={previewToQueryResult(preview)}
       chartConfig={{ ...config, availableTypes: ["bar", "line", "pie", "scatter", "area", "table"] }}
+      normalize={normalize}
+      stackMode={stackMode}
     />
   );
 }

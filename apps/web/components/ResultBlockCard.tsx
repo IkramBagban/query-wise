@@ -12,6 +12,7 @@ import {
   Table2,
 } from "lucide-react";
 
+import type { BarStackMode } from "@/components/charts/BarChartView";
 import { StatCard } from "@/components/charts/StatCard";
 import { TableView } from "@/components/charts/TableView";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -147,11 +148,20 @@ export function ResultBlockCard({
       ? chartConfig.type
       : options?.defaultChartType ?? chartTypes[0] ?? "bar";
 
+  // A single-measure time series also gets a KPI/Overview (latest + delta +
+  // sparkline) — as a secondary tab, since the chart is the primary view.
+  const kpiTabAvailable = useKpi || Boolean(options?.singleMeasureSeries);
+
   // Primary data tab depends on the shape: KPI for single values, Chart when a
   // valid chart exists, else Table. Before data arrives we stay on "chart" so
   // the loading skeleton (a chart silhouette) shows instead of empty text.
   const primaryTab: CardTab = !result ? "chart" : useKpi ? "kpi" : canChart ? "chart" : "table";
-  const tabs: CardTab[] = [primaryTab, ...(primaryTab === "table" ? [] : (["table"] as CardTab[])), "sql"];
+  const tabs: CardTab[] = [
+    primaryTab,
+    ...(kpiTabAvailable && primaryTab !== "kpi" ? (["kpi"] as CardTab[]) : []),
+    ...(primaryTab === "table" ? [] : (["table"] as CardTab[])),
+    "sql",
+  ];
 
   const [tab, setTab] = useState<CardTab>(primaryTab);
   const [userPickedType, setUserPickedType] = useState(false);
@@ -182,6 +192,17 @@ export function ResultBlockCard({
 
   const activeChartType = chartTypes.includes(chartType) ? chartType : initialChartType;
   const config: ChartConfig = { ...(chartConfig ?? { schemaVersion: 1, type: "table" }), type: activeChartType };
+
+  // Index-to-100 toggle: offered only for multi-series line/area, where mixed
+  // scales otherwise flatten the smaller series. Absolute is the default (the
+  // charts also auto-use a secondary axis for the common 2-series case).
+  const isMultiSeries = Boolean(config.seriesKey) || (config.yKeys?.length ?? 0) > 1;
+  const canNormalize = (activeChartType === "line" || activeChartType === "area") && isMultiSeries;
+  const [normalized, setNormalized] = useState(false);
+
+  // Grouped / Stacked / 100% for multi-series bar & area (composition views).
+  const canStack = (activeChartType === "bar" || activeChartType === "area") && isMultiSeries;
+  const [stackMode, setStackMode] = useState<BarStackMode>("none");
   const statsLabel =
     rowCount != null
       ? `${formatNumber(rowCount)} row${rowCount === 1 ? "" : "s"}${executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}`
@@ -228,6 +249,42 @@ export function ResultBlockCard({
           })}
         </div>
         <div className="flex items-center gap-1.5">
+          {tab === "chart" && hasData && canStack ? (
+            <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5" role="group" aria-label="Bar mode">
+              {([["none", "Grouped"], ["stacked", "Stacked"], ["percent", "100%"]] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  title={label}
+                  aria-pressed={stackMode === mode}
+                  onClick={() => setStackMode(mode)}
+                  className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium transition ${
+                    stackMode === mode ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {tab === "chart" && hasData && canNormalize ? (
+            <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5" role="group" aria-label="Scale">
+              {([["abs", "Absolute", false], ["idx", "Indexed to 100", true]] as const).map(([key, label, on]) => (
+                <button
+                  key={key}
+                  type="button"
+                  title={label}
+                  aria-pressed={normalized === on}
+                  onClick={() => setNormalized(on)}
+                  className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium transition ${
+                    normalized === on ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
+                  }`}
+                >
+                  {key === "abs" ? "Abs" : "Index"}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {tab === "chart" && hasData ? (
             <ChartTypeSwitcher value={activeChartType} types={chartTypes} onChange={pickType} />
           ) : null}
@@ -239,7 +296,7 @@ export function ResultBlockCard({
         {tab === "chart" ? (
           hasData ? (
             <div className="h-64 min-w-0 rounded-xl border border-border/70 bg-surface-2/30 p-2 sm:h-72">
-              <V2Chart preview={preview} config={config} />
+              <V2Chart preview={preview} config={config} normalize={canNormalize && normalized} stackMode={canStack ? stackMode : "none"} />
             </div>
           ) : (
             <div className="rounded-xl border border-border/70 bg-surface-2/30">

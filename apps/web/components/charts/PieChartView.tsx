@@ -3,7 +3,8 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import type { QueryResult } from "@/types";
-import { formatAxisTick, formatValue, labelize } from "@/lib/charts/format";
+import { formatAxisTick } from "@/lib/charts/format";
+import { formatFullAs, PLAIN_NUMBER, type ColumnFormat } from "@/lib/charts/semantics";
 
 const COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
 
@@ -11,9 +12,10 @@ interface PieChartViewProps {
   result: QueryResult;
   nameKey: string;
   valueKey: string;
+  valueFormat?: ColumnFormat;
 }
 
-export function PieChartView({ result, nameKey, valueKey }: PieChartViewProps) {
+export function PieChartView({ result, nameKey, valueKey, valueFormat = PLAIN_NUMBER }: PieChartViewProps) {
   const pieRows = result.rows
     .map((row) => {
       const raw = row[valueKey];
@@ -35,7 +37,7 @@ export function PieChartView({ result, nameKey, valueKey }: PieChartViewProps) {
       <PieChart>
         <Tooltip
           contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
-          formatter={(value, name) => [formatValue(value), formatAxisTick(name)]}
+          formatter={(value, name) => [formatFullAs(value, valueFormat), formatAxisTick(name)]}
         />
         <Legend
           verticalAlign="bottom"

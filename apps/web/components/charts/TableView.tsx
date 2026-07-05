@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 
-import { formatNumber } from "@/lib/utils";
 import type { QueryResult } from "@/types";
+import { formatFullAs, inferResultFormats } from "@/lib/charts/semantics";
 
 interface TableViewProps {
   result: QueryResult;
@@ -39,6 +39,7 @@ function formatDateLike(value: unknown): string {
 
 export function TableView({ result }: TableViewProps) {
   const [sortBy, setSortBy] = useState<{ key: string; order: "asc" | "desc" } | null>(null);
+  const columnFormats = useMemo(() => inferResultFormats(result.columns, result.rows), [result.columns, result.rows]);
 
   const rows = useMemo(() => {
     const baseRows = [...result.rows];
@@ -94,9 +95,10 @@ export function TableView({ result }: TableViewProps) {
                 const numericValue = toFiniteNumber(value);
                 const isNumeric = numericValue !== null || isNumber(value);
                 const displayNumber = numericValue ?? (isNumber(value) ? value : 0);
+                const format = columnFormats.get(column);
                 return (
-                  <td key={column} className={`border-b border-border px-3 py-2 ${isNumeric ? "text-right" : "text-left"}`}>
-                    {isNumeric ? formatNumber(displayNumber) : formatDateLike(value)}
+                  <td key={column} className={`border-b border-border px-3 py-2 ${isNumeric ? "text-right tabular-nums" : "text-left"}`}>
+                    {isNumeric ? formatFullAs(displayNumber, format ?? { kind: "number", scale: 1 }) : formatDateLike(value)}
                   </td>
                 );
               })}

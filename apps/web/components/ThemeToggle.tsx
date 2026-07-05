@@ -49,15 +49,12 @@ export function ThemeToggle(_props: { iconOnly?: boolean } = {}) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label="Toggle theme"
-          title="Toggle theme"
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted transition hover:bg-surface-2 hover:text-text"
-        >
-          {theme === "system" ? <Laptop className="size-4" /> : theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
-        </button>
+      <DropdownMenuTrigger
+        aria-label="Toggle theme"
+        title="Toggle theme"
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted transition hover:bg-surface-2 hover:text-text cursor-pointer"
+      >
+        {theme === "system" ? <Laptop className="size-4" /> : theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
         <DropdownMenuItem onClick={() => changeTheme("light")} className="cursor-pointer">

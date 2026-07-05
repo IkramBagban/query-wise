@@ -13,18 +13,21 @@ import {
 } from "recharts";
 
 import type { QueryResult } from "@/types";
-import { abbreviateNumber, formatAxisTick, formatValue, isDateLikeValue, labelize } from "@/lib/charts/format";
+import { formatAxisTick, formatValue, isDateLikeValue, labelize } from "@/lib/charts/format";
+import { formatCompactAs, formatFullAs, PLAIN_NUMBER, type ColumnFormat } from "@/lib/charts/semantics";
+import { secondaryAxisSeries } from "@/lib/charts/transforms";
 
 interface LineChartViewProps {
   result: QueryResult;
   xKey: string;
   yKey: string;
   yKeys?: string[];
+  valueFormat?: ColumnFormat;
 }
 
 const LINE_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
 
-export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps) {
+export function LineChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER }: LineChartViewProps) {
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
@@ -41,11 +44,14 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
   const isVeryDenseAxis = result.rows.length > 20;
   const shouldRotateTicks = result.rows.length > 8 || (!isDateLikeAxis && hasLongLabels);
   const tickInterval: number | "preserveStartEnd" = isVeryDenseAxis ? "preserveStartEnd" : 0;
+  // Auto secondary axis: with exactly two series of very different magnitude,
+  // put the smaller one on a right axis so it isn't flattened.
+  const secondaryKey = secondaryAxisSeries(result.rows, series);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart
         data={result.rows}
-        margin={{ top: 8, right: 10, left: 6, bottom: shouldRotateTicks ? 52 : 16 }}
+        margin={{ top: 8, right: secondaryKey ? 10 : 10, left: 6, bottom: shouldRotateTicks ? 52 : 16 }}
         onMouseDown={() => setDragging(true)}
         onMouseUp={() => setDragging(false)}
         onMouseLeave={() => setDragging(false)}
@@ -63,12 +69,15 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
           height={shouldRotateTicks ? 56 : 26}
           minTickGap={18}
         />
-        <YAxis stroke="var(--faint)" tick={{ fontSize: 12 }} tickFormatter={(value) => abbreviateNumber(Number(value))} width={52} />
+        <YAxis yAxisId="left" stroke="var(--faint)" tick={{ fontSize: 12 }} tickFormatter={(value) => formatCompactAs(value, valueFormat)} width={52} />
+        {secondaryKey ? (
+          <YAxis yAxisId="right" orientation="right" stroke="var(--faint)" tick={{ fontSize: 12 }} tickFormatter={(value) => formatCompactAs(value, valueFormat)} width={52} />
+        ) : null}
         <Tooltip
           cursor={{ stroke: "var(--border)", strokeWidth: 1, strokeDasharray: "3 3" }}
           contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
           labelFormatter={(label) => formatValue(label)}
-          formatter={(value, name) => [formatValue(value), labelize(String(name))]}
+          formatter={(value, name) => [formatFullAs(value, valueFormat), labelize(String(name))]}
         />
         {series.length > 1 ? (
           <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => labelize(String(value))} />
@@ -76,6 +85,7 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
         {series.map((seriesKey, index) => (
           <Line
             key={seriesKey}
+            yAxisId={secondaryKey === seriesKey ? "right" : "left"}
             type="monotone"
             dataKey={seriesKey}
             name={labelize(seriesKey)}
