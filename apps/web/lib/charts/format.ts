@@ -15,12 +15,26 @@ export function isDateLikeValue(value: unknown): boolean {
   return !Number.isNaN(Date.parse(text));
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 /**
  * Compact axis label for a date. Month-start values (day === 1) are treated as
  * monthly buckets → "Oct 2025"; dated values → "Oct 5"; timestamps keep the
  * hour → "Oct 5, 2 PM".
+ *
+ * Date-only strings ("YYYY-MM-DD") are formatted from their parts, never routed
+ * through `new Date()` — that would apply the browser timezone and drift the day.
  */
 export function formatDateLabel(value: unknown): string {
+  if (typeof value === "string") {
+    const m = DATE_ONLY.exec(value.trim());
+    if (m) {
+      const [, y, mo, d] = m;
+      const month = MONTHS[Number(mo) - 1] ?? mo;
+      return Number(d) === 1 ? `${month} ${y}` : `${month} ${Number(d)}`;
+    }
+  }
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value ?? "");
   const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
@@ -77,6 +91,13 @@ export function formatAxisTick(value: unknown): string {
 
 /** Tooltip/label value: dates → full date, numbers → grouped full number. */
 export function formatValue(value: unknown): string {
+  if (typeof value === "string") {
+    const m = DATE_ONLY.exec(value.trim());
+    if (m) {
+      const [, y, mo, d] = m;
+      return `${MONTHS[Number(mo) - 1] ?? mo} ${Number(d)}, ${y}`;
+    }
+  }
   if (isDateLikeValue(value)) {
     const date = value instanceof Date ? value : new Date(String(value));
     const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;

@@ -13,6 +13,8 @@ export interface ResultViewOptions {
   isSingleRow: boolean;
   /** Whether the single row has at least one numeric column worth showing big. */
   hasNumericColumn: boolean;
+  /** Multi-row single-measure series → a KPI (latest + delta + sparkline) is available. */
+  singleMeasureSeries: boolean;
 }
 
 /**
@@ -28,8 +30,10 @@ export function computeResultViewOptions(result: QueryResult): ResultViewOptions
   );
   const defaultChartType = detected.type !== "table" ? detected.type : chartTypes[0] ?? null;
   const isSingleRow = result.rows.length === 1;
-  const hasNumericColumn = result.columns.some(
-    (column) => inferColumnProfile(result.rows, column).kind === "numeric",
-  );
-  return { chartTypes, defaultChartType, isSingleRow, hasNumericColumn };
+  const profiles = result.columns.map((column) => ({ column, profile: inferColumnProfile(result.rows, column) }));
+  const hasNumericColumn = profiles.some(({ profile }) => profile.kind === "numeric");
+  const measures = profiles.filter(({ profile }) => profile.kind === "numeric" && !profile.likelyId);
+  const dimensions = profiles.filter(({ profile }) => profile.kind === "date" || profile.kind === "text");
+  const singleMeasureSeries = result.rows.length > 1 && measures.length === 1 && dimensions.length >= 1;
+  return { chartTypes, defaultChartType, isSingleRow, hasNumericColumn, singleMeasureSeries };
 }
