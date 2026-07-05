@@ -49,10 +49,18 @@ function detectChartConfigInternal(result: QueryResult): ChartConfig {
     );
   }
 
-  if (
-    numericMetricColumns.length >= 2 &&
-    (dateColumns.length === 0 || numericColumns.length === columns.length)
-  ) {
+  // A categorical/date column with manageable cardinality is a real dimension —
+  // e.g. product_name in "top 5 products by sales". When one exists, a bar/line
+  // of dimension→metric is the right chart. Scatter (metric-vs-metric) is only
+  // correct when there is NO such dimension (every meaningful column is a
+  // measure). Checking this first fixes top-N results rendering as a
+  // meaningless qty-vs-sales scatter.
+  const xCandidateProfile = profiles.get(xCandidate);
+  const hasUsableDimension =
+    (xCandidateProfile?.kind === "text" || xCandidateProfile?.kind === "date") &&
+    (xCandidateProfile?.distinctCount ?? rows.length) <= HIGH_CARDINALITY_DIMENSION;
+
+  if (numericMetricColumns.length >= 2 && !hasUsableDimension) {
     return withYKeys(
       makeConfig("scatter", {
         xKey: numericMetricColumns[0],
@@ -64,24 +72,28 @@ function detectChartConfigInternal(result: QueryResult): ChartConfig {
   }
 
   if (numericMetricColumns.length >= 1) {
-    const yKeys = numericMetricColumns.slice(0, 3);
     const xProfile = profiles.get(xCandidate);
     const distinct = xProfile?.distinctCount ?? rows.length;
+    // Categorical dimension with metrics of wildly different magnitude (e.g.
+    // total_qty ~500 alongside total_sales ~800k) would produce an unreadable
+    // grouped bar where the small series is invisible. Default to the single
+    // dominant metric; the user can still switch/add series. Date dimensions
+    // keep multiple series since trends are compared on their own shape.
+    const candidateYKeys = numericMetricColumns.slice(0, 3);
+    const magnitudes = candidateYKeys.map((key) =>
+      Math.max(0, ...rows.map((row) => Math.abs(Number(row[key]) || 0))),
+    );
+    const maxMag = Math.max(...magnitudes);
+    const minMag = Math.min(...magnitudes.filter((value) => value > 0), maxMag);
+    const wildlyDifferentScales = xProfile?.kind !== "date" && maxMag > 0 && maxMag / minMag > 100;
+    const yKeys = wildlyDifferentScales
+      ? [candidateYKeys[magnitudes.indexOf(maxMag)]]
+      : candidateYKeys;
 
-    if (
-      yKeys.length === 1 &&
-      xProfile?.kind === "text" &&
-      distinct > 1 &&
-      distinct <= MAX_PIE_CATEGORIES &&
-      rows.length <= 20
-    ) {
-      return makeConfig("pie", {
-        nameKey: xCandidate,
-        valueKey: yKeys[0],
-        availableTypes: ["pie", "bar", "line", "area", "scatter", "table"],
-      });
-    }
-
+    // Bar is the default for a categorical dimension — it reads as a ranking or
+    // comparison, which is what these results almost always are. Pie is offered
+    // as an option (low cardinality, single measure) but never the default:
+    // comparing slice areas is far harder than comparing bar lengths.
     if (xProfile?.kind === "text" && distinct > HIGH_CARDINALITY_DIMENSION) {
       return withYKeys(
         makeConfig("table", {

@@ -1,20 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AreaChart,
   BarChart3,
   Code2,
+  Gauge,
   LineChart,
   PieChart,
   ScatterChart,
   Table2,
 } from "lucide-react";
 
+import { StatCard } from "@/components/charts/StatCard";
 import { TableView } from "@/components/charts/TableView";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Tooltip } from "@/components/ui/tooltip";
 import { previewToQueryResult, V2Chart } from "@/components/V2Chart";
+import { computeResultViewOptions } from "@/lib/charts/options";
 import { formatNumber } from "@/lib/utils";
 import type { BoundedResultPreview, ChartConfig, ChartType } from "@query-wise/shared/types";
 
@@ -25,21 +28,23 @@ import type { BoundedResultPreview, ChartConfig, ChartType } from "@query-wise/s
  * the finalized wrapper via the `actions` slot.
  */
 
-const CHART_TYPES: { label: string; value: ChartType; icon: typeof BarChart3 }[] = [
-  { label: "Bar", value: "bar", icon: BarChart3 },
-  { label: "Line", value: "line", icon: LineChart },
-  { label: "Area", value: "area", icon: AreaChart },
-  { label: "Pie", value: "pie", icon: PieChart },
-  { label: "Scatter", value: "scatter", icon: ScatterChart },
-];
+const CHART_TYPE_META: Record<ChartType, { label: string; icon: typeof BarChart3 }> = {
+  bar: { label: "Bar", icon: BarChart3 },
+  line: { label: "Line", icon: LineChart },
+  area: { label: "Area", icon: AreaChart },
+  pie: { label: "Pie", icon: PieChart },
+  scatter: { label: "Scatter", icon: ScatterChart },
+  table: { label: "Table", icon: Table2 },
+};
 
-type CardTab = "chart" | "table" | "sql";
+type CardTab = "chart" | "kpi" | "table" | "sql";
 
-const TABS: { value: CardTab; label: string; icon: typeof BarChart3 }[] = [
-  { value: "chart", label: "Chart", icon: BarChart3 },
-  { value: "table", label: "Table", icon: Table2 },
-  { value: "sql", label: "SQL", icon: Code2 },
-];
+const TAB_META: Record<CardTab, { label: string; icon: typeof BarChart3 }> = {
+  chart: { label: "Chart", icon: BarChart3 },
+  kpi: { label: "Overview", icon: Gauge },
+  table: { label: "Table", icon: Table2 },
+  sql: { label: "SQL", icon: Code2 },
+};
 
 export interface ResultBlockCardProps {
   title?: string | null;
@@ -58,28 +63,36 @@ export interface ResultBlockCardProps {
 
 function ChartTypeSwitcher({
   value,
+  types,
   onChange,
 }: {
   value: ChartType;
+  types: ChartType[];
   onChange: (type: ChartType) => void;
 }) {
+  // Only render types that are semantically valid for this data — never the
+  // full six. A single valid type needs no switcher at all.
+  if (types.length <= 1) return null;
   return (
     <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5" role="group" aria-label="Chart type">
-      {CHART_TYPES.map(({ label, value: type, icon: Icon }) => (
-        <Tooltip key={type} content={label} side="top">
-          <button
-            type="button"
-            aria-label={`${label} chart`}
-            aria-pressed={value === type}
-            onClick={() => onChange(type)}
-            className={`inline-flex size-7 items-center justify-center rounded-md transition ${
-              value === type ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
-            }`}
-          >
-            <Icon className="size-3.5" />
-          </button>
-        </Tooltip>
-      ))}
+      {types.map((type) => {
+        const { label, icon: Icon } = CHART_TYPE_META[type];
+        return (
+          <Tooltip key={type} content={label} side="top">
+            <button
+              type="button"
+              aria-label={`${label} chart`}
+              aria-pressed={value === type}
+              onClick={() => onChange(type)}
+              className={`inline-flex size-7 items-center justify-center rounded-md transition ${
+                value === type ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
+              }`}
+            >
+              <Icon className="size-3.5" />
+            </button>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
@@ -119,18 +132,46 @@ export function ResultBlockCard({
   actions,
   onChartTypeChange,
 }: ResultBlockCardProps) {
-  const [tab, setTab] = useState<CardTab>("chart");
+  const hasData = Boolean(preview);
+  const result = useMemo(() => (preview ? previewToQueryResult(preview) : null), [preview]);
+  const options = useMemo(() => (result ? computeResultViewOptions(result) : null), [result]);
+
+  // Which chart types this specific data supports (never all six). The agent's
+  // chosen type is honored only if it's valid for the data.
+  const chartTypes = options?.chartTypes ?? [];
+  const useKpi = Boolean(options?.isSingleRow && options?.hasNumericColumn);
+  const canChart = !useKpi && chartTypes.length > 0;
+
+  const initialChartType: ChartType =
+    chartConfig?.type && chartTypes.includes(chartConfig.type)
+      ? chartConfig.type
+      : options?.defaultChartType ?? chartTypes[0] ?? "bar";
+
+  // Primary data tab depends on the shape: KPI for single values, Chart when a
+  // valid chart exists, else Table. Before data arrives we stay on "chart" so
+  // the loading skeleton (a chart silhouette) shows instead of empty text.
+  const primaryTab: CardTab = !result ? "chart" : useKpi ? "kpi" : canChart ? "chart" : "table";
+  const tabs: CardTab[] = [primaryTab, ...(primaryTab === "table" ? [] : (["table"] as CardTab[])), "sql"];
+
+  const [tab, setTab] = useState<CardTab>(primaryTab);
   const [userPickedType, setUserPickedType] = useState(false);
-  const [chartType, setChartType] = useState<ChartType>(chartConfig?.type ?? "bar");
+  const [chartType, setChartType] = useState<ChartType>(initialChartType);
 
   // Follow the agent's refined chart choice (set_chart streaming in) until the
-  // user takes over by picking a type themselves. Adjusted during render (the
-  // React-endorsed pattern) so the refinement applies without an extra pass.
+  // user takes over. Adjusted during render (the React-endorsed pattern).
   const agentType = chartConfig?.type;
   const [seenAgentType, setSeenAgentType] = useState(agentType);
   if (agentType !== seenAgentType) {
     setSeenAgentType(agentType);
-    if (!userPickedType && agentType) setChartType(agentType);
+    if (!userPickedType && agentType && chartTypes.includes(agentType)) setChartType(agentType);
+  }
+
+  // Keep the primary tab in sync once data (and therefore the true shape)
+  // arrives after the skeleton phase.
+  const [seenPrimaryTab, setSeenPrimaryTab] = useState(primaryTab);
+  if (primaryTab !== seenPrimaryTab) {
+    setSeenPrimaryTab(primaryTab);
+    if (!userPickedType) setTab(primaryTab);
   }
 
   const pickType = (type: ChartType) => {
@@ -139,8 +180,8 @@ export function ResultBlockCard({
     onChartTypeChange?.(type);
   };
 
-  const config: ChartConfig = { ...(chartConfig ?? { schemaVersion: 1, type: "table" }), type: chartType };
-  const hasData = Boolean(preview);
+  const activeChartType = chartTypes.includes(chartType) ? chartType : initialChartType;
+  const config: ChartConfig = { ...(chartConfig ?? { schemaVersion: 1, type: "table" }), type: activeChartType };
   const statsLabel =
     rowCount != null
       ? `${formatNumber(rowCount)} row${rowCount === 1 ? "" : "s"}${executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}`
@@ -167,24 +208,29 @@ export function ResultBlockCard({
 
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5">
         <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5" role="tablist" aria-label="Result view">
-          {TABS.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              onClick={() => setTab(value)}
-              className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
-                tab === value ? "bg-surface text-text shadow-sm" : "text-faint hover:text-text"
-              }`}
-            >
-              <Icon className="size-3.5" />
-              {label}
-            </button>
-          ))}
+          {tabs.map((value) => {
+            const { label, icon: Icon } = TAB_META[value];
+            return (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => setTab(value)}
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
+                  tab === value ? "bg-surface text-text shadow-sm" : "text-faint hover:text-text"
+                }`}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            );
+          })}
         </div>
         <div className="flex items-center gap-1.5">
-          {tab === "chart" && hasData ? <ChartTypeSwitcher value={chartType} onChange={pickType} /> : null}
+          {tab === "chart" && hasData ? (
+            <ChartTypeSwitcher value={activeChartType} types={chartTypes} onChange={pickType} />
+          ) : null}
           {actions}
         </div>
       </div>
@@ -201,10 +247,19 @@ export function ResultBlockCard({
             </div>
           )
         ) : null}
+        {tab === "kpi" ? (
+          result ? (
+            <StatCard result={result} />
+          ) : (
+            <div className="rounded-xl border border-border/70 bg-surface-2/30">
+              <ChartSkeleton label={running ? "Running query…" : "Waiting for data…"} />
+            </div>
+          )
+        ) : null}
         {tab === "table" ? (
-          hasData && preview ? (
+          hasData && result ? (
             <div className="max-h-72 overflow-auto rounded-xl border border-border/70">
-              <TableView result={previewToQueryResult(preview)} />
+              <TableView result={result} />
             </div>
           ) : (
             <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">

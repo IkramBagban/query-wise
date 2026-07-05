@@ -37,13 +37,12 @@ export function V2Chart({ preview, config }: { preview: unknown; config: ChartCo
       </p>
     );
   }
+  // ChartRenderer only switches on config.type; availableTypes is informational
+  // (the type switcher is gated by data shape upstream in ResultBlockCard).
   return (
     <ChartRenderer
       result={previewToQueryResult(preview)}
-      chartConfig={{
-        ...config,
-        availableTypes: ["bar", "line", "pie", "scatter", "area", "table"],
-      }}
+      chartConfig={{ ...config, availableTypes: ["bar", "line", "pie", "scatter", "area", "table"] }}
     />
   );
 }
