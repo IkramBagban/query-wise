@@ -8,6 +8,7 @@ import {
   getModel,
   getModelCandidates,
   getThinkingProviderOptions,
+  isRetryableError,
   shouldFallbackToAnotherModel,
 } from "../client";
 import { buildAnalystAgentSystemPrompt, usesIndexRegime } from "./system-prompt";
@@ -88,9 +89,9 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   });
 
   let streamedText = false;
-  const streamOnce = async (candidateModel: string): Promise<string> => {
+  const streamOnce = async (candidateModel: string, apiKey: string): Promise<string> => {
     const result = streamText({
-      model: getModel(params.provider, candidateModel, params.apiKey),
+      model: getModel(params.provider, candidateModel, apiKey),
       system,
       messages,
       tools,
@@ -143,21 +144,40 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   // replaying after streamed text or executed queries would duplicate work.
   let answer = "";
   const candidates = getModelCandidates(params.provider, params.model);
+  const apiKeys = params.apiKeys;
+
   for (let index = 0; index < candidates.length; index += 1) {
-    try {
-      answer = await streamOnce(candidates[index]);
-      break;
-    } catch (error) {
-      const sideEffects = streamedText || state.transcript.length > 0;
-      const lastCandidate = index === candidates.length - 1;
-      if (sideEffects || lastCandidate || !shouldFallbackToAnotherModel(error)) {
-        throw new AgentExecutionError(
-          error instanceof Error ? error.message : "Agent execution failed",
-          { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript },
-          error
-        );
+    let success = false;
+    for (let keyAttempt = 0; keyAttempt < apiKeys.length; keyAttempt += 1) {
+      try {
+        answer = await streamOnce(candidates[index], apiKeys[keyAttempt]);
+        success = true;
+        break;
+      } catch (error) {
+        const sideEffects = streamedText || state.transcript.length > 0;
+        const lastCandidate = index === candidates.length - 1;
+        const lastKey = keyAttempt === apiKeys.length - 1;
+
+        if (sideEffects || !isRetryableError(error)) {
+          throw new AgentExecutionError(
+            error instanceof Error ? error.message : "Agent execution failed",
+            { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript },
+            error
+          );
+        }
+
+        if (lastKey) {
+          if (lastCandidate || !shouldFallbackToAnotherModel(error)) {
+            throw new AgentExecutionError(
+              error instanceof Error ? error.message : "Agent execution failed",
+              { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript },
+              error
+            );
+          }
+        }
       }
     }
+    if (success) break;
   }
 
   if (!answer.trim()) {

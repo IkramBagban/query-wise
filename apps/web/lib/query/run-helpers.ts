@@ -39,7 +39,7 @@ export async function generateAndPersistTitle(input: {
       ...input,
       provider: llmConfig.provider,
       model: llmConfig.model,
-      apiKey: llmConfig.apiKey,
+      apiKeys: llmConfig.apiKeys,
     });
     if (title) {
       await setGeneratedConversationTitle(input.conversationId, title);

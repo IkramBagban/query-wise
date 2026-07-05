@@ -21,7 +21,7 @@ const PROVIDER_MODELS: Record<Provider, string[]> = {
 export interface BackendLlmConfig {
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
 }
 
 /**
@@ -31,27 +31,29 @@ export interface BackendLlmConfig {
 export function getBackendLlmConfig(): BackendLlmConfig {
   const provider = (process.env.QUERYWISE_LLM_PROVIDER ?? DEFAULT_LLM_PROVIDER) as Provider;
   const model = process.env.QUERYWISE_LLM_MODEL ?? DEFAULT_LLM_MODEL;
-  const apiKey = resolveApiKey(provider);
-  return { provider, model, apiKey };
+  const apiKeys = resolveApiKey(provider);
+  return { provider, model, apiKeys };
 }
 
-function resolveApiKey(provider: Provider): string {
+function resolveApiKey(provider: Provider): string[] {
+  let rawKey: string | undefined;
   if (provider === "groq") {
-    const key = process.env.GROQ_API_KEY;
-    if (!key) throw new Error("GROQ_API_KEY environment variable is not set.");
-    return key;
+    rawKey = process.env.GROQ_API_KEY;
+    if (!rawKey) throw new Error("GROQ_API_KEY environment variable is not set.");
+  } else if (provider === "google") {
+    rawKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.QUERYWISE_INGESTION_LLM_API_KEY;
+    if (!rawKey) throw new Error("GOOGLE_GENERATIVE_AI_API_KEY environment variable is not set.");
+  } else if (provider === "anthropic") {
+    rawKey = process.env.ANTHROPIC_API_KEY;
+    if (!rawKey) throw new Error("ANTHROPIC_API_KEY environment variable is not set.");
+  } else {
+    throw new Error(`Unknown LLM provider: ${provider}`);
   }
-  if (provider === "google") {
-    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.QUERYWISE_INGESTION_LLM_API_KEY;
-    if (!key) throw new Error("GOOGLE_GENERATIVE_AI_API_KEY environment variable is not set.");
-    return key;
-  }
-  if (provider === "anthropic") {
-    const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new Error("ANTHROPIC_API_KEY environment variable is not set.");
-    return key;
-  }
-  throw new Error(`Unknown LLM provider: ${provider}`);
+
+  const keys = rawKey.split(",").map((k) => k.trim()).filter(Boolean);
+  if (keys.length === 0) throw new Error(`No valid API keys found for provider: ${provider}`);
+  
+  return keys;
 }
 
 export function getModel(provider: Provider, model: string, apiKey: string) {
@@ -158,15 +160,21 @@ export function getModelCandidates(
 }
 
 export async function withRetry<T>(
-  fn: () => Promise<T>,
+  apiKeys: string[],
+  fn: (apiKey: string) => Promise<T>,
   maxAttempts = 3,
 ): Promise<T> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  const attempts = Math.max(maxAttempts, apiKeys.length);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await fn();
+      const apiKey = apiKeys[(attempt - 1) % apiKeys.length];
+      return await fn(apiKey);
     } catch (error) {
-      if (!isRetryableError(error) || attempt === maxAttempts) {
+      if (!isRetryableError(error) || attempt === attempts) {
         throw error;
+      }
+      if (getStatusCode(error) === 429 && apiKeys.length > 1) {
+        continue;
       }
       await sleep(Math.pow(2, attempt) * 500);
     }
@@ -177,14 +185,15 @@ export async function withRetry<T>(
 export async function withModelFallback<T>(params: {
   provider: Provider;
   model: string;
-  execute: (model: string) => Promise<T>;
+  apiKeys: string[];
+  execute: (model: string, apiKey: string) => Promise<T>;
 }): Promise<T> {
   const candidates = getModelCandidates(params.provider, params.model);
   let lastError: unknown;
 
   for (const candidate of candidates) {
     try {
-      return await withRetry(() => params.execute(candidate));
+      return await withRetry(params.apiKeys, (apiKey) => params.execute(candidate, apiKey));
     } catch (error) {
       lastError = error;
       if (!shouldFallbackToAnotherModel(error)) {

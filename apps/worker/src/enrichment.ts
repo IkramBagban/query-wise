@@ -23,9 +23,11 @@ const descriptionSchema = z.object({
 function configuredProvider(): { provider: Provider; model: string; apiKey: string } | null {
   const provider = process.env.QUERYWISE_INGESTION_LLM_PROVIDER;
   const model = process.env.QUERYWISE_INGESTION_LLM_MODEL;
-  const apiKey = process.env.QUERYWISE_INGESTION_LLM_API_KEY;
-  if ((provider === "google" || provider === "anthropic" || provider === "groq") && model && apiKey) {
-    return { provider, model, apiKey };
+  const rawApiKey = process.env.QUERYWISE_INGESTION_LLM_API_KEY;
+  if ((provider === "google" || provider === "anthropic" || provider === "groq") && model && rawApiKey) {
+    const keys = rawApiKey.split(",").map((k) => k.trim()).filter(Boolean);
+    const apiKey = keys[Math.floor(Math.random() * keys.length)];
+    if (apiKey) return { provider, model, apiKey };
   }
   if (provider && provider !== "") {
     console.error(

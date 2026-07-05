@@ -7,13 +7,13 @@ interface GenerateSchemaAnalysisParams {
   schema: SchemaInfo;
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
 }
 
 interface ValidateModelAccessParams {
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
 }
 
 export interface ExecuteQueryToolResult {
@@ -30,9 +30,10 @@ export async function validateModelAccess(
   await withModelFallback({
     provider: params.provider,
     model: params.model,
-    execute: async (candidateModel) =>
+    apiKeys: params.apiKeys,
+    execute: async (candidateModel, apiKey) =>
       generateText({
-        model: getModel(params.provider, candidateModel, params.apiKey),
+        model: getModel(params.provider, candidateModel, apiKey),
         system: "You are a health check assistant. Reply with exactly: OK",
         prompt: "Respond with OK.",
         maxOutputTokens: 10,
@@ -98,9 +99,10 @@ Write for a smart non-technical stakeholder who is seeing this database for the 
   const { text } = await withModelFallback({
     provider: params.provider,
     model: params.model,
-    execute: async (candidateModel) =>
+    apiKeys: params.apiKeys,
+    execute: async (candidateModel, apiKey) =>
       generateText({
-        model: getModel(params.provider, candidateModel, params.apiKey),
+        model: getModel(params.provider, candidateModel, apiKey),
         system,
         prompt,
         // maxOutputTokens: 480,

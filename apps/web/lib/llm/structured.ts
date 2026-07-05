@@ -5,7 +5,7 @@ import { getModel, type Provider, withModelFallback } from "./client";
 export async function generateStructuredObject<TSchema extends z.ZodType>(params: {
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
   schema: TSchema;
   schemaName: string;
   system: string;
@@ -17,10 +17,11 @@ export async function generateStructuredObject<TSchema extends z.ZodType>(params
   const result = await withModelFallback({
     provider: params.provider,
     model: params.model,
-    execute: async (candidateModel) => {
+    apiKeys: params.apiKeys,
+    execute: async (candidateModel, apiKey) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const callParams: any = {
-        model: getModel(params.provider, candidateModel, params.apiKey) as LanguageModel,
+        model: getModel(params.provider, candidateModel, apiKey) as LanguageModel,
         schema: params.schema,
         schemaName: params.schemaName,
         system: params.system,

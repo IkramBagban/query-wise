@@ -101,7 +101,7 @@ export async function executeDurableQueryRun(input: {
     const llm = {
       provider: llmConfig.provider,
       model: llmConfig.model,
-      apiKey: llmConfig.apiKey,
+      apiKeys: llmConfig.apiKeys,
       abortSignal,
     };
     const planningStartedAt = Date.now();

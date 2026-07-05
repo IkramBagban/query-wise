@@ -122,7 +122,7 @@ export async function runAgentQueryRun(input: {
     runtime: agentRuntime,
     provider: llmConfig.provider,
     model: llmConfig.model,
-    apiKey: llmConfig.apiKey,
+    apiKeys: llmConfig.apiKeys,
     abortSignal,
     onTextDelta: (chunk) => emit?.("text-delta", { chunk }),
     onActivity: (event) => emit?.("activity", event),

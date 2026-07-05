@@ -4,7 +4,7 @@ import { streamText } from "ai";
 import type { ChartHint, ChatMessage, SchemaInfo } from "@/types";
 import type { BoundedQueryResult } from "@query-wise/shared/types";
 import { generateStructuredObject, type Provider } from "@/lib/llm";
-import { getModel } from "@/lib/llm/client";
+import { getModel, isRetryableError } from "@/lib/llm/client";
 import { devLog } from "@query-wise/shared/observability";
 import {
   ChartHintOnlySchema,
@@ -34,7 +34,7 @@ const COLUMN_PRUNER_DISABLED = process.env.QUERYWISE_DISABLE_COLUMN_PRUNER === "
 export interface PipelineModelConfig {
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
   abortSignal?: AbortSignal;
 }
 
@@ -220,18 +220,38 @@ export function beginExplainStream(params: {
 }): [AsyncIterable<string>, Promise<ChartHint | null>] {
   params.onStage?.("Explaining result");
 
-  const textStream = streamText({
-    model: getModel(params.llm.provider, params.llm.model, params.llm.apiKey),
-    system: STRUCTURED_PIPELINE_SYSTEM,
-    prompt: explanationTextPrompt({
-      question: params.question,
-      sql: params.sql,
-      result: params.result,
-    }),
-    maxOutputTokens: 1200,
-    temperature: 0.1,
-    abortSignal: params.llm.abortSignal,
-  });
+  async function* fallbackTextStream() {
+    let lastError: unknown;
+    for (const apiKey of params.llm.apiKeys) {
+      let yielded = false;
+      try {
+        const textStream = streamText({
+          model: getModel(params.llm.provider, params.llm.model, apiKey),
+          system: STRUCTURED_PIPELINE_SYSTEM,
+          prompt: explanationTextPrompt({
+            question: params.question,
+            sql: params.sql,
+            result: params.result,
+          }),
+          maxOutputTokens: 1200,
+          temperature: 0.1,
+          abortSignal: params.llm.abortSignal,
+        });
+
+        for await (const chunk of textStream.textStream) {
+          yielded = true;
+          yield chunk;
+        }
+        return;
+      } catch (error) {
+        if (yielded || !isRetryableError(error)) {
+          throw error;
+        }
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
 
   const chartHintPromise = generateStructuredObject({
     ...params.llm,
@@ -245,7 +265,7 @@ export function beginExplainStream(params: {
     maxOutputTokens: 300,
   }).then((r) => r.chartHint).catch(() => null);
 
-  return [textStream.textStream, chartHintPromise];
+  return [fallbackTextStream(), chartHintPromise];
 }
 
 function selectedCandidateTables(candidates: TableCandidate[], selectedTableNames: string[]): TableCandidate[] {

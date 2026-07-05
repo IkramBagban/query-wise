@@ -23,7 +23,7 @@ export async function generateConversationTitle(params: {
   assistantMessage: string;
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const system = [
@@ -50,9 +50,10 @@ export async function generateConversationTitle(params: {
   const { text } = await withModelFallback({
     provider: params.provider,
     model: params.model,
-    execute: async (candidateModel) =>
+    apiKeys: params.apiKeys,
+    execute: async (candidateModel, apiKey) =>
       generateText({
-        model: getModel(params.provider, candidateModel, params.apiKey),
+        model: getModel(params.provider, candidateModel, apiKey),
         system,
         prompt,
         maxOutputTokens: 32,

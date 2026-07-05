@@ -131,7 +131,7 @@ export interface RunAnalystAgentParams extends AnalystAgentEmitters {
   runtime: AnalystAgentRuntime;
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
   abortSignal?: AbortSignal;
 }
 

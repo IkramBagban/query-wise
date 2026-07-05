@@ -9,7 +9,7 @@ interface GenerateSQLParams {
   history: ChatMessage[];
   provider: Provider;
   model: string;
-  apiKey: string;
+  apiKeys: string[];
   abortSignal?: AbortSignal;
 }
 
@@ -54,9 +54,10 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
   const { text } = await withModelFallback({
     provider: params.provider,
     model: params.model,
-    execute: async (candidateModel) =>
+    apiKeys: params.apiKeys,
+    execute: async (candidateModel, apiKey) =>
       generateText({
-        model: getModel(params.provider, candidateModel, params.apiKey),
+        model: getModel(params.provider, candidateModel, apiKey),
         system: systemPrompt,
         messages,
         maxOutputTokens: 2500,
