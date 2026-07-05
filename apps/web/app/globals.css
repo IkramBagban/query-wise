@@ -22,6 +22,7 @@
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-code-bg: var(--code-bg);
+  --color-code-text: var(--code-text);
   --color-nav-bg: var(--nav-bg);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -129,7 +130,8 @@
   --accent-ink: #FFFFFF;
   --accent-soft: rgba(18, 162, 78, 0.10);
   --accent-line: rgba(18, 162, 78, 0.4);
-  --code-bg: #0E140F;
+  --code-bg: #EEF3EC;
+  --code-text: #26332A;
   --nav-bg: rgba(245, 247, 243, 0.78);
   --glow: radial-gradient(ellipse 60% 45% at 50% 0%, rgba(18, 162, 78, 0.10), transparent 70%);
   --shadow: 0 24px 60px -28px rgba(20, 40, 25, 0.25);
@@ -166,6 +168,7 @@
   --accent-soft: rgba(47, 212, 106, 0.12);
   --accent-line: rgba(47, 212, 106, 0.35);
   --code-bg: #0B100C;
+  --code-text: #C7D3C9;
   --nav-bg: rgba(10, 14, 11, 0.72);
   --glow: radial-gradient(ellipse 60% 45% at 50% 0%, rgba(47, 212, 106, 0.14), transparent 70%);
   --shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.55);

@@ -13,6 +13,7 @@ import {
 } from "recharts";
 
 import type { QueryResult } from "@/types";
+import { abbreviateNumber, formatAxisTick, formatValue, isDateLikeValue, labelize } from "@/lib/charts/format";
 
 interface LineChartViewProps {
   result: QueryResult;
@@ -22,25 +23,6 @@ interface LineChartViewProps {
 }
 
 const LINE_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
-const labelize = (value: string) => value.replace(/_/g, " ");
-const isDateLikeValue = (value: unknown): boolean => {
-  const text = String(value ?? "");
-  return /[-/:T]/.test(text) && !Number.isNaN(Date.parse(text));
-};
-const shortXAxisTick = (value: unknown): string => {
-  const text = String(value ?? "");
-  if (isDateLikeValue(value)) {
-    const date = new Date(text);
-    const hasTime =
-      date.getHours() !== 0 ||
-      date.getMinutes() !== 0 ||
-      date.getSeconds() !== 0;
-    return hasTime
-      ? date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" })
-      : date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  }
-  return text.length > 16 ? `${text.slice(0, 16)}…` : text;
-};
 
 export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps) {
   const [dragging, setDragging] = useState(false);
@@ -73,7 +55,7 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
           dataKey={xKey}
           stroke="var(--faint)"
           tick={{ fontSize: 11 }}
-          tickFormatter={shortXAxisTick}
+          tickFormatter={formatAxisTick}
           interval={tickInterval}
           angle={shouldRotateTicks ? -35 : 0}
           textAnchor={shouldRotateTicks ? "end" : "middle"}
@@ -81,11 +63,12 @@ export function LineChartView({ result, xKey, yKey, yKeys }: LineChartViewProps)
           height={shouldRotateTicks ? 56 : 26}
           minTickGap={18}
         />
-        <YAxis stroke="var(--faint)" tick={{ fontSize: 12 }} />
+        <YAxis stroke="var(--faint)" tick={{ fontSize: 12 }} tickFormatter={(value) => abbreviateNumber(Number(value))} width={52} />
         <Tooltip
           cursor={{ stroke: "var(--border)", strokeWidth: 1, strokeDasharray: "3 3" }}
           contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
-          formatter={(value, name) => [value, labelize(String(name))]}
+          labelFormatter={(label) => formatValue(label)}
+          formatter={(value, name) => [formatValue(value), labelize(String(name))]}
         />
         {series.length > 1 ? (
           <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => labelize(String(value))} />

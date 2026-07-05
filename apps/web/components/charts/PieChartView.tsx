@@ -3,9 +3,9 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import type { QueryResult } from "@/types";
+import { formatAxisTick, formatValue, labelize } from "@/lib/charts/format";
 
 const COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
-const labelize = (value: string) => value.replace(/_/g, " ");
 
 interface PieChartViewProps {
   result: QueryResult;
@@ -35,14 +35,14 @@ export function PieChartView({ result, nameKey, valueKey }: PieChartViewProps) {
       <PieChart>
         <Tooltip
           contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
-          formatter={(value, name) => [value, labelize(String(name))]}
+          formatter={(value, name) => [formatValue(value), formatAxisTick(name)]}
         />
         <Legend
           verticalAlign="bottom"
           height={42}
           iconType="circle"
           wrapperStyle={{ fontSize: 12 }}
-          formatter={(value) => labelize(String(value))}
+          formatter={(value) => formatAxisTick(value)}
         />
         <Pie data={pieRows} dataKey={valueKey} nameKey={nameKey} outerRadius={110}>
           {pieRows.map((_, index) => (

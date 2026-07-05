@@ -958,6 +958,18 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
     (activity) => activity.kind === "tool-call" && activity.tool === "run_sql",
   );
 
+  // After the data is in but before the written answer streams, show an explicit
+  // "writing" cue so the message never looks finished-but-empty. Suppressed while
+  // the model is visibly still thinking (that row already has its own indicator).
+  const lastStep = steps[steps.length - 1];
+  const isThinkingLive = lastStep?.kind === "thinking" && lastStep.live;
+  const showWritingHint =
+    !state.textDelta &&
+    state.blocks.length > 0 &&
+    runningQueries.length === 0 &&
+    orphanBlocks.length === 0 &&
+    !isThinkingLive;
+
   return (
     <div className="flex items-start gap-3">
       <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
@@ -1004,6 +1016,12 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
         {state.textDelta && (
           <div className="mt-3">
             <Markdown>{state.textDelta}</Markdown>
+          </div>
+        )}
+        {showWritingHint && (
+          <div className="mt-3 flex items-center gap-2 text-xs text-faint">
+            <span className="font-medium">Writing analysis</span>
+            <BouncingDots />
           </div>
         )}
         {!state.textDelta && state.activities.length === 0 && state.blocks.length === 0 && (

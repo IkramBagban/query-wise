@@ -174,12 +174,6 @@ function TimelineRow({
   );
 }
 
-/** Trailing tail of the live thought, so the timeline feels alive without dumping raw reasoning. */
-function liveTail(content: string): string {
-  const compact = content.replaceAll(/\s+/g, " ").trim();
-  return compact.length > 90 ? `…${compact.slice(-90)}` : compact;
-}
-
 function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "thinking" }>; isLast: boolean }) {
   const [isOpen, setIsOpen] = useState(!!step.live);
 
@@ -197,9 +191,6 @@ function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "th
         <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs text-faint transition hover:text-muted">
           <span className="font-medium">{step.live ? "Thinking" : "Thought process"}</span>
           {step.live ? <BouncingDots /> : null}
-          {step.live ? (
-            <span className="min-w-0 truncate text-[11px] text-faint/70">{liveTail(step.content)}</span>
-          ) : null}
           <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-open:rotate-90" />
         </summary>
         <div className="mb-1 mt-1.5 border-l-2 border-border/70 pl-3 text-[12.5px] leading-relaxed text-faint">
@@ -213,12 +204,9 @@ function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "th
 function ToolRow({
   step,
   isLast,
-  afterContent,
 }: {
   step: Extract<TimelineStep, { kind: "tool" }>;
   isLast: boolean;
-  /** Content (e.g. a result card) rendered below the tool row, still inside the timeline rail. */
-  afterContent?: React.ReactNode;
 }) {
   const isError = step.status === "error";
   const isPending = step.status === "pending";
@@ -251,7 +239,7 @@ function ToolRow({
   );
 
   return (
-    <TimelineRow isLast={isLast && !afterContent} tone={tone}>
+    <TimelineRow isLast={isLast} tone={tone}>
       {expandable ? (
         <details className="group">
           <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs">
@@ -277,18 +265,6 @@ function ToolRow({
       ) : (
         <p className="flex items-center gap-1.5 py-0.5 text-xs">{summaryLine}</p>
       )}
-      {afterContent ? (
-        <div className="relative mt-2 mb-3">
-          {/* Continue the vertical rail line past the card */}
-          {!isLast && (
-            <span
-              className="absolute -left-[calc(0.625rem+1.5px)] top-0 bottom-0 w-px bg-border/60"
-              aria-hidden
-            />
-          )}
-          {afterContent}
-        </div>
-      ) : null}
     </TimelineRow>
   );
 }
@@ -296,16 +272,17 @@ function ToolRow({
 /**
  * Unified ordered feed of the agent's reasoning and tool activity.
  *
- * When `renderBlock` is provided, result cards are rendered inline directly
- * below the `run_sql` step that produced them — creating a true chronological
- * feed instead of a stacked layout.
+ * When `renderBlock` is provided, each result card is rendered full-width
+ * directly after the `run_sql` row that produced it — chronological, but the
+ * card sits OUTSIDE the timeline rail (not indented under the vertical line)
+ * so charts get the full width and don't look clipped onto the rail.
  */
 export function AgentTimeline({
   steps,
   renderBlock,
 }: {
   steps: TimelineStep[];
-  /** Called to render a result block card inline after the matching tool row. */
+  /** Called to render a result block card after the matching tool row. */
   renderBlock?: (blockIndex: number) => React.ReactNode;
 }) {
   if (steps.length === 0) return null;
@@ -316,20 +293,18 @@ export function AgentTimeline({
         if (step.kind === "thinking") {
           return <ThinkingRow key={idx} step={step} isLast={isLast} />;
         }
-        // Determine if this tool step should render a block card inline.
-        const shouldRenderBlock =
-          renderBlock &&
-          step.tool === "run_sql" &&
-          step.status === "ok" &&
-          step.blockIndex != null;
+        const card =
+          renderBlock && step.tool === "run_sql" && step.status === "ok" && step.blockIndex != null
+            ? renderBlock(step.blockIndex)
+            : null;
 
+        // A row with a card ends the rail segment (isLast) so the vertical line
+        // stops cleanly above the full-width card instead of running through it.
         return (
-          <ToolRow
-            key={idx}
-            step={step}
-            isLast={isLast}
-            afterContent={shouldRenderBlock ? renderBlock(step.blockIndex!) : undefined}
-          />
+          <div key={idx} className="flex flex-col">
+            <ToolRow step={step} isLast={isLast || Boolean(card)} />
+            {card ? <div className="mb-4 mt-1.5">{card}</div> : null}
+          </div>
         );
       })}
     </div>

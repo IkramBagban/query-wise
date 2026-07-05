@@ -12,10 +12,9 @@ const SQL_KEYWORDS = [
 
 interface CodeBlockProps {
   sql: string;
-  variant?: "default" | "dark";
 }
 
-export function CodeBlock({ sql, variant = "default" }: CodeBlockProps) {
+export function CodeBlock({ sql }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -24,7 +23,7 @@ export function CodeBlock({ sql, variant = "default" }: CodeBlockProps) {
       const upper = part.toUpperCase();
       const keyword = SQL_KEYWORDS.includes(upper);
       return (
-        <span key={`${part}-${index}`} className={keyword ? "text-accent" : "text-muted"}>
+        <span key={`${part}-${index}`} className={keyword ? "font-semibold text-accent-strong" : "text-code-text"}>
           {part}
         </span>
       );

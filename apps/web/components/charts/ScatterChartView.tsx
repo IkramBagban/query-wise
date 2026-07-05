@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import type { QueryResult } from "@/types";
+import { abbreviateNumber, formatValue, labelize } from "@/lib/charts/format";
 
 interface ScatterChartViewProps {
   result: QueryResult;
@@ -21,7 +22,6 @@ interface ScatterChartViewProps {
 }
 
 const SCATTER_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
-const labelize = (value: string) => value.replace(/_/g, " ");
 
 export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartViewProps) {
   const series = (yKeys && yKeys.length > 0 ? yKeys : [yKey]).filter(Boolean);
@@ -30,13 +30,30 @@ export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartView
   );
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ScatterChart>
+      <ScatterChart margin={{ top: 8, right: 12, left: 12, bottom: 24 }}>
         <CartesianGrid stroke="var(--border)" />
-        <XAxis dataKey="x" stroke="var(--faint)" tick={{ fontSize: 12 }} />
-        <YAxis dataKey="y" stroke="var(--faint)" tick={{ fontSize: 12 }} />
+        <XAxis
+          dataKey="x"
+          type="number"
+          name={labelize(xKey)}
+          stroke="var(--faint)"
+          tick={{ fontSize: 12 }}
+          tickFormatter={(value) => abbreviateNumber(Number(value))}
+          label={{ value: labelize(xKey), position: "insideBottom", offset: -12, fill: "var(--faint)", fontSize: 11 }}
+        />
+        <YAxis
+          dataKey="y"
+          type="number"
+          name={labelize(yKey)}
+          stroke="var(--faint)"
+          tick={{ fontSize: 12 }}
+          tickFormatter={(value) => abbreviateNumber(Number(value))}
+          width={52}
+        />
         <Tooltip
+          cursor={{ strokeDasharray: "3 3" }}
           contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
-          formatter={(value, name) => [value, labelize(String(name))]}
+          formatter={(value, name) => [formatValue(value), name === "x" ? labelize(xKey) : name === "y" ? labelize(yKey) : labelize(String(name))]}
         />
         {series.length > 1 ? (
           <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => labelize(String(value))} />

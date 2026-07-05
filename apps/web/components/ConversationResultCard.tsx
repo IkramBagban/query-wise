@@ -25,7 +25,8 @@ import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { previewToQueryResult, V2Chart } from "@/components/V2Chart";
+import { isBoundedResultPreview, previewToQueryResult, V2Chart } from "@/components/V2Chart";
+import { computeResultViewOptions } from "@/lib/charts/options";
 import { useToast } from "@/hooks/useToast";
 import { exportToCSV, exportToJSON, exportToXLSX, generateFilename } from "@/lib/export";
 import { formatNumber } from "@/lib/utils";
@@ -206,7 +207,16 @@ export function ConversationResultCard({
   const run = message.queryRun;
   const preview = block ? block.resultPreview : run?.resultPreview;
   const baseConfig = (block?.chartConfig ?? message.metadata.chartConfig ?? { schemaVersion: 1, type: "table" }) as ChartConfig;
-  const [chartType, setChartType] = useState<ChartType>(baseConfig.type === "table" ? "bar" : baseConfig.type);
+  const previewResult = isBoundedResultPreview(preview) ? previewToQueryResult(preview) : null;
+  // Same data-aware option logic the inline card uses, so the fullscreen dialog
+  // offers only valid chart types instead of all five.
+  const viewOptions = previewResult ? computeResultViewOptions(previewResult) : null;
+  const dialogChartTypes = viewOptions?.chartTypes ?? ["bar"];
+  const initialType: ChartType =
+    baseConfig.type !== "table" && dialogChartTypes.includes(baseConfig.type)
+      ? baseConfig.type
+      : viewOptions?.defaultChartType ?? dialogChartTypes[0] ?? "bar";
+  const [chartType, setChartType] = useState<ChartType>(initialType);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<"chart" | "table">("chart");
   const { pushToast } = useToast();
@@ -214,7 +224,8 @@ export function ConversationResultCard({
   const config: ChartConfig = { ...baseConfig, type: chartType };
 
   if (!run || !preview || !Array.isArray(preview.rows) || !Array.isArray(preview.columns)) return null;
-  const result = previewToQueryResult(preview);
+  const result = previewResult ?? previewToQueryResult(preview);
+  const dialogTypeButtons = CHART_TYPES.filter((entry) => dialogChartTypes.includes(entry.value));
   const rowCount = block?.rowCount ?? run.returnedRowCount ?? preview.returnedRowCount;
   const executionTimeMs = block?.executionTimeMs ?? run.executionTimeMs;
   const sqlText = block?.sql ?? run.generatedQuery?.text;
@@ -273,7 +284,7 @@ export function ConversationResultCard({
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
           <div className="flex flex-wrap gap-1.5" aria-label="Chart type">
-            {CHART_TYPES.map(({ label, value, icon: Icon }) => (
+            {dialogTypeButtons.map(({ label, value, icon: Icon }) => (
               <button key={value} type="button" title={label} aria-label={`${label} chart`} onClick={() => setChartType(value)} className={`inline-flex size-9 items-center justify-center rounded-lg border transition ${chartType === value ? "border-accent bg-accent-soft text-accent-strong" : "border-border text-faint hover:bg-surface-2 hover:text-text"}`}><Icon className="size-4" /></button>
             ))}
           </div>
