@@ -20,7 +20,7 @@ interface BarChartViewProps {
   yKeys?: string[];
 }
 
-const SERIES_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
+const SERIES_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
 const labelize = (value: string) => value.replace(/_/g, " ");
 const isDateLikeValue = (value: unknown): boolean => {
   const text = String(value ?? "");
@@ -59,7 +59,7 @@ export function BarChartView({ result, xKey, yKey, yKeys }: BarChartViewProps) {
         <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
         <XAxis
           dataKey={xKey}
-          stroke="var(--text-3)"
+          stroke="var(--faint)"
           tick={{ fontSize: 11 }}
           interval={tickInterval}
           tickFormatter={shortXAxisTick}
@@ -69,10 +69,10 @@ export function BarChartView({ result, xKey, yKey, yKeys }: BarChartViewProps) {
           height={shouldRotateTicks ? 56 : 26}
           minTickGap={18}
         />
-        <YAxis stroke="var(--text-3)" tick={{ fontSize: 12 }} />
+        <YAxis stroke="var(--faint)" tick={{ fontSize: 12 }} />
         <Tooltip
           cursor={{ fill: "rgba(46,213,46,0.08)" }}
-          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (

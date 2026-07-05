@@ -28,7 +28,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ConversationResultCard } from "@/components/ConversationResultCard";
 import { ResultBlockCard } from "@/components/ResultBlockCard";
-import { AgentSteps, AgentTimeline, BouncingDots, activitiesToSteps } from "@/components/AgentActivity";
+import {
+  AgentTimeline,
+  BouncingDots,
+  activitiesToSteps,
+  parseAgentTranscript,
+  type TimelineStep,
+} from "@/components/AgentActivity";
 import { ComposerBox } from "@/components/ChatComposer";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -909,12 +915,21 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
   const hasNoTextYet = !state.textDelta;
   const steps = activitiesToSteps(state.activities, { streaming: hasNoTextYet });
 
-  // Track which blocks were rendered inline by the timeline so we can render
-  // orphans (blocks whose timeline step hasn't resolved yet) as a fallback.
-  const renderedBlockIndices = new Set<number>();
+  // Which block indices the timeline will render inline. Derived from the
+  // steps themselves — NOT from a side effect inside renderBlock, because
+  // renderBlock only runs when React renders the timeline, which is after
+  // this component body has already computed the orphan list (that ordering
+  // bug made every block an "orphan" and drew every card twice).
+  const inlineBlockIndices = new Set(
+    steps
+      .filter(
+        (step): step is Extract<TimelineStep, { kind: "tool" }> =>
+          step.kind === "tool" && step.tool === "run_sql" && step.status === "ok" && step.blockIndex != null,
+      )
+      .map((step) => step.blockIndex as number),
+  );
 
   const renderBlock = (blockIndex: number): React.ReactNode => {
-    renderedBlockIndices.add(blockIndex);
     const block = state.blocks.find((b) => b.index === blockIndex && b.validation !== "blocked");
     if (!block) return null;
     return (
@@ -930,14 +945,11 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
     );
   };
 
-  // Compute orphan blocks after rendering the timeline (blocks that exist but
-  // have no matching resolved tool step, e.g. pending queries).
-  const timeline = (
-    <AgentTimeline steps={steps} renderBlock={renderBlock} />
-  );
+  const timeline = <AgentTimeline steps={steps} renderBlock={renderBlock} />;
 
+  // Safety net only: blocks with no matching resolved tool step in the timeline.
   const orphanBlocks = state.blocks.filter(
-    (block) => block.validation !== "blocked" && !renderedBlockIndices.has(block.index),
+    (block) => block.validation !== "blocked" && !inlineBlockIndices.has(block.index),
   );
 
   // Queries still executing (tool-call not yet resolved) render as skeleton
@@ -1019,12 +1031,20 @@ function AssistantMessage({
   const hasBlocks = blocks && blocks.length > 0;
   const legacyHasResult = isBoundedResultPreview(message.queryRun?.resultPreview);
 
-  // Track which blocks got rendered inline so we can render orphans as fallback.
-  const renderedBlockIndices = new Set<number>();
+  const steps = parseAgentTranscript(message.metadata);
+  // Which block indices the timeline renders inline — derived from the steps,
+  // never from a side effect inside renderBlock (see PendingAssistantMessage).
+  const inlineBlockIndices = new Set(
+    steps
+      .filter(
+        (step): step is Extract<TimelineStep, { kind: "tool" }> =>
+          step.kind === "tool" && step.tool === "run_sql" && step.status === "ok" && step.blockIndex != null,
+      )
+      .map((step) => step.blockIndex as number),
+  );
 
   const renderBlock = hasBlocks
     ? (blockIndex: number): React.ReactNode => {
-        renderedBlockIndices.add(blockIndex);
         const block = blocks.find((b) => b.index === blockIndex);
         if (!block) return null;
         return (
@@ -1039,12 +1059,12 @@ function AssistantMessage({
       }
     : undefined;
 
-  const timeline = <AgentSteps metadata={message.metadata} renderBlock={renderBlock} />;
+  const timeline = <AgentTimeline steps={steps} renderBlock={renderBlock} />;
 
-  // Orphan blocks: any blocks not rendered inline by the timeline (possible
-  // with old messages whose transcript doesn't carry blockIndex).
+  // Safety net only: blocks the timeline cannot place (e.g. very old messages
+  // whose transcript carries no run_sql steps at all).
   const orphanBlocks = hasBlocks
-    ? blocks.filter((block) => !renderedBlockIndices.has(block.index))
+    ? blocks.filter((block) => !inlineBlockIndices.has(block.index))
     : [];
 
   return (

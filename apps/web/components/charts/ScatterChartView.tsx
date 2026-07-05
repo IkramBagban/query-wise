@@ -20,7 +20,7 @@ interface ScatterChartViewProps {
   yKeys?: string[];
 }
 
-const SCATTER_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
+const SCATTER_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
 const labelize = (value: string) => value.replace(/_/g, " ");
 
 export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartViewProps) {
@@ -32,10 +32,10 @@ export function ScatterChartView({ result, xKey, yKey, yKeys }: ScatterChartView
     <ResponsiveContainer width="100%" height="100%">
       <ScatterChart>
         <CartesianGrid stroke="var(--border)" />
-        <XAxis dataKey="x" stroke="var(--text-3)" tick={{ fontSize: 12 }} />
-        <YAxis dataKey="y" stroke="var(--text-3)" tick={{ fontSize: 12 }} />
+        <XAxis dataKey="x" stroke="var(--faint)" tick={{ fontSize: 12 }} />
+        <YAxis dataKey="y" stroke="var(--faint)" tick={{ fontSize: 12 }} />
         <Tooltip
-          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-1)" }}
+          contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
           formatter={(value, name) => [value, labelize(String(name))]}
         />
         {series.length > 1 ? (
