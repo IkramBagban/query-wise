@@ -6,7 +6,7 @@ export function BrandMark({ className }: { className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className={cn("inline-flex size-8 shrink-0 overflow-hidden rounded-lg bg-accent", className)}
+      className={cn("inline-flex size-8 shrink-0 overflow-hidden rounded-lg", className)}
     >
       <Image
         src="/querywise-logo.png"

@@ -303,7 +303,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
     <aside className="flex h-full flex-col bg-bg p-3">
       <div className="flex items-center justify-between px-2 py-3">
         <Link href="/workspace/new" onClick={onNavigate} className="flex min-w-0 items-center gap-2.5 font-syne text-lg font-semibold tracking-tight">
-          <BrandMark className="size-8 shadow-sm" />
+          <BrandMark className="size-8" />
           <span className="truncate">QueryWise</span>
         </Link>
         <button

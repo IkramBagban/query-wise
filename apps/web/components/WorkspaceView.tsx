@@ -818,7 +818,7 @@ export function EmptyWorkspaceView() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(46,213,46,0.16),transparent_34%),linear-gradient(180deg,rgba(9,12,10,0),rgba(9,12,10,0.24))]" />
       <div className="relative z-10 w-full">
         <div className="mx-auto mb-5 flex max-w-3xl flex-col items-center text-center">
-          <BrandMark className="size-14 rounded-2xl shadow-[0_0_60px_rgba(46,213,46,0.22)]" />
+          <BrandMark className="size-14 rounded-2xl" />
           <h1 className="mt-4 font-syne text-4xl font-semibold tracking-normal text-text sm:text-5xl">Ask your data</h1>
           <p className="mt-2 text-base text-muted">Get instant insights from your connected databases.</p>
         </div>
@@ -972,7 +972,7 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
 
   return (
     <div className="flex items-start gap-3">
-      <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
+      <BrandMark className="mt-0.5 size-9 rounded-full" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2.5">
           <span className="text-sm font-semibold text-text">QueryWise</span>
@@ -1087,7 +1087,7 @@ function AssistantMessage({
 
   return (
     <div className="flex items-start gap-3">
-      <BrandMark className="mt-0.5 size-9 rounded-full shadow-sm" />
+      <BrandMark className="mt-0.5 size-9 rounded-full" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-text">QueryWise</span>
