@@ -23,11 +23,12 @@ interface LineChartViewProps {
   yKey: string;
   yKeys?: string[];
   valueFormat?: ColumnFormat;
+  skipEntrance?: boolean;
 }
 
 const LINE_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
 
-export function LineChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER }: LineChartViewProps) {
+export function LineChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, skipEntrance }: LineChartViewProps) {
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
@@ -93,6 +94,9 @@ export function LineChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_N
             strokeWidth={2}
             dot={false}
             activeDot={dragging ? false : { r: 4 }}
+            isAnimationActive={!skipEntrance}
+            animationDuration={650}
+            animationEasing="ease-out"
           />
         ))}
       </LineChart>

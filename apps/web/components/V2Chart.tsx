@@ -36,11 +36,13 @@ export function V2Chart({
   config,
   normalize,
   stackMode,
+  skipEntrance,
 }: {
   preview: unknown;
   config: ChartConfig;
   normalize?: boolean;
   stackMode?: BarStackMode;
+  skipEntrance?: boolean;
 }) {
   if (!isBoundedResultPreview(preview)) {
     return (
@@ -57,6 +59,7 @@ export function V2Chart({
       chartConfig={{ ...config, availableTypes: ["bar", "line", "pie", "scatter", "area", "table"] }}
       normalize={normalize}
       stackMode={stackMode}
+      skipEntrance={skipEntrance}
     />
   );
 }

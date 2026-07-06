@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Check, Clipboard, ChevronDown, ChevronUp } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -43,8 +44,32 @@ export function CodeBlock({ sql }: CodeBlockProps) {
     <div className="rounded-md border border-border bg-code-bg p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wide text-faint">SQL query</span>
-        <Button variant="ghost" size="sm" onClick={handleCopy}>
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Clipboard className="h-3.5 w-3.5" />} {copied ? "Copied" : "Copy"}
+        <Button variant="ghost" size="sm" onClick={handleCopy} className="w-[72px] justify-center px-0">
+          <AnimatePresence mode="wait" initial={false}>
+            {copied ? (
+              <motion.span
+                key="check"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center gap-1.5 text-success"
+              >
+                <Check className="h-3.5 w-3.5" /> Copied
+              </motion.span>
+            ) : (
+              <motion.span
+                key="copy"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center gap-1.5"
+              >
+                <Clipboard className="h-3.5 w-3.5" /> Copy
+              </motion.span>
+            )}
+          </AnimatePresence>
         </Button>
       </div>
       <pre className={cn("overflow-x-auto font-mono text-xs leading-6", !expanded && showCollapse && "max-h-[4.8rem] overflow-hidden")}>

@@ -27,6 +27,7 @@ interface BarChartViewProps {
   stack?: BarStackMode;
   /** Horizontal bars — better for rankings with long category labels. */
   horizontal?: boolean;
+  skipEntrance?: boolean;
 }
 
 const SERIES_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
@@ -39,6 +40,7 @@ export function BarChartView({
   valueFormat = PLAIN_NUMBER,
   stack = "none",
   horizontal,
+  skipEntrance,
 }: BarChartViewProps) {
   const series = (yKeys && yKeys.length > 0 ? yKeys : [yKey]).filter(Boolean);
   const isPercent = stack === "percent" && series.length > 1;
@@ -116,6 +118,9 @@ export function BarChartView({
             stackId={stackId}
             fill={SERIES_COLORS[index % SERIES_COLORS.length]}
             radius={stackId ? undefined : useHorizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
+            isAnimationActive={!skipEntrance}
+            animationDuration={650}
+            animationEasing="ease-out"
           />
         ))}
       </BarChart>

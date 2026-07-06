@@ -19,9 +19,10 @@ interface ChartRendererProps {
   normalize?: boolean;
   /** Grouped (none), stacked, or 100%-stacked for multi-series bar/area. */
   stackMode?: BarStackMode;
+  skipEntrance?: boolean;
 }
 
-export function ChartRenderer({ result: rawResult, chartConfig, normalize, stackMode = "none" }: ChartRendererProps) {
+export function ChartRenderer({ result: rawResult, chartConfig, normalize, stackMode = "none", skipEntrance }: ChartRendererProps) {
   const fallbackX = chartConfig.xKey ?? rawResult.columns[0];
   const fallbackY = chartConfig.yKey ?? rawResult.columns[1] ?? rawResult.columns[0];
 
@@ -72,6 +73,7 @@ export function ChartRenderer({ result: rawResult, chartConfig, normalize, stack
           yKeys={fallbackYs}
           valueFormat={valueFormat}
           stack={stackMode}
+          skipEntrance={skipEntrance}
         />
       );
     case "line":
@@ -82,6 +84,7 @@ export function ChartRenderer({ result: rawResult, chartConfig, normalize, stack
           yKey={chartY}
           yKeys={fallbackYs}
           valueFormat={valueFormat}
+          skipEntrance={skipEntrance}
         />
       );
     case "pie": {
@@ -93,6 +96,7 @@ export function ChartRenderer({ result: rawResult, chartConfig, normalize, stack
           nameKey={nameKey}
           valueKey={valueKey}
           valueFormat={inferColumnFormat(valueKey, result.rows)}
+          skipEntrance={skipEntrance}
         />
       );
     }
@@ -105,6 +109,7 @@ export function ChartRenderer({ result: rawResult, chartConfig, normalize, stack
           yKeys={chartConfig.yKeys && chartConfig.yKeys.length > 0 ? chartConfig.yKeys : [fallbackY]}
           valueFormat={valueFormat}
           xFormat={xFormat}
+          skipEntrance={skipEntrance}
         />
       );
     case "area":
@@ -116,6 +121,7 @@ export function ChartRenderer({ result: rawResult, chartConfig, normalize, stack
           yKeys={fallbackYs}
           valueFormat={valueFormat}
           stack={stackMode}
+          skipEntrance={skipEntrance}
         />
       );
     case "table":

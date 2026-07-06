@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { motion } from "motion/react";
 import { useUser } from "@clerk/nextjs";
 import {
   AlertTriangle,
@@ -30,6 +32,7 @@ import { ConversationResultCard } from "@/components/ConversationResultCard";
 import { ResultBlockCard } from "@/components/ResultBlockCard";
 import {
   AgentTimeline,
+  AgentStatusHeartbeat,
   BouncingDots,
   activitiesToSteps,
   parseAgentTranscript,
@@ -815,8 +818,8 @@ function UserAvatar({ initial }: { initial: string }) {
   );
 }
 
-function UserMessage({ message, initial }: { message: ConversationMessageDto; initial: string }) {
-  return (
+function UserMessage({ message, initial, animateEntrance }: { message: ConversationMessageDto; initial: string; animateEntrance?: boolean }) {
+  const content = (
     <div className="flex items-start justify-end gap-3">
       <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-success/20 bg-success/10 px-4 py-3 shadow-sm">
         <p className="whitespace-pre-wrap text-sm text-text">{message.content}</p>
@@ -824,6 +827,18 @@ function UserMessage({ message, initial }: { message: ConversationMessageDto; in
       </div>
       <UserAvatar initial={initial} />
     </div>
+  );
+  if (!animateEntrance) return content;
+  return (
+    <motion.div
+      layoutId="latest-user-message"
+      initial={{ opacity: 0, y: 14, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+      style={{ transformOrigin: "bottom right" }}
+    >
+      {content}
+    </motion.div>
   );
 }
 
@@ -893,15 +908,23 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
 
   return (
     <div className="flex items-start gap-3">
-      <BrandMark className="mt-0.5 size-9 rounded-full" />
-      <div className="min-w-0 flex-1">
+      <motion.div
+        initial={{ scale: 0.6, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 0.15, type: "spring", stiffness: 380, damping: 32 }}
+      >
+        <BrandMark className="mt-0.5 size-9 rounded-full" />
+      </motion.div>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.25, duration: 0.2 }}
+        className="min-w-0 flex-1"
+      >
         <div className="flex items-baseline gap-2.5">
           <span className="text-sm font-semibold text-text">QueryWise</span>
           {state.status && state.status !== "Complete" ? (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-faint">
-              {state.status}
-              <BouncingDots />
-            </span>
+             <AgentStatusHeartbeat status={state.status} />
           ) : null}
         </div>
         {timeline}
@@ -936,7 +959,7 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
         )}
         {state.textDelta && (
           <div className="mt-3">
-            <Markdown>{state.textDelta}</Markdown>
+            <Markdown streaming>{state.textDelta}</Markdown>
           </div>
         )}
         {showWritingHint && (
@@ -950,7 +973,7 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
             <BouncingDots />
           </div>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -960,11 +983,13 @@ function AssistantMessage({
   dashboardOptions,
   onCreateDashboard,
   onSave,
+  isNewlyCompleted,
 }: {
   message: ConversationMessageDto;
   dashboardOptions: { value: string; label: string }[];
   onCreateDashboard: (name: string) => Promise<string>;
   onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string) => Promise<void>;
+  isNewlyCompleted?: boolean;
 }) {
   const blocks = message.queryRun?.resultBlocks;
   const hasBlocks = blocks && blocks.length > 0;
@@ -993,6 +1018,7 @@ function AssistantMessage({
             dashboardOptions={dashboardOptions}
             onCreateDashboard={onCreateDashboard}
             onSave={onSave}
+            skipEntrance={isNewlyCompleted}
           />
         );
       }
@@ -1008,9 +1034,14 @@ function AssistantMessage({
 
   return (
     <div className="flex items-start gap-3">
-      <BrandMark className="mt-0.5 size-9 rounded-full" />
+      <motion.div
+        animate={isNewlyCompleted ? { scale: [1, 1.15, 1] } : undefined}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        <BrandMark className={`mt-0.5 size-9 rounded-full ${isNewlyCompleted ? "text-accent transition-colors duration-700" : ""}`} />
+      </motion.div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-baseline gap-2.5">
           <span className="text-sm font-semibold text-text">QueryWise</span>
           <span className="text-[10px] text-faint">{formatClockTime(message.createdAt)}</span>
         </div>
@@ -1028,6 +1059,7 @@ function AssistantMessage({
                    dashboardOptions={dashboardOptions}
                    onCreateDashboard={onCreateDashboard}
                    onSave={onSave}
+                   skipEntrance={isNewlyCompleted}
                 />
               ))}
            </div>
@@ -1039,6 +1071,7 @@ function AssistantMessage({
              dashboardOptions={dashboardOptions}
              onCreateDashboard={onCreateDashboard}
              onSave={onSave}
+             skipEntrance={isNewlyCompleted}
            />
         ) : null}
         {(hasBlocks || orphanBlocks.length > 0) && message.content ? <div className="mt-3"><Markdown>{message.content}</Markdown></div> : null}
@@ -1166,10 +1199,16 @@ export function ConversationView({ conversationId }: { conversationId: string })
   const pinnedToBottom = useRef(true);
   const userInitial = useUserInitial();
 
-  const ordered = useMemo(
-    () => messageState.items.slice().sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id)),
-    [messageState.items],
-  );
+  const [submitStartSequence, setSubmitStartSequence] = useState<number | null>(null);
+  const [lastSubmitStartSequence, setLastSubmitStartSequence] = useState<number>(Number.MAX_SAFE_INTEGER);
+
+  const ordered = useMemo(() => {
+    let list = messageState.items.slice().sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id));
+    if (submitting && submitStartSequence !== null) {
+      list = list.filter((m) => m.sequence <= submitStartSequence);
+    }
+    return list;
+  }, [messageState.items, submitting, submitStartSequence]);
   const latestRun = useMemo(() => ordered.slice().reverse().find((message) => message.queryRun)?.queryRun ?? null, [ordered]);
   const dashboardOptions = useMemo(
     () => dashboards.data?.items.filter((item) => item.access === "owner").map((item) => ({ value: item.id, label: item.name })) ?? [],
@@ -1303,6 +1342,9 @@ export function ConversationView({ conversationId }: { conversationId: string })
     const trimmed = targetQuestion.trim();
     if (!overrideQuestion) setQuestion("");
     setPendingQuestion(trimmed);
+    const currentLastSeq = ordered.length > 0 ? ordered[ordered.length - 1].sequence : -1;
+    setSubmitStartSequence(currentLastSeq);
+    setLastSubmitStartSequence(currentLastSeq);
     setSubmitting(true);
     setError(null);
     setStreamState({ status: null, textDelta: "", activities: [], blocks: [] });
@@ -1315,9 +1357,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
       if (!overrideQuestion) setQuestion(trimmed);
       setError(reason instanceof Error ? reason.message : "Unable to submit query");
     } finally {
-      setPendingQuestion(null);
-      setSubmitting(false);
-      setStreamState(null);
+      flushSync(() => {
+        setPendingQuestion(null);
+        setSubmitting(false);
+        setSubmitStartSequence(null);
+        setStreamState(null);
+      });
     }
   }
 
@@ -1423,7 +1468,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
               {messagesError ? <p role="alert" className="text-center text-xs text-danger">{messagesError.message}</p> : null}
               {ordered.map((message) =>
                 message.role === "user" ? (
-                  <UserMessage key={message.id} message={message} initial={userInitial} />
+                  <UserMessage key={message.id} message={message} initial={userInitial} animateEntrance={message.sequence > lastSubmitStartSequence} />
                 ) : (
                   <AssistantMessage
                     key={message.id}
@@ -1431,16 +1476,24 @@ export function ConversationView({ conversationId }: { conversationId: string })
                     dashboardOptions={dashboardOptions}
                     onCreateDashboard={createDashboard}
                     onSave={saveResult}
+                    isNewlyCompleted={message.sequence > lastSubmitStartSequence}
                   />
                 ),
               )}
               {pendingQuestion ? (
-                <div className="flex items-start justify-end gap-3">
+                <motion.div
+                  layoutId="latest-user-message"
+                  initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ transformOrigin: "bottom right" }}
+                  className="flex items-start justify-end gap-3"
+                >
                   <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-success/20 bg-success/10 px-4 py-3 shadow-sm opacity-70">
                     <p className="whitespace-pre-wrap text-sm text-text">{pendingQuestion}</p>
                   </div>
                   <UserAvatar initial={userInitial} />
-                </div>
+                </motion.div>
               ) : null}
               {submitting && streamState ? (
                 <PendingAssistantMessage state={streamState} />

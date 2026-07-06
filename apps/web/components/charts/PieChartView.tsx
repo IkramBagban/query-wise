@@ -13,9 +13,10 @@ interface PieChartViewProps {
   nameKey: string;
   valueKey: string;
   valueFormat?: ColumnFormat;
+  skipEntrance?: boolean;
 }
 
-export function PieChartView({ result, nameKey, valueKey, valueFormat = PLAIN_NUMBER }: PieChartViewProps) {
+export function PieChartView({ result, nameKey, valueKey, valueFormat = PLAIN_NUMBER, skipEntrance }: PieChartViewProps) {
   const pieRows = result.rows
     .map((row) => {
       const raw = row[valueKey];
@@ -46,7 +47,15 @@ export function PieChartView({ result, nameKey, valueKey, valueFormat = PLAIN_NU
           wrapperStyle={{ fontSize: 12 }}
           formatter={(value) => formatAxisTick(value)}
         />
-        <Pie data={pieRows} dataKey={valueKey} nameKey={nameKey} outerRadius={110}>
+        <Pie 
+          data={pieRows} 
+          dataKey={valueKey} 
+          nameKey={nameKey} 
+          outerRadius={110}
+          isAnimationActive={!skipEntrance}
+          animationDuration={650}
+          animationEasing="ease-out"
+        >
           {pieRows.map((_, index) => (
             <Cell key={index} fill={COLORS[index % COLORS.length]} />
           ))}

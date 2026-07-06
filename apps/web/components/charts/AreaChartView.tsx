@@ -24,6 +24,7 @@ interface AreaChartViewProps {
   yKeys?: string[];
   valueFormat?: ColumnFormat;
   stack?: BarStackMode;
+  skipEntrance?: boolean;
 }
 
 const AREA_STROKES = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
@@ -36,7 +37,7 @@ const AREA_FILLS = [
   "rgba(132,204,22,0.2)",
 ];
 
-export function AreaChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, stack = "none" }: AreaChartViewProps) {
+export function AreaChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, stack = "none", skipEntrance }: AreaChartViewProps) {
   const series = (yKeys && yKeys.length > 0 ? yKeys : [yKey]).filter(Boolean);
   const isPercent = stack === "percent" && series.length > 1;
   const stackId = stack !== "none" && series.length > 1 ? "stack" : undefined;
@@ -93,6 +94,9 @@ export function AreaChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_N
             name={labelize(seriesKey)}
             stroke={AREA_STROKES[index % AREA_STROKES.length]}
             fill={AREA_FILLS[index % AREA_FILLS.length]}
+            isAnimationActive={!skipEntrance}
+            animationDuration={650}
+            animationEasing="ease-out"
           />
         ))}
       </AreaChart>

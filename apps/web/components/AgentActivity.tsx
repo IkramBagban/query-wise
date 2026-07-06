@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { Markdown } from "@/components/ui/markdown";
 
 /* ------------------------------- Model ---------------------------------- */
@@ -159,7 +160,12 @@ function TimelineRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative flex gap-2.5">
+    <motion.div 
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className="relative flex gap-2.5"
+    >
       <span className="relative flex w-3 shrink-0 justify-center" aria-hidden>
         {!isLast && <span className="absolute bottom-0 top-[18px] w-px bg-border/60" />}
         <span className="relative mt-[9px] flex size-1.5">
@@ -170,8 +176,34 @@ function TimelineRow({
         </span>
       </span>
       <div className="min-w-0 flex-1 pb-1.5">{children}</div>
-    </div>
+    </motion.div>
   );
+}
+
+function SmoothDetails({ summary, children, open, onToggle }: { summary: React.ReactNode, children: React.ReactNode, open?: boolean, onToggle?: (open: boolean) => void }) {
+  const [internalOpen, setInternalOpen] = useState(open ?? false);
+  useEffect(() => {
+    if (open !== undefined) setInternalOpen(open);
+  }, [open]);
+  const isOpen = internalOpen;
+  return (
+    <div className="group" data-state={isOpen ? "open" : "closed"}>
+      <div 
+        className="flex cursor-pointer select-none items-center py-0.5"
+        onClick={() => {
+           setInternalOpen(!isOpen);
+           onToggle?.(!isOpen);
+        }}
+      >
+        {summary}
+      </div>
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+           {children}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "thinking" }>; isLast: boolean }) {
@@ -183,20 +215,24 @@ function ThinkingRow({ step, isLast }: { step: Extract<TimelineStep, { kind: "th
 
   return (
     <TimelineRow isLast={isLast} tone={step.live ? "pending" : "accent"}>
-      <details 
-        className="group" 
+      <SmoothDetails 
         open={isOpen} 
-        onToggle={(e) => setIsOpen(e.currentTarget.open)}
+        onToggle={setIsOpen}
+        summary={
+          <div className="flex w-full items-center gap-1.5 text-xs text-faint hover:text-muted">
+            <span className="font-medium">{step.live ? "Thinking" : "Thought process"}</span>
+            {step.live ? <BouncingDots /> : null}
+            <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-data-[state=open]:rotate-90" />
+          </div>
+        }
       >
-        <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs text-faint transition hover:text-muted">
-          <span className="font-medium">{step.live ? "Thinking" : "Thought process"}</span>
-          {step.live ? <BouncingDots /> : null}
-          <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-open:rotate-90" />
-        </summary>
-        <div className="mb-1 mt-1.5 border-l-2 border-border/70 pl-3 text-[12.5px] leading-relaxed text-faint">
+        <div className="relative mb-1 mt-1.5 border-l-2 border-border/70 pl-3 text-[12.5px] leading-relaxed text-faint">
           <Markdown>{step.content}</Markdown>
+          {step.live && (
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-surface to-transparent" />
+          )}
         </div>
-      </details>
+      </SmoothDetails>
     </TimelineRow>
   );
 }
@@ -241,11 +277,14 @@ function ToolRow({
   return (
     <TimelineRow isLast={isLast} tone={tone}>
       {expandable ? (
-        <details className="group">
-          <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 py-0.5 text-xs">
-            {summaryLine}
-            <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-open:rotate-90" />
-          </summary>
+        <SmoothDetails
+          summary={
+            <div className="flex w-full items-center gap-1.5 text-xs">
+              {summaryLine}
+              <ChevronRight className="size-3 shrink-0 text-faint/60 transition-transform group-data-[state=open]:rotate-90" />
+            </div>
+          }
+        >
           <div className="mb-1 mt-1.5 space-y-2 border-l-2 border-border/70 pl-3">
             {sql && (
               <div className="overflow-x-auto rounded-lg bg-surface-2/80 text-[12px]">
@@ -261,7 +300,7 @@ function ToolRow({
               <p className={`text-[12px] ${isError ? "text-danger" : "text-faint"}`}>{step.summary}</p>
             )}
           </div>
-        </details>
+        </SmoothDetails>
       ) : (
         <p className="flex items-center gap-1.5 py-0.5 text-xs">{summaryLine}</p>
       )}
@@ -320,4 +359,41 @@ export function AgentSteps({
   renderBlock?: (blockIndex: number) => React.ReactNode;
 }) {
   return <AgentTimeline steps={parseAgentTranscript(metadata)} renderBlock={renderBlock} />;
+}
+
+export function AgentStatusHeartbeat({ status }: { status: string }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    setElapsed(0);
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Date.now() - start);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [status]);
+
+  const showElapsed = elapsed > 3000;
+  
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] font-medium overflow-hidden">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={status}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.16 }}
+          className="text-accent animate-pulse"
+        >
+          {status}
+        </motion.span>
+      </AnimatePresence>
+      {showElapsed ? (
+        <span className="tabular-nums text-faint">
+          · {(elapsed / 1000).toFixed(1)}s
+        </span>
+      ) : null}
+    </div>
+  );
 }

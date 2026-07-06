@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   AreaChart,
   BarChart3,
@@ -60,6 +61,8 @@ export interface ResultBlockCardProps {
   actions?: React.ReactNode;
   /** Notifies the wrapper (dialog, save flow) when the user switches chart type. */
   onChartTypeChange?: (type: ChartType) => void;
+  skipEntrance?: boolean;
+  glow?: boolean;
 }
 
 function ChartTypeSwitcher({
@@ -132,6 +135,8 @@ export function ResultBlockCard({
   running,
   actions,
   onChartTypeChange,
+  skipEntrance,
+  glow,
 }: ResultBlockCardProps) {
   const hasData = Boolean(preview);
   const result = useMemo(() => (preview ? previewToQueryResult(preview) : null), [preview]);
@@ -203,13 +208,55 @@ export function ResultBlockCard({
   // Grouped / Stacked / 100% for multi-series bar & area (composition views).
   const canStack = (activeChartType === "bar" || activeChartType === "area") && isMultiSeries;
   const [stackMode, setStackMode] = useState<BarStackMode>("none");
+  const [displayRowCount, setDisplayRowCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (rowCount == null) {
+      setDisplayRowCount(null);
+      return;
+    }
+    if (skipEntrance) {
+      setDisplayRowCount(rowCount);
+      return;
+    }
+    let startTimestamp: number | null = null;
+    const DURATION = 450;
+    
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / DURATION, 1);
+      const ease = 1 - (1 - progress) * (1 - progress);
+      setDisplayRowCount(Math.round(ease * rowCount));
+      
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    
+    requestAnimationFrame(step);
+  }, [rowCount, skipEntrance]);
+
   const statsLabel =
-    rowCount != null
-      ? `${formatNumber(rowCount)} row${rowCount === 1 ? "" : "s"}${executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}`
+    displayRowCount != null
+      ? `${formatNumber(displayRowCount)} row${displayRowCount === 1 ? "" : "s"}${executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}`
       : null;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+    <motion.div
+      initial={skipEntrance ? false : { opacity: 0, height: 0 }}
+      animate={{ 
+        opacity: 1, 
+        height: "auto",
+        boxShadow: glow ? ["0 0 0 1px rgba(46,213,46,0.3), 0 4px 30px rgba(46,213,46,0.15)", "0 1px 2px 0 rgba(0,0,0,0.05)"] : undefined
+      }}
+      transition={{ 
+        duration: 0.32, 
+        ease: [0.16, 1, 0.3, 1],
+        boxShadow: { duration: 1.8, ease: "easeOut", delay: 0.2 }
+      }}
+      className="overflow-hidden"
+    >
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/80 bg-surface-2/40 px-4 py-2.5">
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">
           {title || "Query result"}
@@ -293,47 +340,71 @@ export function ResultBlockCard({
       </div>
 
       <div className="p-3">
-        {tab === "chart" ? (
-          hasData ? (
-            <div className="h-64 min-w-0 rounded-xl border border-border/70 bg-surface-2/30 p-2 sm:h-72">
-              <V2Chart preview={preview} config={config} normalize={canNormalize && normalized} stackMode={canStack ? stackMode : "none"} />
-            </div>
-          ) : (
-            <div className="rounded-xl border border-border/70 bg-surface-2/30">
-              <ChartSkeleton label={running ? "Running query…" : "Waiting for data…"} />
-            </div>
-          )
-        ) : null}
-        {tab === "kpi" ? (
-          result ? (
-            <StatCard result={result} />
-          ) : (
-            <div className="rounded-xl border border-border/70 bg-surface-2/30">
-              <ChartSkeleton label={running ? "Running query…" : "Waiting for data…"} />
-            </div>
-          )
-        ) : null}
-        {tab === "table" ? (
-          hasData && result ? (
-            <div className="max-h-72 overflow-auto rounded-xl border border-border/70">
-              <TableView result={result} />
-            </div>
-          ) : (
-            <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">
-              {running ? "The query is still running." : "No rows to show yet."}
-            </p>
-          )
-        ) : null}
-        {tab === "sql" ? (
-          sql ? (
-            <CodeBlock sql={sql} />
-          ) : (
-            <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">
-              No SQL was generated for this response.
-            </p>
-          )
-        ) : null}
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+            className="w-full"
+          >
+            {tab === "chart" ? (
+              <div className="relative">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {hasData ? (
+                    <motion.div
+                      key="chart"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.24 }}
+                      className="h-64 min-w-0 rounded-xl border border-border/70 bg-surface-2/30 p-2 sm:h-72"
+                    >
+                      <V2Chart preview={preview} config={config} normalize={canNormalize && normalized} stackMode={canStack ? stackMode : "none"} skipEntrance={skipEntrance} />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="skeleton"
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.24 }}
+                      className="rounded-xl border border-border/70 bg-surface-2/30"
+                    >
+                      <ChartSkeleton label={running ? "Running query…" : "Waiting for data…"} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : tab === "kpi" ? (
+              result ? (
+                <StatCard result={result} />
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-surface-2/30">
+                  <ChartSkeleton label={running ? "Running query…" : "Waiting for data…"} />
+                </div>
+              )
+            ) : tab === "table" ? (
+              hasData && result ? (
+                <div className="max-h-72 overflow-auto rounded-xl border border-border/70">
+                  <TableView result={result} />
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">
+                  {running ? "The query is still running." : "No rows to show yet."}
+                </p>
+              )
+            ) : tab === "sql" ? (
+              sql ? (
+                <CodeBlock sql={sql} />
+              ) : (
+                <p className="rounded-xl border border-dashed border-border p-4 text-xs text-faint">
+                  No SQL was generated for this response.
+                </p>
+              )
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
       </div>
-    </div>
+      </div>
+    </motion.div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import {
   AreaChart,
   BarChart3,
@@ -47,6 +48,7 @@ interface ConversationResultCardProps {
   dashboardOptions: { value: string; label: string }[];
   onCreateDashboard: (name: string) => Promise<string>;
   onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string) => Promise<void>;
+  skipEntrance?: boolean;
 }
 
 function IconAction({
@@ -203,6 +205,7 @@ export function ConversationResultCard({
   dashboardOptions,
   onCreateDashboard,
   onSave,
+  skipEntrance,
 }: ConversationResultCardProps) {
   const run = message.queryRun;
   const preview = block ? block.resultPreview : run?.resultPreview;
@@ -263,12 +266,19 @@ export function ConversationResultCard({
         executionTimeMs={executionTimeMs}
         chartConfig={baseConfig}
         onChartTypeChange={setChartType}
+        skipEntrance={skipEntrance}
+        glow={skipEntrance}
         actions={
-          <>
+          <motion.div
+            initial={skipEntrance ? { opacity: 0, x: -8 } : false}
+            animate={skipEntrance ? { opacity: 1, x: 0 } : false}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            className="flex items-center gap-1.5"
+          >
             <IconAction label="Open chart details" onClick={() => setDetailsOpen(true)}><Maximize2 className="size-4" /></IconAction>
             <ExportMenu onExport={exportResult} />
             {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="icon" />}
-          </>
+          </motion.div>
         }
       />
 

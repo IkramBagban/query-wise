@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { motion } from "motion/react";
 
 import type { QueryResult } from "@/types";
 import { formatFullAs, inferResultFormats } from "@/lib/charts/semantics";
@@ -89,7 +90,13 @@ export function TableView({ result }: TableViewProps) {
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-surface" : "bg-surface-2"}>
+            <motion.tr 
+              key={rowIndex} 
+              className={rowIndex % 2 === 0 ? "bg-surface" : "bg-surface-2"}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: rowIndex * 0.02, duration: 0.2 }}
+            >
               {result.columns.map((column) => {
                 const value = row[column];
                 const numericValue = toFiniteNumber(value);
@@ -102,7 +109,7 @@ export function TableView({ result }: TableViewProps) {
                   </td>
                 );
               })}
-            </tr>
+            </motion.tr>
           ))}
         </tbody>
       </table>

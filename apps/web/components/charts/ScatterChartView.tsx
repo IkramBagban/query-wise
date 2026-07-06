@@ -22,11 +22,12 @@ interface ScatterChartViewProps {
   yKeys?: string[];
   valueFormat?: ColumnFormat;
   xFormat?: ColumnFormat;
+  skipEntrance?: boolean;
 }
 
 const SCATTER_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
 
-export function ScatterChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, xFormat = PLAIN_NUMBER }: ScatterChartViewProps) {
+export function ScatterChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, xFormat = PLAIN_NUMBER, skipEntrance }: ScatterChartViewProps) {
   const series = (yKeys && yKeys.length > 0 ? yKeys : [yKey]).filter(Boolean);
   const pointsBySeries = series.map((seriesKey) =>
     result.rows.map((row) => ({ x: row[xKey], y: row[seriesKey] })),
@@ -70,6 +71,9 @@ export function ScatterChartView({ result, xKey, yKey, yKeys, valueFormat = PLAI
             name={labelize(seriesKey)}
             data={pointsBySeries[index]}
             fill={SCATTER_COLORS[index % SCATTER_COLORS.length]}
+            isAnimationActive={!skipEntrance}
+            animationDuration={650}
+            animationEasing="ease-out"
           />
         ))}
       </ScatterChart>
