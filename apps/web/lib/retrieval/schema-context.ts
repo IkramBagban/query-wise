@@ -1,5 +1,4 @@
-import type { ChatMessage, SchemaInfo, SchemaTable } from "@/types";
-import type { ColumnPruning } from "./schemas";
+import type { SchemaInfo, SchemaTable } from "@/types";
 
 const SAMPLE_ROWS_ENABLED = process.env.QUERYWISE_LLM_INCLUDE_SAMPLE_ROWS === "true";
 const SENSITIVE_COLUMN_PATTERN = /(^|_)(email|phone|password|secret|token|key|address|name|first_name|last_name|full_name|ip|ssn|dob)($|_)/i;
@@ -17,16 +16,6 @@ export interface TableCandidate {
   relationshipHints: string[];
   sampleHints: string[];
   score: number;
-}
-
-export function compactHistory(history: ChatMessage[], limit = 8): string {
-  return history
-    .slice(-limit)
-    .map((message) => {
-      const sql = message.sql ? `\nSQL: ${message.sql}` : "";
-      return `${message.role.toUpperCase()}: ${message.content}${sql}`;
-    })
-    .join("\n\n");
 }
 
 export function tableDisplayName(table: SchemaTable): string {
@@ -96,63 +85,5 @@ export function toTableCandidate(schema: SchemaInfo, table: SchemaTable, score: 
     relationshipHints,
     sampleHints,
     score,
-  };
-}
-
-export function formatCandidatesForPrompt(candidates: TableCandidate[]): string {
-  return candidates
-    .map((candidate, index) => [
-      `${index + 1}. ${candidate.tableName} score=${candidate.score.toFixed(3)}`,
-      `   ${candidate.summary}`,
-      candidate.relationshipHints.length > 0 ? `   relationships: ${candidate.relationshipHints.join("; ")}` : null,
-      candidate.sampleHints.length > 0 ? `   samples: ${candidate.sampleHints.join("; ")}` : null,
-    ].filter(Boolean).join("\n"))
-    .join("\n");
-}
-
-export function formatSkinnySchemaForPrompt(params: {
-  schema: SchemaInfo;
-  pruning: { tables: Array<{ tableName: string; columns: Array<{ name: string }> }>; joinPaths: string[] };
-}): string {
-  const tableByName = new Map(params.schema.tables.map((table) => [table.name, table]));
-  const sections = params.pruning.tables.map((prunedTable) => {
-    const table = tableByName.get(prunedTable.tableName);
-    if (!table) return `Table ${prunedTable.tableName}: unavailable`;
-    const columnNames = new Set(prunedTable.columns.map((column) => column.name));
-    const columns = table.columns
-      .filter((column) => columnNames.has(column.name))
-      .map((column) => {
-        const flags = [
-          column.isPrimaryKey ? "pk" : null,
-          column.isForeignKey ? "fk" : null,
-          column.nullable ? "nullable" : "not-null",
-        ].filter(Boolean).join(", ");
-        const sample = [
-          column.range ? `range ${column.range.min} to ${column.range.max}` : null,
-          column.topValues?.length ? `top values ${column.topValues.slice(0, 5).map((item) => String(item.value)).join(", ")}` : null,
-        ].filter(Boolean).join("; ");
-        return `  - ${column.name}: ${column.fullType ?? column.type} (${flags})${sample ? `; ${sample}` : ""}`;
-      })
-      .join("\n");
-    const rows = redactedSampleRows(table);
-    const sampleRows = rows.length
-      ? `\nSample rows:\n${rows.map((row) => `  - ${JSON.stringify(row)}`).join("\n")}`
-      : "";
-    return `Table ${table.name}\n${columns}${sampleRows}`;
-  });
-
-  return [
-    ...sections,
-    params.pruning.joinPaths.length > 0 ? `Join paths:\n${params.pruning.joinPaths.map((path) => `  - ${path}`).join("\n")}` : "Join paths: none provided",
-  ].join("\n\n");
-}
-
-export function buildPassthroughPruning(candidates: TableCandidate[]): ColumnPruning {
-  return {
-    tables: candidates.map((c) => ({
-      tableName: c.tableName,
-      columns: c.columns.map((col) => ({ name: col.name, reason: "passthrough" })),
-    })),
-    joinPaths: [...new Set(candidates.flatMap((c) => c.relationshipHints))],
   };
 }

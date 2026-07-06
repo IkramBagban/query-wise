@@ -18,8 +18,8 @@ import { throwIfQueryRunAborted } from "./cancellation";
 import { elapsedMs, generateAndPersistTitle, toV2ChartConfig } from "./run-helpers";
 
 /**
- * V3 analyst-agent path for the durable query run (docs/AGENTIC_ARCHITECTURE.md
- * §3, §6 Phase 2). Selected by the `QUERYWISE_AGENT_V3` flag in the orchestrator
+ * Analyst-agent path for the durable query run (docs/AGENTIC_ARCHITECTURE.md
+ * §3, §6 Phase 2). This is the only query path, invoked by the orchestrator
  * after the shared setup (run load, schema/history load, status transitions).
  * The run arrives already transitioned to "generating"; the agent loop runs
  * here, then this module drives persisting → completed.
