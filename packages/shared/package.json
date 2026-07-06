@@ -20,10 +20,15 @@
     "db:migrate:deploy": "prisma migrate deploy --schema ./prisma/schema.prisma"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.53",
     "@prisma/client": "6.19.0",
+    "ai": "^6.0.141",
     "pg": "^8.20.0",
     "pgsql-ast-parser": "^12.0.2",
     "prisma": "6.19.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0"
   }
 }

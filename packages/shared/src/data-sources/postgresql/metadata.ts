@@ -32,7 +32,7 @@ export async function introspectPostgresMetadata(connectionString: string, optio
       ORDER BY n.nspname, c.relname LIMIT $2
     `, [namespaceValues, options.maxEntities + 1]);
     const entityRows = entitiesResult.rows.slice(0, options.maxEntities);
-    const namespaceNames = [...new Set(entityRows.map((row) => row.namespace))].slice(0, options.maxNamespaces);
+    const namespaceNames: string[] = [...new Set(entityRows.map((row) => row.namespace))].slice(0, options.maxNamespaces);
     const scopedEntities = entityRows.filter((row) => namespaceNames.includes(row.namespace));
     const identities = scopedEntities.map((row) => entityId(row.namespace, row.name));
 

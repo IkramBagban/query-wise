@@ -9,12 +9,20 @@ COPY packages/shared/prisma ./packages/shared/prisma
 COPY apps/worker/package.json ./apps/worker/
 RUN pnpm install --frozen-lockfile
 
+RUN pnpm run db:generate
+
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY packages/shared ./packages/shared
 COPY apps/worker ./apps/worker
-CMD ["node", "--import", "tsx/esm", "apps/worker/src/index.ts"]
+
+WORKDIR /app/apps/worker
+CMD ["pnpm", "start"]

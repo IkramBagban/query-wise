@@ -28,10 +28,10 @@ services:
   web:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      dockerfile: docker/Dockerfile.web
     env_file: .env
     ports:
-      - "3000:3000"
+      - "4100:4100"
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,7 +41,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: apps/worker/Dockerfile
+      dockerfile: docker/Dockerfile.worker
     env_file: .env
     depends_on:
       postgres:
