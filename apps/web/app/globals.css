@@ -143,12 +143,19 @@
   --skeleton-base: #dce8d9;
   --skeleton-highlight: rgba(255, 255, 255, 0.72);
   
-  --chart-1: #2ed52e;
+  --chart-1: #12A24E;
   --chart-2: #f59e0b;
   --chart-3: #ef4444;
   --chart-4: #8b5cf6;
   --chart-5: #14b8a6;
   --chart-6: #84cc16;
+
+  /* Syntax token colors (theme-aware, sit on --code-bg) */
+  --code-kw: #0c8a40;
+  --code-fn: #1d63d8;
+  --code-str: #b45309;
+  --code-num: #c2410c;
+  --code-punct: #7c8b80;
   color-scheme: light;
 }
 
@@ -179,12 +186,19 @@
   --skeleton-base: #1e2620;
   --skeleton-highlight: rgba(255, 255, 255, 0.06);
 
-  --chart-1: #2ed52e;
+  --chart-1: #2FD46A;
   --chart-2: #f59e0b;
   --chart-3: #ef4444;
   --chart-4: #8b5cf6;
   --chart-5: #14b8a6;
   --chart-6: #84cc16;
+
+  /* Syntax token colors (theme-aware, sit on --code-bg) */
+  --code-kw: #5ee08a;
+  --code-fn: #63b3ed;
+  --code-str: #e5c07b;
+  --code-num: #d19a66;
+  --code-punct: #7c8b80;
   color-scheme: dark;
 }
 
@@ -352,8 +366,12 @@ html{scroll-behavior:smooth}
     @keyframes qw-pulse{0%,100%{opacity:0.45}50%{opacity:1}}
     @keyframes qw-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(0.82)}}
     @keyframes qw-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
-    [data-reveal]{opacity:0;transform:translateY(28px);transition:opacity 0.8s cubic-bezier(0.16,0.6,0.2,1),transform 0.8s cubic-bezier(0.16,0.6,0.2,1)}
+    [data-reveal]{opacity:0;transform:translateY(24px);transition:opacity 0.55s cubic-bezier(0.16,1,0.3,1),transform 0.55s cubic-bezier(0.16,1,0.3,1)}
     [data-reveal].rv{opacity:1;transform:translateY(0)}
+    @keyframes qw-word-in{from{opacity:0;transform:translateY(14px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+    @keyframes qw-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+    @keyframes qw-feature-progress{from{width:0%}to{width:100%}}
+    @keyframes qw-stamp{0%{opacity:0;transform:scale(1.25) rotate(-4deg)}100%{opacity:1;transform:none}}
     @media (prefers-reduced-motion: reduce){
       [data-reveal]{opacity:1;transform:none;transition:none}
       *{animation-duration:0.001s !important}

@@ -1,1000 +1,839 @@
-'use client';
-import React, { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+"use client";
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Check,
+  Database,
+  Landmark,
+  Lock,
+  Megaphone,
+  Moon,
+  Package,
+  ShieldCheck,
+  Sun,
+  TrendingUp,
+  Truck,
+  Users,
+  X,
+} from "lucide-react";
 
 import FeaturesJourney from "@/components/FeaturesJourney";
 
-export default function QueryWiseLanding() {
-  const [theme, setTheme] = useState('dark');
+/* ----------------------------- Demo content ------------------------------ */
+
+const EXAMPLES = [
+  {
+    q: "Show monthly revenue for the last 12 months",
+    sql: "SELECT date_trunc('month', o.created_at) AS month,\n       SUM(o.total_amount) AS revenue\nFROM orders o\nWHERE o.created_at >= now() - interval '12 months'\nGROUP BY 1 ORDER BY 1;",
+    chartTitle: "Monthly revenue",
+    chartMeta: "12 rows · bar chart (auto)",
+    labels: ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+    values: [34, 41, 38, 52, 47, 58, 55, 63, 60, 72, 69, 84],
+    peakLabel: "$84k",
+    widget: "Saved as widget to 'Company KPIs' dashboard",
+  },
+  {
+    q: "Which products sold the most last quarter?",
+    sql: "SELECT p.name, SUM(oi.quantity) AS units_sold\nFROM order_items oi\nJOIN products p ON p.id = oi.product_id\nWHERE oi.created_at >= now() - interval '3 months'\nGROUP BY p.name\nORDER BY units_sold DESC LIMIT 5;",
+    chartTitle: "Top products by units sold",
+    chartMeta: "5 rows · bar chart (auto)",
+    labels: ["Trail Pack", "Aero Bottle", "Flux Mat", "Core Tee", "Ridge Cap"],
+    values: [88, 71, 64, 52, 40],
+    peakLabel: "4.2k",
+    widget: "Saved as widget to 'Sales' dashboard",
+  },
+  {
+    q: "How many new customers signed up each week?",
+    sql: "SELECT date_trunc('week', created_at) AS week,\n       COUNT(*) AS signups\nFROM customers\nWHERE created_at >= now() - interval '8 weeks'\nGROUP BY 1 ORDER BY 1;",
+    chartTitle: "Weekly customer signups",
+    chartMeta: "8 rows · bar chart (auto)",
+    labels: ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"],
+    values: [30, 42, 38, 55, 61, 58, 74, 82],
+    peakLabel: "82",
+    widget: "Saved as widget to 'Growth' dashboard",
+  },
+];
+
+const STEP_LABELS = ["understand", "generate sql", "validate read-only", "execute", "chart"];
+
+/* ----------------------------- SQL highlighter --------------------------- */
+
+const KEYWORDS = new Set(["SELECT", "FROM", "WHERE", "GROUP", "ORDER", "BY", "JOIN", "ON", "AS", "DESC", "ASC", "LIMIT", "AND", "OR", "INTERVAL"]);
+const FUNCS = new Set(["date_trunc", "sum", "count", "now", "avg", "min", "max"]);
+
+interface SqlToken { text: string; color: string }
+
+function tokenizeSql(sql: string): SqlToken[] {
+  const tokens: SqlToken[] = [];
+  const re = /('[^']*'|\b\d+(?:\.\d+)?\b|\w+|[^\w\s]+|\s+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(sql)) !== null) {
+    const t = match[0];
+    let color = "var(--code-text)";
+    if (t.startsWith("'")) color = "var(--code-str)";
+    else if (/^\d/.test(t)) color = "var(--code-num)";
+    else if (KEYWORDS.has(t.toUpperCase())) color = "var(--code-kw)";
+    else if (FUNCS.has(t.toLowerCase())) color = "var(--code-fn)";
+    else if (/^[^\w\s]+$/.test(t)) color = "var(--code-punct)";
+    tokens.push({ text: t, color });
+  }
+  return tokens;
+}
+
+/* ----------------------------- Hero demo hook ---------------------------- */
+
+function useHeroDemo() {
   const [exIdx, setExIdx] = useState(0);
-  const [typed, setTyped] = useState('');
-  const [phase, setPhase] = useState('idle'); // idle | typing | pipeline
+  const [typed, setTyped] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
   const [stepIdx, setStepIdx] = useState(-1);
-  const [showSql, setShowSql] = useState(false);
-  const [showChart, setShowChart] = useState(false);
+  const [sqlShown, setSqlShown] = useState(0);
   const [grown, setGrown] = useState(false);
+  const [showChart, setShowChart] = useState(false);
   const [showWidget, setShowWidget] = useState(false);
-  const [shot, setShot] = useState(0);
-  const [featIdx, setFeatIdx] = useState(0);
-  
-  const runTokenRef = useRef(0);
-  const featIntRef = useRef<any>(null);
-  const ioRef = useRef<any>(null);
+  const runToken = useRef(0);
+  const [startIdx, setStartIdx] = useState(0);
+  const [runId, setRunId] = useState(0);
 
-  const FEATS = [
-    { icon: '💬', title: 'Chat, not query', tag: 'natural language', crumb: 'querywise.app/chats', headline: 'Ask in plain English.', line: 'Follow-ups keep their context.' },
-    { icon: '⚡', title: 'See the SQL', tag: 'never a black box', crumb: 'generated query · explained', headline: 'Generated, explained, read-only.', line: 'Nothing runs you can’t inspect.' },
-    { icon: '📊', title: 'Charts, automatic', tag: 'zero config', crumb: 'visualization · auto-selected', headline: 'The right chart, picked for you.', line: 'From the shape of your data.' },
-    { icon: '📈', title: 'Live dashboards', tag: 'pin & refresh', crumb: 'dashboards/company-kpis', headline: 'Pin answers as widgets.', line: 'They refresh themselves.' },
-    { icon: '🔗', title: 'Public sharing', tag: 'secure links', crumb: 'shared/x7f2 · public', headline: 'Share a link, live data.', line: 'Password optional. SQL never exposed.' },
-    { icon: '🔒', title: 'Safe by default', tag: 'passes review', crumb: 'security', headline: 'Encrypted, read-only, audited.', line: 'Credentials never touch the browser.' },
-    { icon: '🗂', title: 'Every database', tag: 'one workspace', crumb: 'connections', headline: 'Dev, staging, prod.', line: 'All in one place, always synced.' }
-  ];
-
-  const EXAMPLES = [
-    {
-      q: 'Show monthly revenue for the last 12 months',
-      sql: "SELECT date_trunc('month', o.created_at) AS month,\n       SUM(o.total_amount) AS revenue\nFROM orders o\nWHERE o.created_at >= now() - interval '12 months'\nGROUP BY 1 ORDER BY 1;",
-      chartTitle: 'Monthly revenue',
-      chartMeta: '12 rows · bar chart (auto)',
-      labels: ['Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun'],
-      values: [34,41,38,52,47,58,55,63,60,72,69,84],
-      widget: "Saved as widget to 'Company KPIs' dashboard"
-    },
-    {
-      q: 'Which products sold the most last quarter?',
-      sql: "SELECT p.name, SUM(oi.quantity) AS units_sold\nFROM order_items oi\nJOIN products p ON p.id = oi.product_id\nWHERE oi.created_at >= now() - interval '3 months'\nGROUP BY p.name\nORDER BY units_sold DESC LIMIT 5;",
-      chartTitle: 'Top products by units sold',
-      chartMeta: '5 rows · bar chart (auto)',
-      labels: ['Trail Pack','Aero Bottle','Flux Mat','Core Tee','Ridge Cap'],
-      values: [88,71,64,52,40],
-      widget: "Saved as widget to 'Sales' dashboard"
-    },
-    {
-      q: 'How many new customers signed up each week?',
-      sql: "SELECT date_trunc('week', created_at) AS week,\n       COUNT(*) AS signups\nFROM customers\nWHERE created_at >= now() - interval '8 weeks'\nGROUP BY 1 ORDER BY 1;",
-      chartTitle: 'Weekly customer signups',
-      chartMeta: '8 rows · bar chart (auto)',
-      labels: ['W1','W2','W3','W4','W5','W6','W7','W8'],
-      values: [30,42,38,55,61,58,74,82],
-      widget: "Saved as widget to 'Growth' dashboard"
-    }
-  ];
-
-  const STEP_LABELS = ['understand', 'generate sql', 'validate read-only', 'execute', 'chart'];
-  const KEYWORDS = ['SELECT','FROM','WHERE','GROUP','ORDER','BY','JOIN','ON','AS','DESC','ASC','LIMIT','AND','OR','INTERVAL'];
-  const FUNCS = ['date_trunc','sum','count','now','avg','min','max'];
-
-  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-  const highlight = (sql: string) => {
-    const lines = sql.split('\n');
-    return lines.map(line => {
-      const toks = [];
-      const re = /('[^']*'|\b\d+(?:\.\d+)?\b|\w+|[^\w\s]+|\s+)/g;
-      let m;
-      while ((m = re.exec(line)) !== null) {
-        const t = m[0];
-        let c = '#C9D6CC';
-        if (t.startsWith("'")) c = '#E5C07B';
-        else if (/^\d/.test(t)) c = '#D19A66';
-        else if (KEYWORDS.includes(t.toUpperCase())) c = '#5EE08A';
-        else if (FUNCS.includes(t.toLowerCase())) c = '#63B3ED';
-        else if (/^[^\w\s]+$/.test(t)) c = '#7C8B80';
-        toks.push({ t, c });
-      }
-      return { toks };
-    });
-  };
-
-  const playExample = async (i: number, thenLoop: boolean) => {
-    const token = ++runTokenRef.current;
+  const play = useCallback(async (i: number) => {
+    const token = ++runToken.current;
+    const guard = () => token === runToken.current;
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const ex = EXAMPLES[i];
-    setExIdx(i);
-    setTyped('');
-    setPhase('typing');
-    setStepIdx(-1);
-    setShowSql(false);
-    setShowChart(false);
-    setGrown(false);
-    setShowWidget(false);
-    
-    await delay(500); if (token !== runTokenRef.current) return;
-    for (let c = 1; c <= ex.q.length; c++) {
+    const sqlTokens = tokenizeSql(ex.sql);
+
+    setExIdx(i); setTyped(""); setIsTyping(true); setStepIdx(-1);
+    setSqlShown(0); setShowChart(false); setGrown(false); setShowWidget(false);
+
+    await delay(450); if (!guard()) return;
+    for (let c = 1; c <= ex.q.length; c += 1) {
       setTyped(ex.q.slice(0, c));
-      await delay(26); if (token !== runTokenRef.current) return;
+      await delay(24); if (!guard()) return;
     }
-    await delay(300); if (token !== runTokenRef.current) return;
-    setPhase('pipeline');
-    setStepIdx(0);
-    
-    await delay(700); if (token !== runTokenRef.current) return;
+    await delay(280); if (!guard()) return;
+    setIsTyping(false); setStepIdx(0);
+
+    await delay(450); if (!guard()) return;
     setStepIdx(1);
-    
-    await delay(750); if (token !== runTokenRef.current) return;
-    setShowSql(true);
+    // The SQL streams in token by token, like the real product
+    for (let t = 1; t <= sqlTokens.length; t += 1) {
+      setSqlShown(t);
+      await delay(16); if (!guard()) return;
+    }
+    await delay(200); if (!guard()) return;
     setStepIdx(2);
-    
-    await delay(1000); if (token !== runTokenRef.current) return;
+    await delay(650); if (!guard()) return;
     setStepIdx(3);
-    
-    await delay(800); if (token !== runTokenRef.current) return;
-    setShowChart(true);
-    setStepIdx(4);
-    
-    await delay(80); if (token !== runTokenRef.current) return;
+    await delay(550); if (!guard()) return;
+    setShowChart(true); setStepIdx(4);
+    await delay(80); if (!guard()) return;
     setGrown(true);
-    
-    await delay(1100); if (token !== runTokenRef.current) return;
-    setStepIdx(5);
-    setShowWidget(true);
-    
-    if (!thenLoop) return;
-    await delay(4200); if (token !== runTokenRef.current) return;
-    playExample((i + 1) % EXAMPLES.length, true);
-  };
-
-  const setFeat = (i: number) => {
-    setFeatIdx(i);
-    if (featIntRef.current) clearInterval(featIntRef.current);
-    featIntRef.current = setInterval(() => {
-      setFeatIdx(prev => (prev + 1) % FEATS.length);
-    }, 5000);
-  };
-
-  useEffect(() => {
-    let t = 'dark';
-    try { t = localStorage.getItem('querywise.theme') || 'dark'; } catch(e) {}
-    setTheme(t);
-    document.documentElement.classList.toggle('dark', t !== 'light');
-
-    playExample(0, true);
-
-    featIntRef.current = setInterval(() => {
-      setFeatIdx(prev => (prev + 1) % FEATS.length);
-    }, 5000);
-
-    ioRef.current = new IntersectionObserver((entries) => {
-      for (const en of entries) {
-        if (en.isIntersecting) {
-          en.target.classList.add('rv');
-          ioRef.current.unobserve(en.target);
-        }
-      }
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-
-    document.querySelectorAll('[data-reveal]').forEach(el => ioRef.current.observe(el));
-
-    return () => {
-      runTokenRef.current++;
-      if (ioRef.current) ioRef.current.disconnect();
-      if (featIntRef.current) clearInterval(featIntRef.current);
-    };
+    await delay(1000); if (!guard()) return;
+    setStepIdx(5); setShowWidget(true);
   }, []);
 
-  const toggleTheme = () => {
-    const t = theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.classList.toggle('dark', t !== 'light');
-    try { localStorage.setItem('querywise.theme', t); } catch (e) {}
-    setTheme(t);
-  };
-
-  const ex = EXAMPLES[exIdx];
-
-  const steps = STEP_LABELS.map((label, i) => {
-    const done = stepIdx > i;
-    const active = stepIdx === i;
-    return {
-      label,
-      color: done ? 'var(--accent)' : (active ? 'var(--text)' : 'var(--faint)'),
-      dot: done || active ? 'var(--accent)' : 'var(--border2)',
-      anim: active ? 'qw-pulse 1s ease-in-out infinite' : 'none'
+  // Driver loop: plays examples in order, restartable from any index via select().
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let i = startIdx;
+      while (!cancelled) {
+        await play(i);
+        await new Promise((resolve) => setTimeout(resolve, 4200));
+        i = (i + 1) % EXAMPLES.length;
+      }
+    })();
+    return () => {
+      cancelled = true;
+      runToken.current += 1;
     };
-  });
+  }, [play, startIdx, runId]);
 
-  const bars = ex.labels.map((label, i) => ({
-    label,
-    h: grown ? ex.values[i] + '%' : '3%'
-  }));
+  const select = useCallback((i: number) => {
+    setStartIdx(i);
+    setRunId((n) => n + 1);
+  }, []);
 
-  const examples = EXAMPLES.map((e, i) => ({
-    q: e.q,
-    onClick: () => playExample(i, true),
-    bg: i === exIdx ? 'var(--accent-soft)' : 'var(--surface)',
-    border: i === exIdx ? 'var(--accent-line)' : 'var(--border)',
-    color: i === exIdx ? 'var(--accent)' : 'var(--muted)'
-  }));
+  return { exIdx, typed, isTyping, stepIdx, sqlShown, grown, showChart, showWidget, select };
+}
 
-  const shotLabels = ['Chat', 'SQL', 'Chart', 'Dashboard', 'Connections', 'Shared'];
-  const crumbs = [
-    'querywise.app/chats — acme_analytics',
-    'querywise.app/chats — generated query',
-    'querywise.app/chats — visualization',
-    'querywise.app/dashboards/company-kpis',
-    'querywise.app/connections',
-    'querywise.app/shared/x7f2-kq91-mv30 — public view'
-  ];
-  const shotTabs = shotLabels.map((label, i) => ({
-    label,
-    onClick: () => setShot(i),
-    bg: i === shot ? 'var(--accent)' : 'var(--surface)',
-    border: i === shot ? 'var(--accent)' : 'var(--border)',
-    color: i === shot ? 'var(--accent-ink)' : 'var(--muted)'
-  }));
+type HeroDemoState = ReturnType<typeof useHeroDemo>;
 
-  const cur = FEATS[featIdx];
-  const feats = FEATS.map((f, i) => {
-    const on = i === featIdx;
-    return {
-      icon: f.icon, title: f.title, tag: f.tag,
-      onClick: () => setFeat(i),
-      bg: on ? 'var(--accent-soft)' : 'var(--surface)',
-      border: on ? 'var(--accent-line)' : 'var(--border)',
-      accent: on ? 'var(--accent)' : 'transparent',
-      iconBg: on ? 'var(--accent)' : 'var(--surface2)',
-      titleColor: on ? 'var(--text)' : 'var(--muted)'
+/** Counts up to the numeric part of `target` once `active` flips true. */
+function CountUp({ target, active }: { target: string; active: boolean }) {
+  const numeric = parseFloat(target.replace(/[^0-9.]/g, ""));
+  const prefix = target.startsWith("$") ? "$" : "";
+  const suffix = /[a-z]$/i.test(target) ? target.slice(-1) : "";
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / 450, 1);
+      setValue(numeric * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) raf = requestAnimationFrame(tick);
     };
-  });
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active, numeric]);
 
-  const featCrumb = cur.crumb;
-  const featHeadline = cur.headline;
-  const featLine = cur.line;
-  const featIs0 = featIdx === 0;
-  const featIs1 = featIdx === 1;
-  const featIs2 = featIdx === 2;
-  const featIs3 = featIdx === 3;
-  const featIs4 = featIdx === 4;
-  const featIs5 = featIdx === 5;
-  const featIs6 = featIdx === 6;
-  
-  const shotCrumb = crumbs[shot];
-  const shotIs0 = shot === 0;
-  const shotIs1 = shot === 1;
-  const shotIs2 = shot === 2;
-  const shotIs3 = shot === 3;
-  const shotIs4 = shot === 4;
-  const shotIs5 = shot === 5;
+  return <>{prefix}{Math.round(active ? value : 0)}{suffix}</>;
+}
 
-  const themeGlyph = theme === 'dark' ? '☀' : '☾';
-  const caretOn = phase === 'typing';
-  const showStatus = stepIdx >= 0;
-  const sqlLines = highlight(ex.sql);
-  const chartTitle = ex.chartTitle;
-  const chartMeta = ex.chartMeta;
-  const widgetMsg = ex.widget;
+/* --------------------------------- Page ---------------------------------- */
+
+export default function QueryWiseLanding() {
+  const demo = useHeroDemo();
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("rv");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+    );
+    document.querySelectorAll("[data-reveal]").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div style={{ background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh', fontFamily: "'Space Grotesk', system-ui, sans-serif" }}>
-      
-
-
-
-<nav data-screen-label="Nav" style={{"position": "fixed", "top": "0", "left": "0", "right": "0", "zIndex": "50", "background": "var(--nav-bg)", "backdropFilter": "blur(14px)", "WebkitBackdropFilter": "blur(14px)", "borderBottom": "1px solid var(--border)"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto", "padding": "0 28px", "height": "64px", "display": "flex", "alignItems": "center", "gap": "28px"}}>
-    <a href="#top" style={{"display": "flex", "alignItems": "center", "gap": "10px", "textDecoration": "none", "color": "var(--text)"}}>
-      <img src="assets/logo.png" alt="QueryWise" style={{"width": "32px", "height": "32px", "objectFit": "contain"}} />
-      <span style={{"fontWeight": "700", "fontSize": "18px", "letterSpacing": "-0.01em"}}>QueryWise</span>
-    </a>
-    <div style={{"display": "flex", "gap": "4px", "marginLeft": "auto", "alignItems": "center"}}>
-      <a href="#features" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14.5px", "padding": "8px 12px", "borderRadius": "8px"}} className="hover-style-0">Features</a>
-      <a href="#how" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14.5px", "padding": "8px 12px", "borderRadius": "8px"}} className="hover-style-1">How it works</a>
-      <a href="#pricing" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14.5px", "padding": "8px 12px", "borderRadius": "8px"}} className="hover-style-2">Pricing</a>
-      <a href="#faq" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14.5px", "padding": "8px 12px", "borderRadius": "8px"}} className="hover-style-3">FAQ</a>
+    <div className="min-h-screen bg-bg font-sans text-text">
+      <Nav />
+      <Hero demo={demo} />
+      <PrinciplesStrip />
+      <FeaturesJourney />
+      <HowItWorks />
+      <DashboardShowcase />
+      <Comparison />
+      <UseCases />
+      <Pricing />
+      <Faq />
+      <FinalCta />
+      <Footer />
     </div>
-    <div style={{"display": "flex", "alignItems": "center", "gap": "12px"}}>
-      <button onClick={toggleTheme} title="Toggle theme" style={{"width": "38px", "height": "38px", "borderRadius": "10px", "border": "1px solid var(--border)", "background": "transparent", "color": "var(--muted)", "fontSize": "16px", "cursor": "pointer", "display": "flex", "alignItems": "center", "justifyContent": "center"}} className="hover-style-4">{themeGlyph}</button>
-      <a href="/sign-in" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14.5px", "padding": "8px 6px"}} className="hover-style-5">Sign in</a>
-      <a href="/sign-up" style={{"background": "var(--accent)", "color": "var(--accent-ink)", "textDecoration": "none", "fontSize": "14.5px", "fontWeight": "600", "padding": "9px 18px", "borderRadius": "10px", "transition": "transform 0.15s ease,box-shadow 0.15s ease"}} className="hover-style-6">Start free</a>
-    </div>
-  </div>
-</nav>
+  );
+}
 
+/* ---------------------------------- Nav ----------------------------------- */
 
-<header id="top" data-screen-label="Hero" style={{"position": "relative", "overflow": "hidden", "background": "var(--glow),var(--bg)", "padding": "150px 28px 90px"}}>
-  <div style={{"position": "absolute", "inset": "0", "backgroundImage": "linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px)", "backgroundSize": "56px 56px", "maskImage": "radial-gradient(ellipse 70% 55% at 50% 0%,black 20%,transparent 75%)", "WebkitMaskImage": "radial-gradient(ellipse 70% 55% at 50% 0%,black 20%,transparent 75%)", "pointerEvents": "none"}}></div>
-  <div style={{"position": "absolute", "top": "-120px", "left": "50%", "transform": "translateX(-50%)", "width": "640px", "height": "340px", "background": "radial-gradient(closest-side,var(--accent-soft),transparent)", "filter": "blur(40px)", "animation": "qw-float 9s ease-in-out infinite", "pointerEvents": "none"}}></div>
-  <div style={{"position": "relative", "maxWidth": "1180px", "margin": "0 auto", "display": "flex", "flexDirection": "column", "alignItems": "center", "textAlign": "center"}}>
-    <div style={{"display": "inline-flex", "alignItems": "center", "gap": "8px", "border": "1px solid var(--accent-line)", "background": "var(--accent-soft)", "color": "var(--accent)", "borderRadius": "999px", "padding": "6px 14px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.06em"}}>
-      <span style={{"width": "7px", "height": "7px", "borderRadius": "50%", "background": "var(--accent)", "animation": "qw-pulse 2.2s ease-in-out infinite"}}></span>
-      NOW IN BETA · WORKS WITH POSTGRESQL
-    </div>
-    <h1 style={{"fontSize": "clamp(40px,5.6vw,74px)", "fontWeight": "700", "letterSpacing": "-0.03em", "lineHeight": "1.04", "margin": "26px 0 0", "maxWidth": "900px", "textWrap": "balance"}}>Your database speaks SQL.<br />You don't have to.</h1>
-    <p style={{"fontSize": "clamp(16px,1.6vw,20px)", "lineHeight": "1.6", "color": "var(--muted)", "maxWidth": "640px", "margin": "22px 0 0", "textWrap": "pretty"}}>Ask questions in plain English. QueryWise writes safe, read-only SQL, picks the right chart, and turns answers into dashboards you can share with anyone.</p>
-    <div style={{"display": "flex", "gap": "14px", "marginTop": "34px", "flexWrap": "wrap", "justifyContent": "center"}}>
-      <a href="/sign-up" style={{"background": "var(--accent)", "color": "var(--accent-ink)", "textDecoration": "none", "fontSize": "16px", "fontWeight": "600", "padding": "14px 28px", "borderRadius": "12px", "transition": "transform 0.15s ease,box-shadow 0.15s ease"}} className="hover-style-7">Start free →</a>
-      <a href="#how" style={{"border": "1px solid var(--border2)", "color": "var(--text)", "textDecoration": "none", "fontSize": "16px", "fontWeight": "500", "padding": "14px 28px", "borderRadius": "12px", "background": "var(--surface)", "transition": "transform 0.15s ease"}} className="hover-style-8">See how it works</a>
-    </div>
-    <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)", "margin": "18px 0 0"}}>No credit card · Connect a demo database in 30 seconds</p>
+function Nav() {
+  const links = [["#features", "Features"], ["#how", "How it works"], ["#pricing", "Pricing"], ["#faq", "FAQ"]] as const;
 
-    
-    <div data-screen-label="Hero mockup" style={{"width": "100%", "maxWidth": "880px", "marginTop": "64px", "textAlign": "left"}}>
-      <div style={{"display": "flex", "gap": "10px", "flexWrap": "wrap", "justifyContent": "center", "marginBottom": "18px"}}>
-        {examples.map((ex, i) => (
-<React.Fragment key={i}>
+  function toggleTheme() {
+    const isDark = document.documentElement.classList.toggle("dark");
+    try { localStorage.setItem("querywise.theme", isDark ? "dark" : "light"); } catch { /* private mode */ }
+  }
 
-          <button onClick={ex.onClick} style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "padding": "8px 14px", "borderRadius": "999px", "cursor": "pointer", "background": "{ex.bg}", "border": "1px solid {ex.border}", "color": "{ex.color}", "transition": "all 0.2s ease"}} className="hover-style-9">{ex.q}</button>
-        
-</React.Fragment>
-))}
-      </div>
-      <div style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "18px", "boxShadow": "var(--shadow)", "overflow": "hidden"}}>
-        <div style={{"display": "flex", "alignItems": "center", "gap": "8px", "padding": "13px 18px", "borderBottom": "1px solid var(--border)", "background": "var(--surface2)"}}>
-          <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#F26D6D"}}></span>
-          <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#F2C36D"}}></span>
-          <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#5FCB7E"}}></span>
-          <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)", "marginLeft": "10px"}}>querywise.app — acme_analytics (read-only)</span>
+  return (
+    <nav className="fixed inset-x-0 top-0 z-50 border-b border-border bg-nav-bg backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-[1180px] items-center gap-7 px-7">
+        <a href="#top" className="flex items-center gap-2.5 text-text no-underline">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="assets/logo.png" alt="QueryWise" className="size-8 object-contain" />
+          <span className="text-lg font-bold tracking-[-0.01em]">QueryWise</span>
+        </a>
+        <div className="ml-auto hidden items-center gap-1 md:flex">
+          {links.map(([href, label]) => (
+            <a key={href} href={href} className="rounded-lg px-3 py-2 text-[14.5px] text-muted no-underline transition-colors hover:bg-accent-soft hover:text-text">
+              {label}
+            </a>
+          ))}
         </div>
-        <div style={{"padding": "26px 26px 30px", "display": "flex", "flexDirection": "column", "gap": "18px", "height": "690px", "boxSizing": "border-box", "justifyContent": "flex-start"}}>
-          
-          <div style={{"display": "flex", "justifyContent": "flex-end"}}>
-            <div style={{"background": "var(--accent-soft)", "border": "1px solid var(--accent-line)", "color": "var(--text)", "borderRadius": "14px 14px 4px 14px", "padding": "12px 18px", "fontSize": "15.5px", "maxWidth": "80%", "minHeight": "22px"}}>{typed}{caretOn && (
-<React.Fragment>
-<span style={{"display": "inline-block", "width": "2px", "height": "16px", "background": "var(--accent)", "marginLeft": "2px", "verticalAlign": "-2px", "animation": "qw-blink 0.9s step-end infinite"}}></span>
-</React.Fragment>
-)}</div>
+        <div className="ml-auto flex items-center gap-3 md:ml-0">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title="Toggle theme"
+            aria-label="Toggle theme"
+            className="flex size-9 items-center justify-center rounded-[10px] border border-border text-muted transition-colors hover:border-border-2 hover:text-text"
+          >
+            <Sun className="hidden size-4 dark:block" strokeWidth={1.75} />
+            <Moon className="size-4 dark:hidden" strokeWidth={1.75} />
+          </button>
+          <Link href="/sign-in" className="hidden px-1.5 py-2 text-[14.5px] text-muted no-underline transition-colors hover:text-text sm:block">Sign in</Link>
+          <Link
+            href="/sign-up"
+            className="rounded-[10px] bg-accent px-4 py-2 text-[14.5px] font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-px hover:shadow-[0_8px_24px_-8px_var(--accent-line)]"
+          >
+            Start free
+          </Link>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+/* ---------------------------------- Hero ---------------------------------- */
+
+function Hero({ demo }: { demo: HeroDemoState }) {
+  return (
+    <header id="top" className="relative overflow-hidden px-7 pb-24 pt-36" style={{ background: "var(--glow), var(--bg)" }}>
+      {/* blueprint grid, masked to the top */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: "linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+          maskImage: "radial-gradient(ellipse 70% 55% at 50% 0%, black 20%, transparent 75%)",
+          WebkitMaskImage: "radial-gradient(ellipse 70% 55% at 50% 0%, black 20%, transparent 75%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 left-1/2 h-[340px] w-[640px] -translate-x-1/2 blur-[40px]"
+        style={{ background: "radial-gradient(closest-side, var(--accent-soft), transparent)", animation: "qw-float 9s ease-in-out infinite" }}
+      />
+
+      <div className="relative mx-auto flex max-w-[1180px] flex-col items-center text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-accent-line bg-accent-soft px-3.5 py-1.5 font-mono text-xs tracking-[0.06em] text-accent-strong">
+          <span className="size-[7px] rounded-full bg-accent" style={{ animation: "qw-pulse 2.2s ease-in-out infinite" }} />
+          NOW IN BETA · WORKS WITH POSTGRESQL
+        </div>
+
+        <h1 className="mt-7 max-w-[920px] font-syne text-[clamp(40px,5.5vw,76px)] font-bold leading-[1.04] tracking-[-0.02em] [text-wrap:balance]">
+          {"Your database speaks SQL. You don't have to.".split(" ").map((word, i) => (
+            <span key={i} className="inline-block" style={{ animation: `qw-word-in 0.6s cubic-bezier(0.16,1,0.3,1) ${i * 0.045}s both` }}>
+              {word}&nbsp;
+            </span>
+          ))}
+        </h1>
+
+        <p className="mt-6 max-w-[640px] text-[clamp(16px,1.6vw,19px)] leading-[1.65] text-muted [text-wrap:pretty]" style={{ animation: "qw-rise 0.6s cubic-bezier(0.16,1,0.3,1) 0.35s both" }}>
+          Ask questions in plain English. QueryWise writes safe, read-only SQL, picks the right chart, and turns answers into dashboards you can share with anyone.
+        </p>
+
+        <div className="mt-8 flex flex-wrap justify-center gap-3.5" style={{ animation: "qw-rise 0.6s cubic-bezier(0.16,1,0.3,1) 0.45s both" }}>
+          <Link
+            href="/sign-up"
+            className="group flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 text-base font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-10px_var(--accent-line)] active:translate-y-0 active:scale-[0.98]"
+          >
+            Start free
+            <ArrowRight className="size-4 transition-transform duration-150 group-hover:translate-x-0.5" strokeWidth={2} />
+          </Link>
+          <a
+            href="#how"
+            className="rounded-xl border border-border-2 bg-surface px-7 py-3.5 text-base font-medium text-text no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line"
+          >
+            See how it works
+          </a>
+        </div>
+        <p className="mt-4 font-mono text-xs text-faint" style={{ animation: "qw-rise 0.6s cubic-bezier(0.16,1,0.3,1) 0.55s both" }}>
+          No credit card · Connect a demo database in 30 seconds
+        </p>
+
+        <HeroDemo demo={demo} />
+      </div>
+    </header>
+  );
+}
+
+function HeroDemo({ demo }: { demo: HeroDemoState }) {
+  const ex = EXAMPLES[demo.exIdx];
+  const sqlTokens = tokenizeSql(ex.sql);
+  const maxIdx = ex.values.indexOf(Math.max(...ex.values));
+  const sqlDone = demo.sqlShown >= sqlTokens.length;
+
+  return (
+    <div className="mt-16 w-full max-w-[880px] text-left" style={{ animation: "qw-rise 0.7s cubic-bezier(0.16,1,0.3,1) 0.65s both" }}>
+      {/* example chips */}
+      <div className="mb-4 flex flex-wrap justify-center gap-2.5">
+        {EXAMPLES.map((example, i) => {
+          const on = i === demo.exIdx;
+          return (
+            <button
+              key={example.q}
+              type="button"
+              onClick={() => demo.select(i)}
+              className={`rounded-full border px-3.5 py-2 font-mono text-[12.5px] transition-all duration-200 active:scale-[0.96] ${
+                on ? "border-accent-line bg-accent-soft text-accent-strong" : "border-border bg-surface text-muted hover:border-accent-line hover:text-text"
+              }`}
+            >
+              {example.q}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* browser frame */}
+      <div className="overflow-hidden rounded-[18px] border border-border bg-surface shadow-[var(--shadow)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow)]">
+        <div className="flex items-center gap-2 border-b border-border bg-surface-2 px-[18px] py-3">
+          <span className="size-[11px] rounded-full bg-[#F26D6D]" />
+          <span className="size-[11px] rounded-full bg-[#F2C36D]" />
+          <span className="size-[11px] rounded-full bg-[#5FCB7E]" />
+          <span className="ml-2.5 flex items-center gap-1.5 font-mono text-xs text-faint">
+            <Lock className="size-3" strokeWidth={1.75} />
+            querywise.app — acme_analytics (read-only)
+          </span>
+        </div>
+
+        <div className="flex h-[640px] flex-col gap-4 overflow-hidden p-6 sm:p-7">
+          {/* user bubble */}
+          <div className="flex justify-end">
+            <div className="min-h-[46px] max-w-[80%] rounded-[14px] rounded-br-md border border-accent-line bg-accent-soft px-[18px] py-3 text-[15.5px] text-text">
+              {demo.typed}
+              {demo.isTyping ? <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 bg-accent" style={{ animation: "qw-blink 0.9s step-end infinite" }} /> : null}
+            </div>
           </div>
-          
-          {showStatus && (
-<React.Fragment>
 
-            <div style={{"display": "flex", "gap": "18px", "flexWrap": "wrap", "alignItems": "center", "animation": "qw-fadeup 0.4s ease both"}}>
-              {steps.map((st, i) => (
-<React.Fragment key={i}>
-
-                <span style={{"display": "inline-flex", "alignItems": "center", "gap": "7px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "letterSpacing": "0.03em", "color": "{st.color}", "transition": "color 0.3s ease"}}>
-                  <span style={{"width": "7px", "height": "7px", "borderRadius": "50%", "background": "{st.dot}", "animation": "{st.anim}", "transition": "background 0.3s ease"}}></span>{st.label}
-                </span>
-              
-</React.Fragment>
-))}
+          {/* pipeline */}
+          {demo.stepIdx >= 0 ? (
+            <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2" style={{ animation: "qw-fadeup 0.4s ease both" }}>
+              {STEP_LABELS.map((label, i) => {
+                const done = demo.stepIdx > i;
+                const active = demo.stepIdx === i;
+                return (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-1.5 font-mono text-[11.5px] tracking-[0.03em] transition-colors duration-300"
+                    style={{ color: done ? "var(--accent)" : active ? "var(--text)" : "var(--faint)" }}
+                  >
+                    <span
+                      className="size-[7px] rounded-full transition-colors duration-300"
+                      style={{ background: done || active ? "var(--accent)" : "var(--border2)", animation: active ? "qw-pulse 1s ease-in-out infinite" : "none" }}
+                    />
+                    {label}
+                  </span>
+                );
+              })}
             </div>
-          
-</React.Fragment>
-)}
-          
-          {showSql && (
-<React.Fragment>
+          ) : null}
 
-            <div style={{"background": "var(--code-bg)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "18px 20px", "animation": "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both"}}>
-              <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "12px"}}>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "#5F6F63"}}>GENERATED SQL</span>
-                <span style={{fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5EE08A", border: "1px solid rgba(94,224,138,0.3)", borderRadius: "999px", padding: "3px 10px"}}>✓ read-only</span>
+          {/* SQL card — streams token by token */}
+          {demo.sqlShown > 0 ? (
+            <div className="rounded-xl border border-border bg-code-bg px-5 py-4" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-faint">Generated SQL</span>
+                {sqlDone ? (
+                  <span className="rounded-full border border-accent-line px-2.5 py-0.5 font-mono text-[11px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+                    ✓ read-only
+                  </span>
+                ) : (
+                  <span className="font-mono text-[11px] text-faint">writing…</span>
+                )}
               </div>
-              {sqlLines.map((ln, i) => (
-<React.Fragment key={i}>
-
-                <div style={{fontFamily: "'JetBrains Mono',monospace", fontSize: "13px", lineHeight: "1.75", whiteSpace: "pre-wrap"}}>{ln.toks.map((tok, i) => (
-<React.Fragment key={i}>
-<span style={{color: tok.c}}>{tok.t}</span>
-</React.Fragment>
-))}</div>
-              
-</React.Fragment>
-))}
+              <pre className="m-0 whitespace-pre-wrap font-mono text-[13px] leading-[1.75]">
+                {sqlTokens.slice(0, demo.sqlShown).map((token, i) => (
+                  <span key={i} style={{ color: token.color }}>{token.text}</span>
+                ))}
+                {!sqlDone ? <span className="ml-0.5 inline-block h-3.5 w-0.5 bg-accent align-middle" style={{ animation: "qw-blink 0.9s step-end infinite" }} /> : null}
+              </pre>
             </div>
-          
-</React.Fragment>
-)}
-          
-          {showChart && (
-<React.Fragment>
+          ) : null}
 
-            <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "20px 22px", "animation": "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both"}}>
-              <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "baseline", "marginBottom": "16px"}}>
-                <span style={{"fontSize": "14px", "fontWeight": "600"}}>{chartTitle}</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--faint)"}}>{chartMeta}</span>
+          {/* chart card — staggered bar growth + counting peak label */}
+          {demo.showChart ? (
+            <div className="rounded-xl border border-border bg-surface-2 px-5 py-[18px]" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+              <div className="mb-4 flex items-baseline justify-between">
+                <span className="text-sm font-semibold">{ex.chartTitle}</span>
+                <span className="font-mono text-[11px] text-faint">{ex.chartMeta}</span>
               </div>
-              <div style={{"display": "flex", "alignItems": "flex-end", "gap": "8px", "height": "150px"}}>
-                {bars.map((bar, i) => (
-<React.Fragment key={i}>
-
-                  <div style={{"flex": "1", "display": "flex", "flexDirection": "column", "justifyContent": "flex-end", "height": "100%", "gap": "6px"}}>
-                    <div style={{"height": "{bar.h}", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "5px 5px 2px 2px", "transition": "height 0.9s cubic-bezier(0.2,0.7,0.2,1)", "minHeight": "3px"}}></div>
-                    <div style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "9.5px", "color": "var(--faint)", "textAlign": "center", "overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"}}>{bar.label}</div>
+              <div className="flex h-[150px] items-end gap-2">
+                {ex.labels.map((label, i) => (
+                  <div key={label} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1.5">
+                    {i === maxIdx ? (
+                      <span className={`-mb-0.5 text-center font-mono text-[10px] font-semibold tabular-nums text-accent-strong transition-opacity duration-300 ${demo.grown ? "opacity-100" : "opacity-0"}`}>
+                        <CountUp target={ex.peakLabel} active={demo.grown} />
+                      </span>
+                    ) : null}
+                    <div
+                      className="min-h-[3px] rounded-t-[5px] rounded-b-sm bg-gradient-to-b from-accent-strong to-accent"
+                      style={{ height: demo.grown ? `${ex.values[i]}%` : "3%", transition: `height 0.7s cubic-bezier(0.22,1,0.36,1) ${i * 28}ms` }}
+                    />
+                    <div className="overflow-hidden text-ellipsis whitespace-nowrap text-center font-mono text-[9.5px] text-faint">{label}</div>
                   </div>
-                
-</React.Fragment>
-))}
+                ))}
               </div>
             </div>
-          
-</React.Fragment>
-)}
-          
-          {showWidget && (
-<React.Fragment>
+          ) : null}
 
-            <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "background": "var(--accent-soft)", "border": "1px solid var(--accent-line)", "borderRadius": "12px", "padding": "13px 18px", "animation": "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both"}}>
-              <span style={{"width": "26px", "height": "26px", "borderRadius": "8px", "background": "var(--accent)", "color": "var(--accent-ink)", "display": "inline-flex", "alignItems": "center", "justifyContent": "center", "fontWeight": "700", "fontSize": "14px", "flexShrink": "0"}}>✓</span>
-              <span style={{"fontSize": "14px", "color": "var(--text)"}}>{widgetMsg}</span>
-              <span style={{"marginLeft": "auto", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--accent)", "whiteSpace": "nowrap"}}>↻ auto-refresh on</span>
+          {/* saved-to-dashboard confirmation */}
+          {demo.showWidget ? (
+            <div className="flex items-center gap-3 rounded-xl border border-accent-line bg-accent-soft px-[18px] py-3" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+              <span className="flex size-[26px] shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink">
+                <Check className="size-3.5" strokeWidth={3} />
+              </span>
+              <span className="text-sm text-text">{ex.widget}</span>
+              <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-accent-strong">↻ auto-refresh on</span>
             </div>
-          
-</React.Fragment>
-)}
+          ) : null}
         </div>
       </div>
     </div>
-  </div>
-</header>
+  );
+}
 
+/* ---------------------------- Principles strip ---------------------------- */
 
-<section data-screen-label="Trusted by" style={{"borderTop": "1px solid var(--border)", "borderBottom": "1px solid var(--border)", "background": "var(--bg2)", "padding": "34px 0", "overflow": "hidden"}}>
-  <p style={{"textAlign": "center", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "letterSpacing": "0.18em", "color": "var(--faint)", "margin": "0 0 22px"}}>TRUSTED BY DATA TEAMS AT</p>
-  <div style={{"overflow": "hidden", "maskImage": "linear-gradient(90deg,transparent,black 12%,black 88%,transparent)", "WebkitMaskImage": "linear-gradient(90deg,transparent,black 12%,black 88%,transparent)"}}>
-    <div style={{"display": "flex", "gap": "72px", "width": "max-content", "animation": "qw-marquee 30s linear infinite", "alignItems": "center"}}>
-      <span style={{"fontWeight": "700", "fontSize": "19px", "color": "var(--muted)", "letterSpacing": "-0.01em"}}>Datacove</span>
-      <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "17px", "color": "var(--muted)"}}>helios_labs</span>
-      <span style={{"fontWeight": "600", "fontSize": "19px", "color": "var(--muted)", "letterSpacing": "0.12em"}}>LUMENLY</span>
-      <span style={{"fontWeight": "700", "fontSize": "19px", "color": "var(--muted)", "fontStyle": "italic"}}>Quantia</span>
-      <span style={{"fontWeight": "600", "fontSize": "19px", "color": "var(--muted)"}}>Marlowe &amp; Co</span>
-      <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "17px", "color": "var(--muted)", "letterSpacing": "0.08em"}}>FERNBROOK</span>
-      <span style={{"fontWeight": "700", "fontSize": "19px", "color": "var(--muted)"}}>Vantage Iron</span>
-      <span style={{"fontWeight": "600", "fontSize": "19px", "color": "var(--muted)", "letterSpacing": "0.06em"}}>Ostrella</span>
-      <span style={{"fontWeight": "700", "fontSize": "19px", "color": "var(--muted)", "letterSpacing": "-0.01em"}}>Datacove</span>
-      <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "17px", "color": "var(--muted)"}}>helios_labs</span>
-      <span style={{"fontWeight": "600", "fontSize": "19px", "color": "var(--muted)", "letterSpacing": "0.12em"}}>LUMENLY</span>
-      <span style={{"fontWeight": "700", "fontSize": "19px", "color": "var(--muted)", "fontStyle": "italic"}}>Quantia</span>
-      <span style={{"fontWeight": "600", "fontSize": "19px", "color": "var(--muted)"}}>Marlowe &amp; Co</span>
-      <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "17px", "color": "var(--muted)", "letterSpacing": "0.08em"}}>FERNBROOK</span>
-      <span style={{"fontWeight": "700", "fontSize": "19px", "color": "var(--muted)"}}>Vantage Iron</span>
-      <span style={{"fontWeight": "600", "fontSize": "19px", "color": "var(--muted)", "letterSpacing": "0.06em"}}>Ostrella</span>
-    </div>
-  </div>
-</section>
+function PrinciplesStrip() {
+  const principles = [
+    { icon: ShieldCheck, label: "Read-only by design" },
+    { icon: BadgeCheck, label: "SQL always visible" },
+    { icon: Lock, label: "Credentials never in the browser" },
+    { icon: Database, label: "Live data, never stale exports" },
+  ];
+  return (
+    <section className="border-y border-border bg-bg-2 px-7 py-8">
+      <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-center gap-x-10 gap-y-3">
+        {principles.map(({ icon: Icon, label }) => (
+          <span key={label} className="flex items-center gap-2 font-mono text-[11.5px] tracking-[0.08em] text-muted">
+            <Icon className="size-3.5 text-accent-strong" strokeWidth={1.75} />
+            {label.toUpperCase()}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
 
+/* ------------------------------ How it works ------------------------------ */
 
-<FeaturesJourney />
+const HOW_STEPS = [
+  ["Connect your database", "Paste a read-only PostgreSQL connection string. Schema syncs automatically in the background."],
+  ["Ask a question", "Type it like you'd say it out loud. Follow-ups keep the context of the conversation."],
+  ["AI writes the SQL", "The agent explores your schema, plans the query, writes it — then shows and explains it to you."],
+  ["Execute safely", "Single statement, read-only, bounded results — enforced before a single row is touched."],
+  ["Charts appear", "The right visualization is picked from the shape of your data. Override it anytime."],
+  ["Save & share", "Pin results to dashboards, then share with a secure public link — data always live."],
+] as const;
 
-
-<section id="how" data-screen-label="How it works" style={{"padding": "110px 28px", "background": "var(--bg2)", "borderTop": "1px solid var(--border)", "borderBottom": "1px solid var(--border)"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto"}}>
-    <div data-reveal style={{"maxWidth": "640px"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>HOW IT WORKS</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>From connection string to shared dashboard</h2>
-    </div>
-    <div style={{"display": "grid", "gridTemplateColumns": "repeat(auto-fit,minmax(320px,1fr))", "gap": "0 60px", "marginTop": "56px"}}>
-      <div style={{"display": "flex", "flexDirection": "column"}}>
-        <div data-reveal style={{"display": "flex", "gap": "20px", "padding": "22px 0", "borderBottom": "1px dashed var(--border2)"}}>
-          <div style={{"flexShrink": "0", "width": "44px", "height": "44px", "borderRadius": "50%", "background": "var(--surface)", "border": "1px solid var(--accent-line)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "15px"}}>01</div>
-          <div><h3 style={{"fontSize": "18px", "fontWeight": "600", "margin": "0 0 6px"}}>Connect your database</h3><p style={{"fontSize": "14.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>Paste a read-only PostgreSQL connection string. Schema syncs automatically in the background.</p></div>
+function HowItWorks() {
+  return (
+    <section id="how" className="border-y border-border bg-bg-2 px-7 py-28">
+      <div className="mx-auto max-w-[1180px]">
+        <div data-reveal className="max-w-2xl">
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">How it works</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
+            From connection string to shared dashboard
+          </h2>
         </div>
-        <div data-reveal style={{"display": "flex", "gap": "20px", "padding": "22px 0", "borderBottom": "1px dashed var(--border2)", "transitionDelay": "0.08s"}}>
-          <div style={{"flexShrink": "0", "width": "44px", "height": "44px", "borderRadius": "50%", "background": "var(--surface)", "border": "1px solid var(--accent-line)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "15px"}}>02</div>
-          <div><h3 style={{"fontSize": "18px", "fontWeight": "600", "margin": "0 0 6px"}}>Ask a question</h3><p style={{"fontSize": "14.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>Type it like you'd say it out loud. Follow-ups keep the context of the conversation.</p></div>
-        </div>
-        <div data-reveal style={{"display": "flex", "gap": "20px", "padding": "22px 0", "transitionDelay": "0.16s"}}>
-          <div style={{"flexShrink": "0", "width": "44px", "height": "44px", "borderRadius": "50%", "background": "var(--surface)", "border": "1px solid var(--accent-line)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "15px"}}>03</div>
-          <div><h3 style={{"fontSize": "18px", "fontWeight": "600", "margin": "0 0 6px"}}>AI generates the SQL</h3><p style={{"fontSize": "14.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>Relevant tables are retrieved, a query is planned and written — then shown and explained to you.</p></div>
+        <div className="mt-14 grid gap-x-16 gap-y-0 md:grid-cols-2">
+          {HOW_STEPS.map(([title, body], i) => (
+            <div
+              key={title}
+              data-reveal
+              className={`flex gap-5 py-[22px] ${i !== 2 && i !== 5 ? "border-b border-dashed border-border-2" : ""}`}
+              style={{ transitionDelay: `${(i % 3) * 0.08}s` }}
+            >
+              <div
+                className={`flex size-11 shrink-0 items-center justify-center rounded-full border font-mono text-[15px] font-semibold ${
+                  i === 5 ? "border-accent bg-accent text-accent-ink" : "border-accent-line bg-surface text-accent-strong"
+                }`}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </div>
+              <div>
+                <h3 className="m-0 text-lg font-semibold">{title}</h3>
+                <p className="m-0 mt-1.5 text-[15px] leading-relaxed text-muted">{body}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-      <div style={{"display": "flex", "flexDirection": "column"}}>
-        <div data-reveal style={{"display": "flex", "gap": "20px", "padding": "22px 0", "borderBottom": "1px dashed var(--border2)", "transitionDelay": "0.24s"}}>
-          <div style={{"flexShrink": "0", "width": "44px", "height": "44px", "borderRadius": "50%", "background": "var(--surface)", "border": "1px solid var(--accent-line)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "15px"}}>04</div>
-          <div><h3 style={{"fontSize": "18px", "fontWeight": "600", "margin": "0 0 6px"}}>Execute safely</h3><p style={{"fontSize": "14.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>Single statement, read-only, bounded results — enforced before a single row is touched.</p></div>
-        </div>
-        <div data-reveal style={{"display": "flex", "gap": "20px", "padding": "22px 0", "borderBottom": "1px dashed var(--border2)", "transitionDelay": "0.32s"}}>
-          <div style={{"flexShrink": "0", "width": "44px", "height": "44px", "borderRadius": "50%", "background": "var(--surface)", "border": "1px solid var(--accent-line)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "15px"}}>05</div>
-          <div><h3 style={{"fontSize": "18px", "fontWeight": "600", "margin": "0 0 6px"}}>Charts appear</h3><p style={{"fontSize": "14.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>The right visualization is picked from the shape of your data. Override it anytime.</p></div>
-        </div>
-        <div data-reveal style={{"display": "flex", "gap": "20px", "padding": "22px 0", "transitionDelay": "0.4s"}}>
-          <div style={{"flexShrink": "0", "width": "44px", "height": "44px", "borderRadius": "50%", "background": "var(--accent)", "border": "1px solid var(--accent)", "color": "var(--accent-ink)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontFamily": "'JetBrains Mono',monospace", "fontWeight": "600", "fontSize": "15px"}}>06</div>
-          <div><h3 style={{"fontSize": "18px", "fontWeight": "600", "margin": "0 0 6px"}}>Save &amp; share</h3><p style={{"fontSize": "14.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>Pin results to dashboards, then share with a secure public link — password optional, data always live.</p></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
+  );
+}
 
+/* --------------------------- Dashboard showcase --------------------------- */
 
-<section data-screen-label="Demo" style={{"padding": "110px 28px", "background": "var(--bg)"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto"}}>
-    <div data-reveal style={{"maxWidth": "640px", "margin": "0 auto", "textAlign": "center"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>PRODUCT DEMO</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>Watch a question become a dashboard</h2>
-    </div>
-    <div data-reveal style={{"maxWidth": "960px", "margin": "48px auto 0", "position": "relative", "borderRadius": "20px", "overflow": "hidden", "border": "1px solid var(--border)", "boxShadow": "var(--shadow)", "background": "var(--surface)"}}>
-      <div style={{"display": "flex", "alignItems": "center", "gap": "8px", "padding": "13px 18px", "borderBottom": "1px solid var(--border)", "background": "var(--surface2)"}}>
-        <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#F26D6D"}}></span>
-        <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#F2C36D"}}></span>
-        <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#5FCB7E"}}></span>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)", "marginLeft": "10px"}}>Company KPIs — dashboard</span>
-      </div>
-      <div style={{"padding": "24px", "display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "16px", "aspectRatio": "16/8"}}>
-        <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "18px", "display": "flex", "flexDirection": "column"}}>
-          <span style={{"fontSize": "13px", "fontWeight": "600", "marginBottom": "4px"}}>Monthly revenue</span>
-          <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--faint)", "marginBottom": "auto"}}>last 12 months</span>
-          <div style={{"display": "flex", "alignItems": "flex-end", "gap": "4px", "height": "55%"}}>
-            <div style={{"flex": "1", "height": "34%", "background": "var(--accent)", "opacity": "0.45", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out infinite"}}></div>
-            <div style={{"flex": "1", "height": "44%", "background": "var(--accent)", "opacity": "0.5", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 0.15s infinite"}}></div>
-            <div style={{"flex": "1", "height": "39%", "background": "var(--accent)", "opacity": "0.5", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 0.3s infinite"}}></div>
-            <div style={{"flex": "1", "height": "55%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 0.45s infinite"}}></div>
-            <div style={{"flex": "1", "height": "50%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 0.6s infinite"}}></div>
-            <div style={{"flex": "1", "height": "62%", "background": "var(--accent)", "opacity": "0.7", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 0.75s infinite"}}></div>
-            <div style={{"flex": "1", "height": "58%", "background": "var(--accent)", "opacity": "0.7", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 0.9s infinite"}}></div>
-            <div style={{"flex": "1", "height": "68%", "background": "var(--accent)", "opacity": "0.8", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 1.05s infinite"}}></div>
-            <div style={{"flex": "1", "height": "64%", "background": "var(--accent)", "opacity": "0.8", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 1.2s infinite"}}></div>
-            <div style={{"flex": "1", "height": "76%", "background": "var(--accent)", "opacity": "0.9", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 1.35s infinite"}}></div>
-            <div style={{"flex": "1", "height": "72%", "background": "var(--accent)", "opacity": "0.9", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 1.5s infinite"}}></div>
-            <div style={{"flex": "1", "height": "88%", "background": "var(--accent)", "borderRadius": "3px", "animation": "qw-breathe 4s ease-in-out 1.65s infinite"}}></div>
+function DashboardShowcase() {
+  return (
+    <section className="bg-bg px-7 py-28">
+      <div className="mx-auto max-w-[1180px]">
+        <div data-reveal className="mx-auto max-w-2xl text-center">
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Product demo</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
+            Watch a question become a dashboard
+          </h2>
+        </div>
+
+        <div data-reveal className="mx-auto mt-12 max-w-[960px] overflow-hidden rounded-[20px] border border-border bg-surface shadow-[var(--shadow)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow)]">
+          <div className="flex items-center gap-2 border-b border-border bg-surface-2 px-[18px] py-3">
+            <span className="size-[11px] rounded-full bg-[#F26D6D]" />
+            <span className="size-[11px] rounded-full bg-[#F2C36D]" />
+            <span className="size-[11px] rounded-full bg-[#5FCB7E]" />
+            <span className="ml-2.5 font-mono text-xs text-faint">Company KPIs — dashboard</span>
+            <span className="ml-auto flex items-center gap-1.5 font-mono text-[11px] text-accent-strong">
+              <span className="size-1.5 rounded-full bg-accent" style={{ animation: "qw-pulse 1.8s ease-in-out infinite" }} />
+              LIVE DATA
+            </span>
+          </div>
+          <div className="grid gap-4 p-6 sm:grid-cols-3">
+            {[["MRR", "$84,300", "▲ 12% MoM"], ["Active customers", "1,204", "▲ 38 this week"], ["Avg order value", "$96.40", "▲ 4.2%"]].map(([label, value, delta]) => (
+              <div key={label} className="rounded-xl border border-border bg-surface-2 p-4">
+                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">{label}</p>
+                <p className="m-0 mt-2 font-syne text-[26px] font-bold leading-none">{value}</p>
+                <p className="m-0 mt-2 font-mono text-xs text-accent-strong">{delta}</p>
+              </div>
+            ))}
+            <div className="rounded-xl border border-border bg-surface-2 p-4 sm:col-span-2">
+              <p className="m-0 mb-3 text-xs font-semibold">Monthly revenue</p>
+              <div className="flex h-[120px] items-end gap-2">
+                {[34, 44, 39, 55, 50, 62, 58, 68, 64, 76, 72, 88].map((h, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-[3px] bg-accent"
+                    style={{ height: `${h}%`, opacity: 0.45 + i / 24, animation: `qw-breathe 4s ease-in-out ${i * 0.15}s infinite` }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col rounded-xl border border-border bg-surface-2 p-4">
+              <p className="m-0 mb-3 text-xs font-semibold">Top categories</p>
+              <div className="flex flex-1 flex-col justify-center gap-2.5">
+                {([["Outdoor", 88], ["Fitness", 64], ["Apparel", 46]] as const).map(([name, w]) => (
+                  <div key={name}>
+                    <div className="mb-1 flex justify-between text-[10.5px] text-muted">
+                      <span>{name}</span>
+                      <span className="font-mono">{w}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-border">
+                      <div className="h-full rounded-full bg-accent" style={{ width: `${w}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-        <div style={{"display": "grid", "gridTemplateRows": "1fr 1fr", "gap": "16px"}}>
-          <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "18px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
-            <span style={{"fontSize": "13px", "fontWeight": "600"}}>New customers this week</span>
-            <div style={{"display": "flex", "alignItems": "baseline", "gap": "10px"}}><span style={{"fontSize": "32px", "fontWeight": "700", "letterSpacing": "-0.02em"}}>1,284</span><span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--accent)"}}>▲ 12.4%</span></div>
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------- Comparison ------------------------------ */
+
+function Comparison() {
+  const typical = [
+    "Learn a query builder before your first answer",
+    "Configure every chart by hand",
+    "Dashboards drift stale between refreshes",
+    "Every new question is a ticket for the data team",
+  ];
+  const querywise = [
+    "Ask in plain English, get an answer in seconds",
+    "The right chart picked from your data's shape",
+    "Widgets refresh themselves — always live",
+    "Anyone on the team can self-serve, safely",
+  ];
+  return (
+    <section className="border-y border-border bg-bg-2 px-7 py-28">
+      <div className="mx-auto max-w-[1180px]">
+        <div data-reveal className="max-w-2xl">
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Why QueryWise</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
+            BI tools make you learn them. QueryWise doesn&apos;t.
+          </h2>
+        </div>
+        <div className="mt-12 grid gap-5 md:grid-cols-2">
+          <div data-reveal className="rounded-2xl border border-border bg-surface p-7">
+            <p className="m-0 mb-5 font-mono text-[11px] uppercase tracking-[0.16em] text-faint">A typical BI tool</p>
+            <ul className="m-0 flex list-none flex-col gap-4 p-0">
+              {typical.map((line) => (
+                <li key={line} className="flex items-start gap-3 text-[15px] leading-relaxed text-muted">
+                  <X className="mt-1 size-4 shrink-0 text-danger/70" strokeWidth={2} />
+                  {line}
+                </li>
+              ))}
+            </ul>
           </div>
-          <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "18px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
-            <span style={{"fontSize": "13px", "fontWeight": "600"}}>Top products</span>
-            <div style={{"display": "flex", "flexDirection": "column", "gap": "6px"}}>
-              <div style={{"height": "8px", "borderRadius": "4px", "background": "linear-gradient(90deg,var(--accent) 82%,var(--border) 82%)"}}></div>
-              <div style={{"height": "8px", "borderRadius": "4px", "background": "linear-gradient(90deg,var(--accent) 64%,var(--border) 64%)", "opacity": "0.75"}}></div>
-              <div style={{"height": "8px", "borderRadius": "4px", "background": "linear-gradient(90deg,var(--accent) 47%,var(--border) 47%)", "opacity": "0.5"}}></div>
-            </div>
+          <div data-reveal className="rounded-2xl border border-accent-line bg-surface p-7 shadow-[0_0_40px_-24px_var(--accent)]" style={{ transitionDelay: "0.1s" }}>
+            <p className="m-0 mb-5 font-mono text-[11px] uppercase tracking-[0.16em] text-accent-strong">QueryWise</p>
+            <ul className="m-0 flex list-none flex-col gap-4 p-0">
+              {querywise.map((line) => (
+                <li key={line} className="flex items-start gap-3 text-[15px] leading-relaxed text-text">
+                  <Check className="mt-1 size-4 shrink-0 text-accent-strong" strokeWidth={2.5} />
+                  {line}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
-      <div style={{"position": "absolute", "inset": "0", "display": "flex", "flexDirection": "column", "alignItems": "center", "justifyContent": "center", "gap": "16px", "background": "linear-gradient(180deg,transparent,rgba(6,14,8,0.45))", "cursor": "pointer", "transition": "background 0.3s ease"}} className="hover-style-11">
-        <div style={{"width": "78px", "height": "78px", "borderRadius": "50%", "background": "var(--accent)", "color": "var(--accent-ink)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "26px", "boxShadow": "0 18px 44px -10px var(--accent-line)", "transition": "transform 0.2s ease"}} className="hover-style-12">▶</div>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.1em", "color": "#EAF2EB", "background": "rgba(6,14,8,0.55)", "padding": "6px 14px", "borderRadius": "999px", "backdropFilter": "blur(6px)"}}>45-SECOND TOUR · VIDEO COMING SOON</span>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
+  );
+}
 
+/* -------------------------------- Use cases ------------------------------- */
 
-<section data-screen-label="Comparison" style={{"padding": "110px 28px", "background": "var(--bg2)", "borderTop": "1px solid var(--border)", "borderBottom": "1px solid var(--border)"}}>
-  <div style={{"maxWidth": "880px", "margin": "0 auto"}}>
-    <div data-reveal style={{"textAlign": "center", "maxWidth": "600px", "margin": "0 auto"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>WHY QUERYWISE</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>BI tools make you learn them. QueryWise doesn't.</h2>
-    </div>
-    <div data-reveal style={{"marginTop": "48px", "border": "1px solid var(--border)", "borderRadius": "18px", "overflow": "hidden", "background": "var(--surface)"}}>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "16px 26px", "borderBottom": "1px solid var(--border)", "background": "var(--surface2)"}}>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "letterSpacing": "0.14em", "color": "var(--faint)"}}>CAPABILITY</span>
-        <span style={{"fontSize": "14px", "fontWeight": "600", "color": "var(--muted)"}}>Traditional BI</span>
-        <span style={{"fontSize": "14px", "fontWeight": "700", "color": "var(--accent)"}}>QueryWise</span>
-      </div>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "15px 26px", "borderBottom": "1px solid var(--border)", "alignItems": "center"}}>
-        <span style={{"fontSize": "15px"}}>Learning SQL</span><span style={{"fontSize": "14px", "color": "var(--muted)"}}>Required</span><span style={{"fontSize": "14px", "fontWeight": "600", "color": "var(--accent)"}}>Optional</span>
-      </div>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "15px 26px", "borderBottom": "1px solid var(--border)", "alignItems": "center"}}>
-        <span style={{"fontSize": "15px"}}>Natural language</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "rgba(242,109,109,0.12)", "color": "#F26D6D", "alignItems": "center", "justifyContent": "center", "fontSize": "12px"}}>✕</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "alignItems": "center", "justifyContent": "center", "fontSize": "13px", "fontWeight": "700"}}>✓</span>
-      </div>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "15px 26px", "borderBottom": "1px solid var(--border)", "alignItems": "center"}}>
-        <span style={{"fontSize": "15px"}}>Automatic charts</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "rgba(242,109,109,0.12)", "color": "#F26D6D", "alignItems": "center", "justifyContent": "center", "fontSize": "12px"}}>✕</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "alignItems": "center", "justifyContent": "center", "fontSize": "13px", "fontWeight": "700"}}>✓</span>
-      </div>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "15px 26px", "borderBottom": "1px solid var(--border)", "alignItems": "center"}}>
-        <span style={{"fontSize": "15px"}}>AI explanations</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "rgba(242,109,109,0.12)", "color": "#F26D6D", "alignItems": "center", "justifyContent": "center", "fontSize": "12px"}}>✕</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "alignItems": "center", "justifyContent": "center", "fontSize": "13px", "fontWeight": "700"}}>✓</span>
-      </div>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "15px 26px", "borderBottom": "1px solid var(--border)", "alignItems": "center"}}>
-        <span style={{"fontSize": "15px"}}>Public sharing</span><span style={{"fontSize": "14px", "color": "var(--muted)"}}>Limited</span><span style={{"display": "inline-flex", "width": "24px", "height": "24px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "alignItems": "center", "justifyContent": "center", "fontSize": "13px", "fontWeight": "700"}}>✓</span>
-      </div>
-      <div style={{"display": "grid", "gridTemplateColumns": "1.4fr 1fr 1fr", "padding": "15px 26px", "alignItems": "center"}}>
-        <span style={{"fontSize": "15px"}}>Setup time</span><span style={{"fontSize": "14px", "color": "var(--muted)"}}>Hours–days</span><span style={{"fontSize": "14px", "fontWeight": "600", "color": "var(--accent)"}}>Minutes</span>
-      </div>
-    </div>
-  </div>
-</section>
+const USE_CASES = [
+  { icon: TrendingUp, title: "Sales analytics", line: "Pipeline, quota, win rates — without waiting on ops.", q: "How did each region perform against quota this quarter?" },
+  { icon: Users, title: "Customer insights", line: "Cohorts, retention, and growth in plain English.", q: "Which customers are at risk of churning this month?" },
+  { icon: Package, title: "Inventory", line: "Stock levels and velocity, straight from the source.", q: "What's running low in the warehouse right now?" },
+  { icon: Landmark, title: "Finance", line: "Revenue, margins, and burn — no spreadsheet exports.", q: "Show gross margin by product line, month over month." },
+  { icon: Megaphone, title: "Marketing", line: "Campaign performance and attribution on demand.", q: "Which campaign drove the most signups per dollar?" },
+  { icon: Truck, title: "Operations", line: "Fulfillment, SLAs, and throughput at a glance.", q: "What's our average delivery time by city this week?" },
+];
 
-
-<section data-screen-label="Use cases" style={{"padding": "110px 28px", "background": "var(--bg)"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto"}}>
-    <div data-reveal style={{"maxWidth": "640px"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>USE CASES</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>One question away, whatever the team</h2>
-    </div>
-    <div style={{"display": "grid", "gridTemplateColumns": "repeat(auto-fit,minmax(300px,1fr))", "gap": "18px", "marginTop": "52px"}}>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "26px", "transition": "transform 0.25s ease,border-color 0.25s ease"}} className="hover-style-13">
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "10px"}}><span style={{"fontSize": "20px"}}>📈</span><h3 style={{"fontSize": "17px", "fontWeight": "600", "margin": "0"}}>Sales analytics</h3></div>
-        <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>"How did each region perform against quota this quarter?"</p>
-      </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "26px", "transition": "transform 0.25s ease,border-color 0.25s ease", "transitionDelay": "0.06s"}} className="hover-style-14">
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "10px"}}><span style={{"fontSize": "20px"}}>👥</span><h3 style={{"fontSize": "17px", "fontWeight": "600", "margin": "0"}}>Customer insights</h3></div>
-        <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>"Which customers are at risk of churning this month?"</p>
-      </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "26px", "transition": "transform 0.25s ease,border-color 0.25s ease", "transitionDelay": "0.12s"}} className="hover-style-15">
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "10px"}}><span style={{"fontSize": "20px"}}>📦</span><h3 style={{"fontSize": "17px", "fontWeight": "600", "margin": "0"}}>Inventory</h3></div>
-        <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>"What's running low in the warehouse right now?"</p>
-      </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "26px", "transition": "transform 0.25s ease,border-color 0.25s ease"}} className="hover-style-16">
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "10px"}}><span style={{"fontSize": "20px"}}>💰</span><h3 style={{"fontSize": "17px", "fontWeight": "600", "margin": "0"}}>Finance</h3></div>
-        <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>"Show gross margin by product line, month over month."</p>
-      </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "26px", "transition": "transform 0.25s ease,border-color 0.25s ease", "transitionDelay": "0.06s"}} className="hover-style-17">
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "10px"}}><span style={{"fontSize": "20px"}}>📊</span><h3 style={{"fontSize": "17px", "fontWeight": "600", "margin": "0"}}>Marketing</h3></div>
-        <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>"Which campaign drove the most signups per dollar?"</p>
-      </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "26px", "transition": "transform 0.25s ease,border-color 0.25s ease", "transitionDelay": "0.12s"}} className="hover-style-18">
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginBottom": "10px"}}><span style={{"fontSize": "20px"}}>🚚</span><h3 style={{"fontSize": "17px", "fontWeight": "600", "margin": "0"}}>Operations</h3></div>
-        <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "0"}}>"What's our average delivery time by city this week?"</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<section data-screen-label="Screenshots" style={{"padding": "110px 28px", "background": "var(--bg2)", "borderTop": "1px solid var(--border)", "borderBottom": "1px solid var(--border)"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto"}}>
-    <div data-reveal style={{"maxWidth": "640px", "margin": "0 auto", "textAlign": "center"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>INSIDE THE APP</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>A workspace built around answers</h2>
-    </div>
-    <div data-reveal style={{"display": "flex", "gap": "8px", "justifyContent": "center", "flexWrap": "wrap", "marginTop": "44px"}}>
-      {shotTabs.map((tab, i) => (
-<React.Fragment key={i}>
-
-        <button onClick={tab.onClick} style={{"fontSize": "14px", "fontWeight": "500", "padding": "9px 18px", "borderRadius": "999px", "cursor": "pointer", "background": "{tab.bg}", "border": "1px solid {tab.border}", "color": "{tab.color}", "transition": "all 0.2s ease"}} className="hover-style-19">{tab.label}</button>
-      
-</React.Fragment>
-))}
-    </div>
-    <div data-reveal style={{"maxWidth": "960px", "margin": "28px auto 0", "background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "18px", "boxShadow": "var(--shadow)", "overflow": "hidden"}}>
-      <div style={{"display": "flex", "alignItems": "center", "gap": "8px", "padding": "12px 18px", "borderBottom": "1px solid var(--border)", "background": "var(--surface2)"}}>
-        <span style={{"width": "10px", "height": "10px", "borderRadius": "50%", "background": "#F26D6D"}}></span>
-        <span style={{"width": "10px", "height": "10px", "borderRadius": "50%", "background": "#F2C36D"}}></span>
-        <span style={{"width": "10px", "height": "10px", "borderRadius": "50%", "background": "#5FCB7E"}}></span>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)", "marginLeft": "10px"}}>{shotCrumb}</span>
-      </div>
-      <div style={{"minHeight": "400px", "padding": "26px"}}>
-        
-        {shotIs0 && (
-<React.Fragment>
-
-          <div style={{"display": "flex", "flexDirection": "column", "gap": "14px", "maxWidth": "680px", "margin": "0 auto", "animation": "qw-fadeup 0.4s ease both"}}>
-            <div style={{"alignSelf": "flex-end", "background": "var(--accent-soft)", "border": "1px solid var(--accent-line)", "borderRadius": "12px 12px 4px 12px", "padding": "11px 16px", "fontSize": "14px"}}>Compare revenue this quarter vs last quarter</div>
-            <div style={{"alignSelf": "flex-start", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px 12px 12px 4px", "padding": "14px 18px", "fontSize": "14px", "color": "var(--muted)", "maxWidth": "85%"}}>Revenue is up <span style={{"color": "var(--accent)", "fontWeight": "600"}}>18.2%</span> quarter over quarter — $2.41M vs $2.04M. Growth was strongest in March.</div>
-            <div style={{"alignSelf": "flex-start", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px 18px", "width": "85%"}}>
-              <div style={{"display": "flex", "alignItems": "flex-end", "gap": "10px", "height": "90px"}}>
-                <div style={{"flex": "1", "height": "52%", "background": "var(--border2)", "borderRadius": "4px"}}></div>
-                <div style={{"flex": "1", "height": "48%", "background": "var(--border2)", "borderRadius": "4px"}}></div>
-                <div style={{"flex": "1", "height": "58%", "background": "var(--border2)", "borderRadius": "4px"}}></div>
-                <div style={{"flex": "1", "height": "64%", "background": "var(--accent)", "opacity": "0.7", "borderRadius": "4px"}}></div>
-                <div style={{"flex": "1", "height": "72%", "background": "var(--accent)", "opacity": "0.85", "borderRadius": "4px"}}></div>
-                <div style={{"flex": "1", "height": "86%", "background": "var(--accent)", "borderRadius": "4px"}}></div>
+function UseCases() {
+  return (
+    <section className="bg-bg px-7 py-28">
+      <div className="mx-auto max-w-[1180px]">
+        <div data-reveal className="max-w-2xl">
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Use cases</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
+            One question away, whatever the team
+          </h2>
+        </div>
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {USE_CASES.map(({ icon: Icon, title, line, q }, i) => (
+            <div
+              key={title}
+              data-reveal
+              className="group rounded-2xl border border-border bg-surface p-6 transition-all duration-200 hover:-translate-y-1 hover:border-accent-line"
+              style={{ transitionDelay: `${(i % 3) * 0.06}s` }}
+            >
+              <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-accent-soft">
+                <Icon className="size-[18px] text-accent-strong" strokeWidth={1.75} />
               </div>
-              <div style={{"display": "flex", "gap": "14px", "marginTop": "12px"}}>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "var(--faint)"}}>■ last quarter</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "var(--accent)"}}>■ this quarter</span>
-              </div>
+              <h3 className="m-0 text-[17px] font-semibold">{title}</h3>
+              <p className="m-0 mt-1.5 text-sm leading-relaxed text-muted">{line}</p>
+              <p className="m-0 mt-4 rounded-lg border border-border bg-surface-2 px-3 py-2 font-mono text-[11.5px] text-faint transition-colors duration-200 group-hover:border-accent-line group-hover:text-muted">
+                “{q}”
+              </p>
             </div>
-            <div style={{"display": "flex", "gap": "8px"}}>
-              <span style={{"fontSize": "12.5px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "999px", "padding": "6px 13px"}}>View SQL</span>
-              <span style={{"fontSize": "12.5px", "color": "var(--accent)", "border": "1px solid var(--accent-line)", "background": "var(--accent-soft)", "borderRadius": "999px", "padding": "6px 13px"}}>＋ Save to dashboard</span>
-            </div>
-          </div>
-        
-</React.Fragment>
-)}
-        
-        {shotIs1 && (
-<React.Fragment>
-
-          <div style={{"background": "var(--code-bg)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "20px 22px", "maxWidth": "680px", "margin": "0 auto", "animation": "qw-fadeup 0.4s ease both"}}>
-            <div style={{"display": "flex", "justifyContent": "space-between", "marginBottom": "14px"}}>
-              <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "#5F6F63"}}>GENERATED SQL · EXPLAINED</span>
-              <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "#5EE08A"}}>✓ read-only · 1 statement</span>
-            </div>
-            <div style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "13px", "lineHeight": "1.85"}}>
-              <div><span style={{"color": "#5F6F63"}}>1  </span><span style={{"color": "#5EE08A"}}>SELECT</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#63B3ED"}}>date_trunc</span><span style={{"color": "#C9D6CC"}}>(</span><span style={{"color": "#E5C07B"}}>'quarter'</span><span style={{"color": "#C9D6CC"}}>, created_at) </span><span style={{"color": "#5EE08A"}}>AS</span><span style={{"color": "#C9D6CC"}}> qtr,</span></div>
-              <div><span style={{"color": "#5F6F63"}}>2  </span><span style={{"color": "#C9D6CC"}}>       </span><span style={{"color": "#63B3ED"}}>SUM</span><span style={{"color": "#C9D6CC"}}>(total_amount) </span><span style={{"color": "#5EE08A"}}>AS</span><span style={{"color": "#C9D6CC"}}> revenue</span></div>
-              <div><span style={{"color": "#5F6F63"}}>3  </span><span style={{"color": "#5EE08A"}}>FROM</span><span style={{"color": "#C9D6CC"}}> orders</span></div>
-              <div><span style={{"color": "#5F6F63"}}>4  </span><span style={{"color": "#5EE08A"}}>WHERE</span><span style={{"color": "#C9D6CC"}}> created_at &gt;= </span><span style={{"color": "#63B3ED"}}>now</span><span style={{"color": "#C9D6CC"}}>() - </span><span style={{"color": "#5EE08A"}}>interval</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#E5C07B"}}>'6 months'</span></div>
-              <div><span style={{"color": "#5F6F63"}}>5  </span><span style={{"color": "#5EE08A"}}>GROUP BY</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#D19A66"}}>1</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#5EE08A"}}>ORDER BY</span><span style={{"color": "#C9D6CC"}}> </span><span style={{"color": "#D19A66"}}>1</span><span style={{"color": "#C9D6CC"}}>;</span></div>
-            </div>
-            <div style={{"marginTop": "16px", "borderTop": "1px solid rgba(255,255,255,0.08)", "paddingTop": "14px", "fontSize": "13.5px", "lineHeight": "1.6", "color": "#9AAA9E"}}>💡 This groups all orders from the last six months into quarters and totals the revenue for each — so you can compare them directly.</div>
-          </div>
-        
-</React.Fragment>
-)}
-        
-        {shotIs2 && (
-<React.Fragment>
-
-          <div style={{"maxWidth": "680px", "margin": "0 auto", "animation": "qw-fadeup 0.4s ease both"}}>
-            <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "18px"}}>
-              <span style={{"fontSize": "15px", "fontWeight": "600"}}>Revenue by month</span>
-              <div style={{"display": "flex", "gap": "6px"}}>
-                <span style={{"fontSize": "12px", "fontWeight": "600", "color": "var(--accent-ink)", "background": "var(--accent)", "borderRadius": "7px", "padding": "5px 12px"}}>Bar</span>
-                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "7px", "padding": "5px 12px"}}>Line</span>
-                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "7px", "padding": "5px 12px"}}>Pie</span>
-                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "7px", "padding": "5px 12px"}}>Table</span>
-              </div>
-            </div>
-            <div style={{"border": "1px solid var(--border)", "borderRadius": "12px", "padding": "22px", "background": "var(--surface2)"}}>
-              <div style={{"display": "flex", "alignItems": "flex-end", "gap": "9px", "height": "190px", "borderBottom": "1px solid var(--border)", "paddingBottom": "2px"}}>
-                <div style={{"flex": "1", "height": "38%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "46%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "41%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "57%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "51%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "66%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "60%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "74%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "69%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-                <div style={{"flex": "1", "height": "88%", "background": "linear-gradient(180deg,var(--accent-strong),var(--accent))", "borderRadius": "4px 4px 0 0"}}></div>
-              </div>
-              <div style={{"display": "flex", "justifyContent": "space-between", "marginTop": "8px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "10px", "color": "var(--faint)"}}><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span></div>
-            </div>
-          </div>
-        
-</React.Fragment>
-)}
-        
-        {shotIs3 && (
-<React.Fragment>
-
-          <div style={{"maxWidth": "760px", "margin": "0 auto", "animation": "qw-fadeup 0.4s ease both"}}>
-            <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "16px"}}>
-              <span style={{"fontSize": "15px", "fontWeight": "600"}}>Company KPIs</span>
-              <div style={{"display": "flex", "gap": "8px"}}>
-                <span style={{"fontSize": "12px", "color": "var(--muted)", "border": "1px solid var(--border)", "borderRadius": "7px", "padding": "5px 12px"}}>↻ Refresh all</span>
-                <span style={{"fontSize": "12px", "fontWeight": "600", "color": "var(--accent-ink)", "background": "var(--accent)", "borderRadius": "7px", "padding": "5px 12px"}}>Share</span>
-              </div>
-            </div>
-            <div style={{"display": "grid", "gridTemplateColumns": "repeat(3,1fr)", "gap": "12px"}}>
-              <div style={{"gridColumn": "span 2", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px", "height": "150px", "display": "flex", "flexDirection": "column"}}>
-                <span style={{"fontSize": "12.5px", "fontWeight": "600", "marginBottom": "auto"}}>Monthly revenue</span>
-                <div style={{"display": "flex", "alignItems": "flex-end", "gap": "5px", "height": "60%"}}>
-                  <div style={{"flex": "1", "height": "40%", "background": "var(--accent)", "opacity": "0.5", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "52%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "47%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "62%", "background": "var(--accent)", "opacity": "0.7", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "58%", "background": "var(--accent)", "opacity": "0.8", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "76%", "background": "var(--accent)", "borderRadius": "3px"}}></div>
-                </div>
-              </div>
-              <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px", "height": "150px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
-                <span style={{"fontSize": "12.5px", "fontWeight": "600"}}>Active users</span>
-                <span style={{"fontSize": "28px", "fontWeight": "700"}}>8,412</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--accent)"}}>▲ 6.1% this week</span>
-              </div>
-              <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px", "height": "130px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
-                <span style={{"fontSize": "12.5px", "fontWeight": "600"}}>Churn rate</span>
-                <span style={{"fontSize": "28px", "fontWeight": "700"}}>1.8%</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--accent)"}}>▼ 0.3 pts</span>
-              </div>
-              <div style={{"gridColumn": "span 2", "background": "var(--surface2)", "border": "1px dashed var(--border2)", "borderRadius": "12px", "height": "130px", "display": "flex", "alignItems": "center", "justifyContent": "center", "color": "var(--faint)", "fontSize": "13px"}}>＋ drag any answer here to add a widget</div>
-            </div>
-          </div>
-        
-</React.Fragment>
-)}
-        
-        {shotIs4 && (
-<React.Fragment>
-
-          <div style={{"maxWidth": "640px", "margin": "0 auto", "display": "flex", "flexDirection": "column", "gap": "12px", "animation": "qw-fadeup 0.4s ease both"}}>
-            <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "6px"}}>
-              <span style={{"fontSize": "15px", "fontWeight": "600"}}>Connections</span>
-              <span style={{"fontSize": "12px", "fontWeight": "600", "color": "var(--accent-ink)", "background": "var(--accent)", "borderRadius": "7px", "padding": "5px 12px"}}>＋ Add connection</span>
-            </div>
-            <div style={{"display": "flex", "alignItems": "center", "gap": "14px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px 18px"}}>
-              <span style={{"width": "38px", "height": "38px", "borderRadius": "10px", "background": "var(--accent-soft)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "17px"}}>🐘</span>
-              <div style={{"display": "flex", "flexDirection": "column", "gap": "3px"}}><span style={{"fontSize": "14px", "fontWeight": "600"}}>production_db</span><span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)"}}>db.acme.internal:5432 · 42 tables</span></div>
-              <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontSize": "12px", "color": "var(--accent)", "background": "var(--accent-soft)", "borderRadius": "999px", "padding": "5px 12px"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)"}}></span>connected</span>
-            </div>
-            <div style={{"display": "flex", "alignItems": "center", "gap": "14px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px 18px"}}>
-              <span style={{"width": "38px", "height": "38px", "borderRadius": "10px", "background": "var(--accent-soft)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "17px"}}>🐘</span>
-              <div style={{"display": "flex", "flexDirection": "column", "gap": "3px"}}><span style={{"fontSize": "14px", "fontWeight": "600"}}>staging_db</span><span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)"}}>staging.acme.internal:5432 · 42 tables</span></div>
-              <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontSize": "12px", "color": "var(--accent)", "background": "var(--accent-soft)", "borderRadius": "999px", "padding": "5px 12px"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)"}}></span>connected</span>
-            </div>
-            <div style={{"display": "flex", "alignItems": "center", "gap": "14px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px 18px"}}>
-              <span style={{"width": "38px", "height": "38px", "borderRadius": "10px", "background": "var(--accent-soft)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontSize": "17px"}}>🐘</span>
-              <div style={{"display": "flex", "flexDirection": "column", "gap": "3px"}}><span style={{"fontSize": "14px", "fontWeight": "600"}}>dev_local</span><span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)"}}>localhost:5432 · syncing schema…</span></div>
-              <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontSize": "12px", "color": "#F2C36D", "background": "rgba(242,195,109,0.12)", "borderRadius": "999px", "padding": "5px 12px"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "#F2C36D", "animation": "qw-pulse 1.6s ease-in-out infinite"}}></span>syncing</span>
-            </div>
-            <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)", "margin": "4px 0 0"}}>credentials encrypted · schema embeddings synced by background worker</p>
-          </div>
-        
-</React.Fragment>
-)}
-        
-        {shotIs5 && (
-<React.Fragment>
-
-          <div style={{"maxWidth": "720px", "margin": "0 auto", "animation": "qw-fadeup 0.4s ease both"}}>
-            <div style={{"display": "flex", "alignItems": "center", "gap": "10px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "10px", "padding": "9px 16px", "marginBottom": "16px"}}>
-              <span style={{"fontSize": "13px"}}>🔒</span>
-              <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "color": "var(--muted)"}}>querywise.app/shared/x7f2-kq91-mv30</span>
-              <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--accent)"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)", "animation": "qw-pulse 1.8s ease-in-out infinite"}}></span>LIVE DATA</span>
-            </div>
-            <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}}>
-              <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px", "height": "140px", "display": "flex", "flexDirection": "column"}}>
-                <span style={{"fontSize": "12.5px", "fontWeight": "600", "marginBottom": "auto"}}>Weekly signups</span>
-                <div style={{"display": "flex", "alignItems": "flex-end", "gap": "5px", "height": "60%"}}>
-                  <div style={{"flex": "1", "height": "35%", "background": "var(--accent)", "opacity": "0.5", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "48%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "44%", "background": "var(--accent)", "opacity": "0.6", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "63%", "background": "var(--accent)", "opacity": "0.8", "borderRadius": "3px"}}></div>
-                  <div style={{"flex": "1", "height": "78%", "background": "var(--accent)", "borderRadius": "3px"}}></div>
-                </div>
-              </div>
-              <div style={{"background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "12px", "padding": "16px", "height": "140px", "display": "flex", "flexDirection": "column", "justifyContent": "space-between"}}>
-                <span style={{"fontSize": "12.5px", "fontWeight": "600"}}>MRR</span>
-                <span style={{"fontSize": "30px", "fontWeight": "700"}}>$84.2k</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--accent)"}}>▲ 9.7% MoM</span>
-              </div>
-            </div>
-            <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11.5px", "color": "var(--faint)", "margin": "14px 0 0", "textAlign": "center"}}>viewers see live results — never SQL, credentials, or internal IDs</p>
-          </div>
-        
-</React.Fragment>
-)}
-      </div>
-    </div>
-    <p data-reveal style={{"textAlign": "center", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)", "margin": "20px 0 0"}}>· illustrative mockups — real screenshots drop in here ·</p>
-  </div>
-</section>
-
-
-<section data-screen-label="Testimonials" style={{"padding": "110px 28px", "background": "var(--bg)"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto"}}>
-    <div data-reveal style={{"maxWidth": "640px"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>FROM THE BETA</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>Data teams ship answers, not tickets</h2>
-    </div>
-    <div style={{"display": "grid", "gridTemplateColumns": "repeat(auto-fit,minmax(300px,1fr))", "gap": "18px", "marginTop": "52px"}}>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "28px", "display": "flex", "flexDirection": "column", "gap": "20px"}}>
-        <p style={{"fontSize": "16px", "lineHeight": "1.65", "margin": "0", "textWrap": "pretty"}}>"I stopped writing SQL for stakeholders. They ask QueryWise, I glance at the generated query, done. My backlog of 'quick data pulls' is gone."</p>
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginTop": "auto"}}>
-          <span style={{"width": "40px", "height": "40px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontWeight": "700", "fontSize": "14px"}}>MC</span>
-          <div><div style={{"fontSize": "14px", "fontWeight": "600"}}>Maya Chen</div><div style={{"fontSize": "12.5px", "color": "var(--faint)"}}>Head of Data · Datacove</div></div>
+          ))}
         </div>
       </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "28px", "display": "flex", "flexDirection": "column", "gap": "20px", "transitionDelay": "0.08s"}}>
-        <p style={{"fontSize": "16px", "lineHeight": "1.65", "margin": "0", "textWrap": "pretty"}}>"We shipped a customer-facing metrics page in one afternoon using public share links. Live data, password-protected, zero backend work."</p>
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginTop": "auto"}}>
-          <span style={{"width": "40px", "height": "40px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontWeight": "700", "fontSize": "14px"}}>JF</span>
-          <div><div style={{"fontSize": "14px", "fontWeight": "600"}}>Jonas Feld</div><div style={{"fontSize": "12.5px", "color": "var(--faint)"}}>CTO · Lumenly</div></div>
+    </section>
+  );
+}
+
+/* --------------------------------- Pricing -------------------------------- */
+
+function Pricing() {
+  const included = ["Unlimited questions", "PostgreSQL connections", "Auto-charts & dashboards", "Secure public sharing", "Read-only safety, always on"];
+  return (
+    <section id="pricing" className="border-y border-border bg-bg-2 px-7 py-28">
+      <div className="mx-auto max-w-[1180px]">
+        <div data-reveal className="mx-auto max-w-2xl text-center">
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Pricing</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">Free while in beta</h2>
+          <p className="mt-4 text-[16.5px] leading-relaxed text-muted">
+            Every feature, generous limits, no credit card. Paid plans arrive later — beta users get grandfathered perks.
+          </p>
+        </div>
+        <div data-reveal className="mx-auto mt-12 max-w-md rounded-3xl border border-accent-line bg-surface p-8 text-center shadow-[0_0_60px_-30px_var(--accent)]">
+          <p className="m-0 font-mono text-[11px] uppercase tracking-[0.18em] text-accent-strong">Beta</p>
+          <p className="m-0 mt-3 font-syne text-6xl font-bold">$0</p>
+          <p className="m-0 mt-1 text-sm text-faint">while in beta</p>
+          <ul className="m-0 mt-7 flex list-none flex-col gap-3 p-0 text-left">
+            {included.map((item) => (
+              <li key={item} className="flex items-center gap-3 text-[15px] text-text">
+                <Check className="size-4 shrink-0 text-accent-strong" strokeWidth={2.5} />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/sign-up"
+            className="mt-8 block rounded-xl bg-accent px-6 py-3.5 text-base font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-10px_var(--accent-line)]"
+          >
+            Start free →
+          </Link>
         </div>
       </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "16px", "padding": "28px", "display": "flex", "flexDirection": "column", "gap": "20px", "transitionDelay": "0.16s"}}>
-        <p style={{"fontSize": "16px", "lineHeight": "1.65", "margin": "0", "textWrap": "pretty"}}>"The read-only validation and encrypted credentials are what got it past our security review. The auto-charts are what got it past everyone else."</p>
-        <div style={{"display": "flex", "alignItems": "center", "gap": "12px", "marginTop": "auto"}}>
-          <span style={{"width": "40px", "height": "40px", "borderRadius": "50%", "background": "var(--accent-soft)", "color": "var(--accent)", "display": "flex", "alignItems": "center", "justifyContent": "center", "fontWeight": "700", "fontSize": "14px"}}>PN</span>
-          <div><div style={{"fontSize": "14px", "fontWeight": "600"}}>Priya Nair</div><div style={{"fontSize": "12.5px", "color": "var(--faint)"}}>Platform Engineering · Helios Labs</div></div>
+    </section>
+  );
+}
+
+/* ----------------------------------- FAQ ---------------------------------- */
+
+const FAQS = [
+  ["Is my data safe?", "Yes. Connections are read-only and every generated query is validated before it runs — no writes, no DDL, no system tables. Credentials are encrypted at rest and never reach the browser."],
+  ["Which databases are supported?", "PostgreSQL today — including managed providers like RDS, Supabase, and Neon. More engines are on the roadmap."],
+  ["Can it modify or delete my data?", "No. Enforcement is layered: a read-only role, single-statement validation, bounded results, and query timeouts. QueryWise physically cannot write."],
+  ["Do I need to know SQL?", "No — you ask in plain English. But the generated SQL is always shown and explained, so analysts can verify every answer and learn from it."],
+  ["What happens when the AI gets it wrong?", "You see the SQL and the row counts, so wrong answers are visible rather than silent. Rephrase or correct in a follow-up — the conversation keeps context."],
+] as const;
+
+function Faq() {
+  return (
+    <section id="faq" className="bg-bg px-7 py-28">
+      <div className="mx-auto max-w-[760px]">
+        <div data-reveal>
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">FAQ</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">Fair questions</h2>
+        </div>
+        <div data-reveal className="mt-10 flex flex-col gap-3">
+          {FAQS.map(([q, a]) => (
+            <details key={q} className="group rounded-xl border border-border bg-surface px-5 transition-colors duration-200 open:border-accent-line hover:border-border-2">
+              <summary className="flex cursor-pointer select-none items-center justify-between gap-4 py-[18px] text-[15.5px] font-semibold text-text">
+                {q}
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-muted transition-transform duration-200 group-open:rotate-45">
+                  <span className="mb-px">+</span>
+                </span>
+              </summary>
+              <p className="m-0 pb-5 text-[14.5px] leading-relaxed text-muted">{a}</p>
+            </details>
+          ))}
         </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
+  );
+}
 
+/* -------------------------------- Final CTA -------------------------------- */
 
-<section id="pricing" data-screen-label="Pricing" style={{"padding": "110px 28px", "background": "var(--bg2)", "borderTop": "1px solid var(--border)", "borderBottom": "1px solid var(--border)"}}>
-  <div style={{"maxWidth": "1080px", "margin": "0 auto"}}>
-    <div data-reveal style={{"maxWidth": "600px", "margin": "0 auto", "textAlign": "center"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>PRICING</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>Free while in beta</h2>
-    </div>
-    <div style={{"display": "grid", "gridTemplateColumns": "repeat(auto-fit,minmax(280px,1fr))", "gap": "18px", "marginTop": "52px", "alignItems": "stretch"}}>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--accent-line)", "borderRadius": "18px", "padding": "32px", "display": "flex", "flexDirection": "column", "boxShadow": "0 0 0 4px var(--accent-soft)"}}>
-        <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center"}}><span style={{"fontSize": "17px", "fontWeight": "600"}}>Starter</span><span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "letterSpacing": "0.1em", "color": "var(--accent)", "border": "1px solid var(--accent-line)", "borderRadius": "999px", "padding": "4px 10px"}}>CURRENT</span></div>
-        <div style={{"fontSize": "44px", "fontWeight": "700", "letterSpacing": "-0.03em", "margin": "18px 0 4px"}}>$0</div>
-        <p style={{"fontSize": "13.5px", "color": "var(--faint)", "margin": "0 0 24px"}}>everything, free during beta</p>
-        <div style={{"display": "flex", "flexDirection": "column", "gap": "11px", "marginBottom": "28px"}}>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--accent)", "fontWeight": "700"}}>✓</span>&nbsp; Multiple database connections</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--accent)", "fontWeight": "700"}}>✓</span>&nbsp; Unlimited questions &amp; conversations</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--accent)", "fontWeight": "700"}}>✓</span>&nbsp; Dashboards &amp; auto-refreshing widgets</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--accent)", "fontWeight": "700"}}>✓</span>&nbsp; Public share links with passwords</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--accent)", "fontWeight": "700"}}>✓</span>&nbsp; CSV / JSON / XLSX export</span>
+function FinalCta() {
+  return (
+    <section className="relative overflow-hidden border-t border-border bg-bg-2 px-7 py-32 text-center">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-0 h-[300px] w-[600px] -translate-x-1/2 blur-[48px]"
+        style={{ background: "radial-gradient(closest-side, var(--accent-soft), transparent)" }}
+      />
+      <div className="relative mx-auto max-w-3xl">
+        <h2 data-reveal className="m-0 font-syne text-[clamp(32px,4.4vw,54px)] font-bold leading-[1.08] tracking-[-0.02em] [text-wrap:balance]">
+          Stop translating questions into SQL.
+        </h2>
+        <p data-reveal className="m-0 mt-4 text-[17px] leading-relaxed text-muted">
+          Connect a database — or the demo — and get your first answer in under a minute.
+        </p>
+        <div data-reveal className="mt-8 flex justify-center">
+          <Link
+            href="/sign-up"
+            className="group flex items-center gap-2 rounded-xl bg-accent px-8 py-4 text-base font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-10px_var(--accent-line)] active:translate-y-0 active:scale-[0.98]"
+          >
+            Start free
+            <ArrowRight className="size-4 transition-transform duration-150 group-hover:translate-x-0.5" strokeWidth={2} />
+          </Link>
         </div>
-        <a href="/sign-up" style={{"marginTop": "auto", "textAlign": "center", "background": "var(--accent)", "color": "var(--accent-ink)", "textDecoration": "none", "fontSize": "15px", "fontWeight": "600", "padding": "13px 0", "borderRadius": "11px", "transition": "transform 0.15s ease"}} className="hover-style-20">Start free →</a>
+        <p data-reveal className="m-0 mt-4 font-mono text-xs text-faint">No credit card · Free while in beta</p>
       </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "18px", "padding": "32px", "display": "flex", "flexDirection": "column", "transitionDelay": "0.08s"}}>
-        <div style={{"display": "flex", "justifyContent": "space-between", "alignItems": "center"}}><span style={{"fontSize": "17px", "fontWeight": "600"}}>Professional</span><span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "letterSpacing": "0.1em", "color": "var(--faint)", "border": "1px solid var(--border)", "borderRadius": "999px", "padding": "4px 10px"}}>COMING SOON</span></div>
-        <div style={{"fontSize": "44px", "fontWeight": "700", "letterSpacing": "-0.03em", "margin": "18px 0 4px", "color": "var(--muted)"}}>$—</div>
-        <p style={{"fontSize": "13.5px", "color": "var(--faint)", "margin": "0 0 24px"}}>for teams that live in their data</p>
-        <div style={{"display": "flex", "flexDirection": "column", "gap": "11px", "marginBottom": "28px"}}>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Team workspaces &amp; roles</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Scheduled dashboard refresh</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Bring your own LLM API key</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Priority support</span>
+    </section>
+  );
+}
+
+/* --------------------------------- Footer --------------------------------- */
+
+function Footer() {
+  return (
+    <footer className="border-t border-border bg-bg px-7 pb-10 pt-14">
+      <div className="mx-auto flex max-w-[1180px] flex-col items-center justify-between gap-6 sm:flex-row">
+        <div className="flex items-center gap-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="assets/logo.png" alt="QueryWise" className="size-7 object-contain" />
+          <span className="font-bold tracking-[-0.01em]">QueryWise</span>
         </div>
-        <a href="#faq" style={{"marginTop": "auto", "textAlign": "center", "border": "1px solid var(--border2)", "color": "var(--muted)", "textDecoration": "none", "fontSize": "15px", "fontWeight": "500", "padding": "13px 0", "borderRadius": "11px"}} className="hover-style-21">Join the waitlist</a>
-      </div>
-      <div data-reveal style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "18px", "padding": "32px", "display": "flex", "flexDirection": "column", "transitionDelay": "0.16s"}}>
-        <span style={{"fontSize": "17px", "fontWeight": "600"}}>Enterprise</span>
-        <div style={{"fontSize": "44px", "fontWeight": "700", "letterSpacing": "-0.03em", "margin": "18px 0 4px", "color": "var(--muted)"}}>Custom</div>
-        <p style={{"fontSize": "13.5px", "color": "var(--faint)", "margin": "0 0 24px"}}>security &amp; scale, on your terms</p>
-        <div style={{"display": "flex", "flexDirection": "column", "gap": "11px", "marginBottom": "28px"}}>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; SSO / SAML</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Self-hosted deployment</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Audit log exports &amp; retention</span>
-          <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; SLAs &amp; dedicated support</span>
+        <div className="flex items-center gap-6 text-sm text-muted">
+          <a href="#features" className="no-underline transition-colors hover:text-text">Features</a>
+          <a href="#pricing" className="no-underline transition-colors hover:text-text">Pricing</a>
+          <a href="#faq" className="no-underline transition-colors hover:text-text">FAQ</a>
+          <Link href="/sign-in" className="no-underline transition-colors hover:text-text">Sign in</Link>
         </div>
-        <a href="mailto:hello@querywise.app" style={{"marginTop": "auto", "textAlign": "center", "border": "1px solid var(--border2)", "color": "var(--muted)", "textDecoration": "none", "fontSize": "15px", "fontWeight": "500", "padding": "13px 0", "borderRadius": "11px"}} className="hover-style-22">Contact sales</a>
+        <p className="m-0 font-mono text-[11px] text-faint">© 2026 QueryWise · Ask your database anything</p>
       </div>
-    </div>
-  </div>
-</section>
-
-
-<section id="faq" data-screen-label="FAQ" style={{"padding": "110px 28px", "background": "var(--bg)"}}>
-  <div style={{"maxWidth": "760px", "margin": "0 auto"}}>
-    <div data-reveal style={{"textAlign": "center"}}>
-      <p style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "letterSpacing": "0.18em", "color": "var(--accent)", "margin": "0 0 14px"}}>FAQ</p>
-      <h2 style={{"fontSize": "clamp(30px,3.6vw,46px)", "fontWeight": "700", "letterSpacing": "-0.025em", "lineHeight": "1.1", "margin": "0"}}>Fair questions</h2>
-    </div>
-    <div data-reveal style={{"marginTop": "44px", "display": "flex", "flexDirection": "column", "gap": "12px"}}>
-      <details style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "0 24px"}}>
-        <summary style={{"cursor": "pointer", "fontSize": "16px", "fontWeight": "600", "padding": "19px 0", "display": "flex", "justifyContent": "space-between", "alignItems": "center", "gap": "16px"}}>Does it modify my database?<span style={{"color": "var(--accent)", "fontSize": "18px", "flexShrink": "0"}}>＋</span></summary>
-        <p style={{"fontSize": "15px", "lineHeight": "1.65", "color": "var(--muted)", "margin": "0", "padding": "0 0 20px"}}>Never. Every query is validated as a single read-only statement before it runs — writes, deletes, and schema changes are rejected outright. We also recommend connecting with a read-only database role for defense in depth.</p>
-      </details>
-      <details style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "0 24px"}}>
-        <summary style={{"cursor": "pointer", "fontSize": "16px", "fontWeight": "600", "padding": "19px 0", "display": "flex", "justifyContent": "space-between", "alignItems": "center", "gap": "16px"}}>Which databases are supported?<span style={{"color": "var(--accent)", "fontSize": "18px", "flexShrink": "0"}}>＋</span></summary>
-        <p style={{"fontSize": "15px", "lineHeight": "1.65", "color": "var(--muted)", "margin": "0", "padding": "0 0 20px"}}>PostgreSQL today — including hosted providers like Neon, Supabase, RDS, and Cloud SQL. The adapter architecture is built for more engines; MySQL and SQL Server are on the roadmap.</p>
-      </details>
-      <details style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "0 24px"}}>
-        <summary style={{"cursor": "pointer", "fontSize": "16px", "fontWeight": "600", "padding": "19px 0", "display": "flex", "justifyContent": "space-between", "alignItems": "center", "gap": "16px"}}>Can I see the SQL it runs?<span style={{"color": "var(--accent)", "fontSize": "18px", "flexShrink": "0"}}>＋</span></summary>
-        <p style={{"fontSize": "15px", "lineHeight": "1.65", "color": "var(--muted)", "margin": "0", "padding": "0 0 20px"}}>Always. Every answer includes the exact generated SQL plus a plain-English explanation of what it does. Nothing runs that you can't inspect.</p>
-      </details>
-      <details style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "0 24px"}}>
-        <summary style={{"cursor": "pointer", "fontSize": "16px", "fontWeight": "600", "padding": "19px 0", "display": "flex", "justifyContent": "space-between", "alignItems": "center", "gap": "16px"}}>Can I use my own AI API key?<span style={{"color": "var(--accent)", "fontSize": "18px", "flexShrink": "0"}}>＋</span></summary>
-        <p style={{"fontSize": "15px", "lineHeight": "1.65", "color": "var(--muted)", "margin": "0", "padding": "0 0 20px"}}>Yes — choose your provider and model in settings. Groq, Google Gemini, and Anthropic are supported today.</p>
-      </details>
-      <details style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "0 24px"}}>
-        <summary style={{"cursor": "pointer", "fontSize": "16px", "fontWeight": "600", "padding": "19px 0", "display": "flex", "justifyContent": "space-between", "alignItems": "center", "gap": "16px"}}>Is my data sent to the AI?<span style={{"color": "var(--accent)", "fontSize": "18px", "flexShrink": "0"}}>＋</span></summary>
-        <p style={{"fontSize": "15px", "lineHeight": "1.65", "color": "var(--muted)", "margin": "0", "padding": "0 0 20px"}}>Only your question and relevant schema metadata (table and column names, types, descriptions) are sent to generate SQL. Query results stay in your workspace, and your credentials never leave our servers — encrypted at rest.</p>
-      </details>
-      <details style={{"background": "var(--surface)", "border": "1px solid var(--border)", "borderRadius": "14px", "padding": "0 24px"}}>
-        <summary style={{"cursor": "pointer", "fontSize": "16px", "fontWeight": "600", "padding": "19px 0", "display": "flex", "justifyContent": "space-between", "alignItems": "center", "gap": "16px"}}>How secure is QueryWise?<span style={{"color": "var(--accent)", "fontSize": "18px", "flexShrink": "0"}}>＋</span></summary>
-        <p style={{"fontSize": "15px", "lineHeight": "1.65", "color": "var(--muted)", "margin": "0", "padding": "0 0 20px"}}>Credentials are encrypted server-side and never sent to the browser. Queries pass a strict read-only validation gate. Public shares run on a separate trust path with bounded results and never expose SQL, credentials, or internal IDs. Every sensitive action lands in an append-only audit log.</p>
-      </details>
-    </div>
-  </div>
-</section>
-
-
-<section data-screen-label="Final CTA" style={{"position": "relative", "overflow": "hidden", "padding": "130px 28px", "background": "var(--bg2)", "borderTop": "1px solid var(--border)", "textAlign": "center"}}>
-  <div style={{"position": "absolute", "bottom": "-160px", "left": "50%", "transform": "translateX(-50%)", "width": "700px", "height": "380px", "background": "radial-gradient(closest-side,var(--accent-soft),transparent)", "filter": "blur(40px)", "pointerEvents": "none"}}></div>
-  <div data-reveal style={{"position": "relative", "maxWidth": "680px", "margin": "0 auto", "display": "flex", "flexDirection": "column", "alignItems": "center"}}>
-    <img src="assets/logo.png" alt="" style={{"width": "56px", "height": "56px", "objectFit": "contain", "marginBottom": "24px"}} />
-    <h2 style={{"fontSize": "clamp(32px,4.4vw,54px)", "fontWeight": "700", "letterSpacing": "-0.03em", "lineHeight": "1.08", "margin": "0", "textWrap": "balance"}}>Stop translating questions into SQL.</h2>
-    <p style={{"fontSize": "17px", "lineHeight": "1.6", "color": "var(--muted)", "margin": "18px 0 0"}}>Connect a database and ask your first question in under a minute.</p>
-    <div style={{"display": "flex", "gap": "14px", "marginTop": "32px", "flexWrap": "wrap", "justifyContent": "center"}}>
-      <a href="/sign-up" style={{"background": "var(--accent)", "color": "var(--accent-ink)", "textDecoration": "none", "fontSize": "16px", "fontWeight": "600", "padding": "14px 30px", "borderRadius": "12px", "transition": "transform 0.15s ease,box-shadow 0.15s ease"}} className="hover-style-23">Start free →</a>
-      <a href="#top" style={{"border": "1px solid var(--border2)", "color": "var(--text)", "textDecoration": "none", "fontSize": "16px", "fontWeight": "500", "padding": "14px 30px", "borderRadius": "12px", "background": "var(--surface)"}} className="hover-style-24">Replay the demo ↑</a>
-    </div>
-  </div>
-</section>
-
-
-<footer data-screen-label="Footer" style={{"background": "var(--bg)", "borderTop": "1px solid var(--border)", "padding": "54px 28px 40px"}}>
-  <div style={{"maxWidth": "1180px", "margin": "0 auto", "display": "flex", "flexWrap": "wrap", "gap": "44px", "justifyContent": "space-between"}}>
-    <div style={{"maxWidth": "280px"}}>
-      <div style={{"display": "flex", "alignItems": "center", "gap": "10px", "marginBottom": "14px"}}>
-        <img src="assets/logo.png" alt="QueryWise" style={{"width": "26px", "height": "26px", "objectFit": "contain"}} />
-        <span style={{"fontWeight": "700", "fontSize": "16px"}}>QueryWise</span>
-      </div>
-      <p style={{"fontSize": "13.5px", "lineHeight": "1.6", "color": "var(--faint)", "margin": "0"}}>Conversational BI for PostgreSQL. Ask in English, get SQL, charts, and dashboards you can share.</p>
-    </div>
-    <div style={{"display": "flex", "gap": "60px", "flexWrap": "wrap"}}>
-      <div style={{"display": "flex", "flexDirection": "column", "gap": "10px"}}>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "var(--faint)", "marginBottom": "4px"}}>PRODUCT</span>
-        <a href="#features" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-25">Features</a>
-        <a href="#how" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-26">How it works</a>
-        <a href="#pricing" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-27">Pricing</a>
-      </div>
-      <div style={{"display": "flex", "flexDirection": "column", "gap": "10px"}}>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "var(--faint)", "marginBottom": "4px"}}>RESOURCES</span>
-        <a href="#faq" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-28">FAQ</a>
-        <a href="/docs" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-29">Docs</a>
-        <a href="/changelog" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-30">Changelog</a>
-      </div>
-      <div style={{"display": "flex", "flexDirection": "column", "gap": "10px"}}>
-        <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "var(--faint)", "marginBottom": "4px"}}>COMPANY</span>
-        <a href="mailto:hello@querywise.app" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-31">Contact</a>
-        <a href="/privacy" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-32">Privacy</a>
-        <a href="/terms" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-33">Terms</a>
-      </div>
-    </div>
-  </div>
-  <div style={{"maxWidth": "1180px", "margin": "40px auto 0", "paddingTop": "22px", "borderTop": "1px solid var(--border)", "display": "flex", "justifyContent": "space-between", "flexWrap": "wrap", "gap": "12px"}}>
-    <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)"}}>© 2026 QueryWise</span>
-    <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)"}}>read-only by design 🔒</span>
-  </div>
-</footer>
-
-    </div>
+    </footer>
   );
 }

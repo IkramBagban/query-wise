@@ -1,171 +1,171 @@
-'use client';
-import React, { useRef, useState, useEffect } from 'react';
-import { motion, useScroll, useTransform, AnimatePresence } from 'motion/react';
+"use client";
 
-const FEATS = [
-  { id: 'chat', icon: '💬', title: 'Chat, not query', tag: 'natural language', crumb: 'querywise.app/chats', headline: 'Ask in plain English.', line: 'Follow-ups keep their context.' },
-  { id: 'sql', icon: '⚡', title: 'See the SQL', tag: 'never a black box', crumb: 'generated query · explained', headline: 'Generated, explained, read-only.', line: 'Nothing runs you can’t inspect.' },
-  { id: 'charts', icon: '📊', title: 'Charts, automatic', tag: 'zero config', crumb: 'visualization · auto-selected', headline: 'The right chart, picked for you.', line: 'From the shape of your data.' },
-  { id: 'dashboards', icon: '📈', title: 'Live dashboards', tag: 'pin & refresh', crumb: 'dashboards/company-kpis', headline: 'Pin answers as widgets.', line: 'They refresh themselves.' },
-  { id: 'sharing', icon: '🔗', title: 'Public sharing', tag: 'secure links', crumb: 'shared/x7f2 · public', headline: 'Share a link, live data.', line: 'Password optional. SQL never exposed.' },
-  { id: 'security', icon: '🔒', title: 'Safe by default', tag: 'passes review', crumb: 'security', headline: 'Encrypted, read-only, audited.', line: 'Credentials never touch the browser.' },
-  { id: 'connections', icon: '🗂', title: 'Every database', tag: 'one workspace', crumb: 'connections', headline: 'Dev, staging, prod.', line: 'All in one place, always synced.' }
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  BarChart3,
+  Check,
+  Database,
+  LayoutDashboard,
+  Link2,
+  Lock,
+  MessageSquareText,
+  ShieldCheck,
+  SquareTerminal,
+  type LucideIcon,
+} from "lucide-react";
+
+/**
+ * Feature showcase: auto-advancing scenes in a browser frame.
+ * Replaces the previous 800vh scroll-jacked section — same story, no hijacked
+ * scroll. Advances every 6s, pauses on hover, and any item is clickable.
+ */
+
+const ADVANCE_MS = 6000;
+
+interface Feature {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  tag: string;
+  crumb: string;
+  headline: string;
+  line: string;
+}
+
+const FEATURES: Feature[] = [
+  { id: "chat", icon: MessageSquareText, title: "Chat, not query", tag: "natural language", crumb: "querywise.app/chats", headline: "Ask in plain English.", line: "Follow-ups keep their context." },
+  { id: "sql", icon: SquareTerminal, title: "See the SQL", tag: "never a black box", crumb: "generated query · explained", headline: "Generated, explained, read-only.", line: "Nothing runs you can't inspect." },
+  { id: "charts", icon: BarChart3, title: "Charts, automatic", tag: "zero config", crumb: "visualization · auto-selected", headline: "The right chart, picked for you.", line: "From the shape of your data." },
+  { id: "dashboards", icon: LayoutDashboard, title: "Live dashboards", tag: "pin & refresh", crumb: "dashboards/company-kpis", headline: "Pin answers as widgets.", line: "They refresh themselves." },
+  { id: "sharing", icon: Link2, title: "Public sharing", tag: "secure links", crumb: "shared/x7f2 · public", headline: "Share a link, live data.", line: "Password optional. SQL never exposed." },
+  { id: "security", icon: ShieldCheck, title: "Safe by default", tag: "passes review", crumb: "security", headline: "Encrypted, read-only, audited.", line: "Credentials never touch the browser." },
+  { id: "connections", icon: Database, title: "Every database", tag: "one workspace", crumb: "connections", headline: "Dev, staging, prod.", line: "All in one place, always synced." },
 ];
 
 export default function FeaturesJourney() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  const scrollableSegments = FEATS.length;
-
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ['start start', 'end end']
-  });
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [inView, setInView] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    return scrollYProgress.on('change', (v) => {
-      let nextIndex = Math.round(v * scrollableSegments);
-      if (nextIndex >= FEATS.length) nextIndex = FEATS.length - 1;
-      if (nextIndex < 0) nextIndex = 0;
-      setActiveIndex(nextIndex);
-    });
-  }, [scrollYProgress]);
+    const node = sectionRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.25 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
-  const fillEnd = (FEATS.length - 1) / scrollableSegments;
-  const lineScaleY = useTransform(scrollYProgress, [0, fillEnd], ['0%', '100%']);
+  useEffect(() => {
+    if (paused || !inView || reduceMotion) return;
+    const timer = window.setInterval(() => setActive((i) => (i + 1) % FEATURES.length), ADVANCE_MS);
+    return () => window.clearInterval(timer);
+  }, [paused, inView, active, reduceMotion]);
 
-  const scrollToFeature = (index: number) => {
-    if (!containerRef.current) return;
-    const totalScrollHeight = containerRef.current.scrollHeight - window.innerHeight;
-    const scrollTarget = containerRef.current.offsetTop + (totalScrollHeight * (index / scrollableSegments));
-    window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
-  };
-
-  const cur = FEATS[activeIndex];
+  const pick = useCallback((i: number) => setActive(i), []);
+  const current = FEATURES[active];
 
   return (
-    <section id="features" data-screen-label="Features" style={{ background: 'var(--bg)' }}>
-      <div ref={containerRef} style={{ height: '800vh', position: 'relative' }}>
-        
-        <div style={{ position: 'sticky', top: 0, height: '100vh', display: 'flex', flexDirection: 'column', padding: 'clamp(20px, 4vh, 60px) 28px', overflow: 'hidden' }}>
-          <div style={{ maxWidth: '1180px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            
-            <div data-reveal style={{ maxWidth: '640px', flexShrink: 0 }}>
-              <p style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', letterSpacing: '0.18em', color: 'var(--accent)', margin: '0 0 clamp(6px, 1vh, 10px)' }}>FEATURES</p>
-              <h2 style={{ fontSize: 'clamp(28px,3.2vw,40px)', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.1, margin: 0 }}>
-                From plain English to business insight.
-              </h2>
-            </div>
-            
-            <div data-reveal style={{ display: 'grid', gridTemplateColumns: 'clamp(260px, 25vw, 290px) 1fr', gap: 'clamp(16px, 3vw, 32px)', marginTop: 'clamp(16px, 3vh, 30px)', alignItems: 'stretch', flex: 1, minHeight: 0 }}>
-              
-              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingBottom: '0' }}>
-                <div style={{ position: 'absolute', left: 'clamp(22px, 3vh, 26px)', top: '26px', bottom: '26px', width: '2px', background: 'var(--border)' }} />
-                
-                <motion.div 
-                  style={{ 
-                    position: 'absolute', left: 'clamp(22px, 3vh, 26px)', top: '26px', bottom: '26px', width: '2px', 
-                    background: 'var(--accent)', transformOrigin: 'top', height: lineScaleY 
-                  }} 
-                />
+    <section id="features" ref={sectionRef} className="border-t border-border bg-bg px-7 py-28">
+      <div className="mx-auto max-w-[1180px]">
+        <div data-reveal className="max-w-2xl">
+          <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Features</p>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em] text-text">
+            From plain English to business insight.
+          </h2>
+        </div>
 
-                {FEATS.map((f, i) => {
-                  const on = i === activeIndex;
-                  return (
-                    <button 
-                      key={i}
-                      onClick={() => scrollToFeature(i)}
-                      style={{ 
-                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 'clamp(8px, 1.5vh, 12px)', 
-                        padding: 'clamp(6px, 1.2vh, 10px)', borderRadius: '12px', cursor: 'pointer',
-                        background: on ? 'var(--surface2)' : 'rgba(0,0,0,0)',
-                        position: 'relative',
-                        zIndex: 1,
-                        border: '1px solid',
-                        borderColor: on ? 'var(--border)' : 'rgba(0,0,0,0)',
-                        transition: 'background 0.2s ease, border-color 0.2s ease'
-                      }}
-                      className="hover-style-10"
-                    >
-                      <motion.div 
-                        animate={{ 
-                          backgroundColor: on ? 'var(--accent)' : 'var(--surface)',
-                          borderColor: on ? 'var(--accent)' : 'var(--border)',
-                          color: on ? 'var(--accent-ink)' : 'var(--text)'
-                        }}
-                        style={{ 
-                          width: 'clamp(28px, 4vh, 32px)', height: 'clamp(28px, 4vh, 32px)', flexShrink: 0, borderRadius: '10px',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px',
-                          border: '1px solid',
-                          zIndex: 2,
-                        }}
-                      >
-                        {f.icon}
-                      </motion.div>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                        <motion.span animate={{ color: on ? 'var(--text)' : 'var(--muted)' }} style={{ fontSize: 'clamp(13px, 1.5vh, 14px)', fontWeight: 600 }}>{f.title}</motion.span>
-                        <span style={{ fontSize: 'clamp(11px, 1.2vh, 11.5px)', color: 'var(--faint)', lineHeight: 1.3 }}>{f.tag}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              
-              <div style={{ position: 'relative', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '18px', boxShadow: 'var(--shadow)', overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', flexShrink: 0 }}>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#F26D6D' }}></span>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#F2C36D' }}></span>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#5FCB7E' }}></span>
-                  <motion.span 
-                    key={cur.crumb}
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--faint)', marginLeft: '10px' }}
+        <div
+          data-reveal
+          className="mt-12 grid items-stretch gap-6 lg:grid-cols-[300px_1fr]"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+        >
+          {/* Feature list */}
+          <div className="flex snap-x gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0" role="tablist" aria-label="Features">
+            {FEATURES.map((feature, i) => {
+              const on = i === active;
+              const Icon = feature.icon;
+              return (
+                <button
+                  key={feature.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => pick(i)}
+                  className={`relative flex shrink-0 snap-start items-center gap-3 overflow-hidden rounded-xl border px-3.5 py-3 text-left transition-colors duration-200 lg:shrink ${
+                    on ? "border-border bg-surface-2" : "border-transparent hover:bg-surface-2/50"
+                  }`}
+                >
+                  <span
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-[10px] border transition-colors duration-200 ${
+                      on ? "border-accent bg-accent text-accent-ink" : "border-border bg-surface text-muted"
+                    }`}
                   >
-                    {cur.crumb}
-                  </motion.span>
-                </div>
-                
-                <div style={{ flex: 1, padding: 'clamp(16px, 3vh, 30px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-                  
+                    <Icon className="size-4" strokeWidth={1.75} />
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className={`whitespace-nowrap text-sm font-semibold transition-colors duration-200 lg:whitespace-normal ${on ? "text-text" : "text-muted"}`}>
+                      {feature.title}
+                    </span>
+                    <span className="whitespace-nowrap text-[11px] leading-tight text-faint lg:whitespace-normal">{feature.tag}</span>
+                  </span>
+                  {/* auto-advance progress rail */}
+                  {on && !reduceMotion ? (
+                    <span className="absolute inset-x-3.5 bottom-1 hidden h-0.5 overflow-hidden rounded-full bg-border lg:block" aria-hidden>
+                      <span
+                        key={`${active}-${paused}`}
+                        className="block h-full rounded-full bg-accent"
+                        style={{ animation: `qw-feature-progress ${ADVANCE_MS}ms linear forwards`, animationPlayState: paused ? "paused" : "running" }}
+                      />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Scene panel */}
+          <div className="relative flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow)] lg:min-h-[520px] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow)]">
+            <BrowserBar crumb={current.crumb} />
+            <div className="relative flex min-h-0 flex-1 flex-col px-5 pb-5 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={`${active}-caption`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                  className="mb-5 text-[15px] leading-normal text-muted"
+                >
+                  <b className="font-semibold text-text">{current.headline}</b> {current.line}
+                </motion.p>
+              </AnimatePresence>
+              <div className="relative min-h-0 flex-1">
+                <AnimatePresence mode="wait">
                   <motion.div
-                    key={activeIndex + '-text'}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.3 }}
-                    style={{ marginBottom: 'clamp(12px, 2vh, 20px)' }}
+                    key={active}
+                    initial={{ opacity: 0, x: 20, scale: 0.99 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, x: -20, scale: 0.99 }}
+                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                    className="absolute inset-0"
                   >
-                    <p style={{ fontSize: '15px', lineHeight: 1.5, color: 'var(--muted)', textAlign: 'center', maxWidth: '440px', margin: '0 auto' }}>
-                      <b style={{ color: 'var(--text)', fontWeight: 600 }}>{cur.headline}</b> {cur.line}
-                    </p>
+                    {active === 0 && <ChatScene />}
+                    {active === 1 && <SqlScene />}
+                    {active === 2 && <ChartScene />}
+                    {active === 3 && <DashboardScene />}
+                    {active === 4 && <ShareScene />}
+                    {active === 5 && <SecurityScene />}
+                    {active === 6 && <ConnectionsScene />}
                   </motion.div>
-
-                  <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={activeIndex}
-                        initial={{ opacity: 0, x: 24, scale: 0.98 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: -24, scale: 0.98 }}
-                        transition={{ duration: 0.4, type: 'spring', bounce: 0 }}
-                        style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-                      >
-                        {activeIndex === 0 && <ChatVisual />}
-                        {activeIndex === 1 && <SqlVisual />}
-                        {activeIndex === 2 && <ChartVisual />}
-                        {activeIndex === 3 && <DashboardVisual />}
-                        {activeIndex === 4 && <ShareVisual />}
-                        {activeIndex === 5 && <SecurityVisual />}
-                        {activeIndex === 6 && <ConnectionsVisual />}
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                  
-                </div>
+                </AnimatePresence>
               </div>
-
             </div>
           </div>
         </div>
@@ -174,298 +174,401 @@ export default function FeaturesJourney() {
   );
 }
 
-function ChatVisual() {
-  const text = "last month's revenue";
-  const [typed, setTyped] = useState("");
-  
+/* ------------------------------- Chrome ---------------------------------- */
+
+function BrowserBar({ crumb }: { crumb: string }) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-2 px-4 py-2.5">
+      <span className="size-[10px] rounded-full bg-[#F26D6D]" />
+      <span className="size-[10px] rounded-full bg-[#F2C36D]" />
+      <span className="size-[10px] rounded-full bg-[#5FCB7E]" />
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={crumb}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 4 }}
+          transition={{ duration: 0.2 }}
+          className="ml-2.5 flex items-center gap-1.5 font-mono text-[11px] text-faint"
+        >
+          <Lock className="size-3" strokeWidth={1.75} />
+          {crumb}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const spring = { type: "spring" as const, stiffness: 380, damping: 32 };
+
+/* -------------------------------- Scenes ---------------------------------- */
+
+function ChatScene() {
+  const question = "Show me last month's revenue";
+  const [typed, setTyped] = useState(0);
+  const [answered, setAnswered] = useState(false);
+
   useEffect(() => {
-    let t = 0;
-    const interval = setInterval(() => {
-      setTyped(text.substring(0, t));
-      t++;
-      if (t > text.length) clearInterval(interval);
-    }, 60);
-    return () => clearInterval(interval);
+    let i = 0;
+    const typer = window.setInterval(() => {
+      i += 1;
+      setTyped(i);
+      if (i >= question.length) {
+        window.clearInterval(typer);
+        window.setTimeout(() => setAnswered(true), 550);
+      }
+    }, 34);
+    return () => window.clearInterval(typer);
   }, []);
 
+  const bars = [46, 60, 52, 72, 66, 88];
+
   return (
-    <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ alignSelf: 'flex-start', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '13px 13px 13px 4px', padding: '11px 16px', fontSize: '14px', color: 'var(--muted)', maxWidth: '85%' }}>
-        Top seller: <b style={{ color: 'var(--text)', fontWeight: 600 }}>Trail Pack</b> — 4,210 units ↓
+    <div className="mx-auto flex h-full max-w-md flex-col justify-end gap-3">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="max-w-[85%] self-start rounded-[14px] rounded-bl-md border border-border bg-surface-2 px-4 py-2.5 text-sm text-muted">
+        Top seller: <b className="font-semibold text-text">Trail Pack</b> — 4,210 units
       </motion.div>
-      <div style={{ alignSelf: 'flex-end', background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', borderRadius: '13px 13px 4px 13px', padding: '11px 16px', fontSize: '14px', minHeight: '44px', display: 'flex', alignItems: 'center' }}>
-        <span style={{ color: 'var(--text)' }}>Show me {typed}</span>
-        <motion.span 
-          animate={{ opacity: [1, 0] }}
-          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-          style={{ display: 'inline-block', width: '2px', height: '16px', background: 'var(--accent)', marginLeft: '4px' }}
-        />
+      <div className="flex min-h-[42px] max-w-[85%] items-center self-end rounded-[14px] rounded-br-md border border-accent-line bg-accent-soft px-4 py-2.5 text-sm text-text">
+        {question.slice(0, typed)}
+        {typed < question.length ? <span className="ml-0.5 inline-block h-4 w-0.5 bg-accent" style={{ animation: "qw-blink 0.9s step-end infinite" }} /> : null}
+      </div>
+      <div className="min-h-[148px]">
+        {answered ? (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="max-w-[92%] self-start rounded-[14px] rounded-bl-md border border-border bg-surface-2 p-4">
+            <p className="text-sm text-muted">
+              Revenue last month was <b className="font-semibold text-text">$84,300</b> — up <b className="font-semibold text-accent-strong">12%</b> on May.
+            </p>
+            <div className="mt-3 flex h-16 items-end gap-1.5">
+              {bars.map((h, i) => (
+                <motion.span
+                  key={i}
+                  initial={{ height: 0 }}
+                  animate={{ height: `${h}%` }}
+                  transition={{ delay: 0.15 + i * 0.05, ...spring }}
+                  className="flex-1 rounded-t-[3px] bg-gradient-to-b from-accent-strong to-accent"
+                />
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function SqlVisual() {
-  const codeLines = [
-    { t: "SELECT", c: "#5EE08A" }, { t: " p.name, ", c: "#C9D6CC" }, { t: "SUM", c: "#63B3ED" }, { t: "(oi.quantity)\n", c: "#C9D6CC" },
-    { t: "FROM", c: "#5EE08A" }, { t: " order_items oi\n", c: "#C9D6CC" },
-    { t: "JOIN", c: "#5EE08A" }, { t: " products p ", c: "#C9D6CC" }, { t: "ON", c: "#5EE08A" }, { t: " p.id = oi.product_id\n", c: "#C9D6CC" },
-    { t: "GROUP BY", c: "#5EE08A" }, { t: " 1 ", c: "#C9D6CC" }, { t: "ORDER BY", c: "#5EE08A" }, { t: " 2 ", c: "#C9D6CC" }, { t: "DESC", c: "#5EE08A" }, { t: ";", c: "#C9D6CC" }
-  ];
-  
-  return (
-    <div style={{ width: '100%', maxWidth: '460px', background: 'var(--code-bg)', border: '1px solid var(--border)', borderRadius: '14px', padding: 'clamp(12px, 2vh, 20px) clamp(16px, 2vh, 22px)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', letterSpacing: '0.14em', color: '#5F6F63' }}>GENERATED SQL</span>
-        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', color: '#5EE08A', border: '1px solid rgba(94,224,138,0.3)', borderRadius: '999px', padding: '3px 10px' }}>✓ read-only</span>
-      </div>
-      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 'clamp(11px, 1.5vh, 13px)', lineHeight: 1.85, whiteSpace: 'pre-wrap' }}>
-        {codeLines.map((tok, i) => (
-          <motion.span
-            key={i}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: i * 0.1, duration: 0.2 }}
-            style={{ color: tok.c }}
-          >
-            {tok.t}
-          </motion.span>
-        ))}
-      </div>
-    </div>
-  );
-}
+const SQL_SCENE_TOKENS: Array<[string, string]> = [
+  ["SELECT", "kw"], [" p.name, ", "pl"], ["SUM", "fn"], ["(oi.quantity) ", "pl"], ["AS", "kw"], [" units_sold\n", "pl"],
+  ["FROM", "kw"], [" order_items oi\n", "pl"],
+  ["JOIN", "kw"], [" products p ", "pl"], ["ON", "kw"], [" p.id = oi.product_id\n", "pl"],
+  ["GROUP BY", "kw"], [" ", "pl"], ["1", "num"], [" ", "pl"], ["ORDER BY", "kw"], [" ", "pl"], ["2", "num"], [" ", "pl"], ["DESC", "kw"], [";", "pl"],
+];
 
-function ChartVisual() {
-  const [chartType, setChartType] = useState(0); 
-  
+const TOKEN_CLASS: Record<string, string> = {
+  kw: "text-[var(--code-kw)]",
+  fn: "text-[var(--code-fn)]",
+  num: "text-[var(--code-num)]",
+  pl: "text-code-text",
+};
+
+function SqlScene() {
+  const [shown, setShown] = useState(0);
+  const done = shown >= SQL_SCENE_TOKENS.length;
+
   useEffect(() => {
-    const int = setInterval(() => {
-      setChartType(p => (p + 1) % 4);
-    }, 2000);
-    return () => clearInterval(int);
+    const timer = window.setInterval(() => {
+      setShown((current) => {
+        if (current >= SQL_SCENE_TOKENS.length) {
+          window.clearInterval(timer);
+          return current;
+        }
+        return current + 1;
+      });
+    }, 55);
+    return () => window.clearInterval(timer);
   }, []);
 
-  const types = ['Bar', 'Line', 'Area', 'Pie'];
+  return (
+    <div className="mx-auto flex h-full max-w-lg flex-col justify-center gap-3">
+      <div className="rounded-[14px] border border-border bg-code-bg p-5">
+        <div className="mb-3.5 flex items-center justify-between">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">Generated SQL</span>
+          {done ? (
+            <span className="rounded-full border border-accent-line px-2.5 py-0.5 font-mono text-[10.5px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+              ✓ read-only
+            </span>
+          ) : (
+            <span className="font-mono text-[10.5px] text-faint">validating…</span>
+          )}
+        </div>
+        <pre className="whitespace-pre-wrap font-mono text-[12.5px] leading-[1.85]">
+          {SQL_SCENE_TOKENS.slice(0, shown).map(([text, kind], i) => (
+            <span key={i} className={TOKEN_CLASS[kind]}>{text}</span>
+          ))}
+          {!done ? <span className="ml-0.5 inline-block h-3.5 w-0.5 bg-accent align-middle" style={{ animation: "qw-blink 0.9s step-end infinite" }} /> : null}
+        </pre>
+      </div>
+      {done ? (
+        <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="px-1 text-[13px] leading-relaxed text-faint">
+          <b className="font-medium text-muted">In plain English:</b> total units sold per product, best sellers first.
+        </motion.p>
+      ) : null}
+    </div>
+  );
+}
+
+function ChartScene() {
+  const [type, setType] = useState(0);
+  const types = ["Bar", "Line", "Area", "Pie"] as const;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setType((t) => (t + 1) % types.length), 1800);
+    return () => window.clearInterval(timer);
+  }, [types.length]);
+
+  const linePath = "M0,66 L14,48 L28,56 L42,30 L57,38 L71,14 L85,22 L100,6";
 
   return (
-    <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ display: 'flex', gap: '6px', marginBottom: 'clamp(16px, 3vh, 30px)' }}>
-        {types.map((t, i) => (
-          <motion.span
-            key={t}
-            animate={{ 
-              backgroundColor: chartType === i ? 'var(--accent)' : 'rgba(0,0,0,0)',
-              color: chartType === i ? 'var(--accent-ink)' : 'var(--muted)',
-              borderColor: chartType === i ? 'rgba(0,0,0,0)' : 'var(--border)'
-            }}
-            style={{ fontSize: '12px', fontWeight: 600, border: '1px solid', borderRadius: '8px', padding: '5px 13px', transition: 'all 0.3s ease' }}
+    <div className="mx-auto flex h-full max-w-md flex-col justify-center">
+      <div className="mb-6 flex justify-center gap-1.5">
+        {types.map((label, i) => (
+          <span
+            key={label}
+            className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors duration-300 ${
+              type === i ? "border-transparent bg-accent text-accent-ink" : "border-border text-muted"
+            }`}
           >
-            {t}
-          </motion.span>
+            {label}
+          </span>
         ))}
       </div>
-      
-      <div style={{ height: 'clamp(120px, 18vh, 180px)', width: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <AnimatePresence mode="popLayout">
+      <div className="relative h-44">
+        {/* gridlines so the chart reads as a chart, not floating shapes */}
+        <div className="absolute inset-0 flex flex-col justify-between" aria-hidden>
+          {[0, 1, 2, 3].map((i) => <span key={i} className="h-px w-full bg-border/60" />)}
+        </div>
+        <AnimatePresence mode="wait">
           <motion.div
-            key={chartType}
-            initial={{ opacity: 0, scale: 0.9 }}
+            key={type}
+            initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.1 }}
-            transition={{ duration: 0.5 }}
-            style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '8px' }}
+            exit={{ opacity: 0, scale: 1.03 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute inset-0 flex items-end justify-center gap-2"
           >
-            {chartType === 0 && (
-              <>
-                {[38, 52, 44, 66, 58, 80, 72, 96].map((h, i) => (
-                  <motion.div key={i} initial={{ height: 0 }} animate={{ height: `${h}%` }} transition={{ delay: i*0.05, type: 'spring' }} style={{ flex: 1, background: 'linear-gradient(180deg,var(--accent-strong),var(--accent))', borderRadius: '5px 5px 2px 2px' }} />
-                ))}
-              </>
-            )}
-            {chartType === 1 && (
-              <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                <motion.path 
-                  d="M0,70 L15,50 L30,60 L45,30 L60,40 L75,10 L90,20 L100,5" 
-                  fill="none" stroke="var(--accent)" strokeWidth="3" 
-                  initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1 }}
-                />
+            {type === 0 &&
+              [38, 52, 44, 66, 58, 80, 72, 96].map((h, i) => (
+                <motion.div key={i} initial={{ height: 0 }} animate={{ height: `${h}%` }} transition={{ delay: i * 0.04, ...spring }} className="flex-1 rounded-t-[5px] bg-gradient-to-b from-accent-strong to-accent" />
+              ))}
+            {type === 1 && (
+              <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="overflow-visible">
+                <motion.path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.9, ease: "easeOut" }} vectorEffect="non-scaling-stroke" />
               </svg>
             )}
-            {chartType === 2 && (
-              <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                <motion.path 
-                  d="M0,70 L15,50 L30,60 L45,30 L60,40 L75,10 L90,20 L100,5 L100,100 L0,100 Z" 
-                  fill="var(--accent-soft)" stroke="var(--accent)" strokeWidth="2"
-                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                />
+            {type === 2 && (
+              <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="qw-area" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+                <motion.path d={`${linePath} L100,100 L0,100 Z`} fill="url(#qw-area)" stroke="var(--accent)" strokeWidth="2" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} vectorEffect="non-scaling-stroke" />
               </svg>
             )}
-            {chartType === 3 && (
-              <svg width="clamp(100px, 14vh, 140px)" height="clamp(100px, 14vh, 140px)" viewBox="0 0 32 32">
-                <motion.circle r="16" cx="16" cy="16" fill="var(--accent-soft)" />
-                <motion.circle r="16" cx="16" cy="16" fill="transparent" stroke="var(--accent)" strokeWidth="32" strokeDasharray="60 100" initial={{ strokeDasharray: "0 100" }} animate={{ strokeDasharray: "60 100" }} transition={{ duration: 1 }} />
-              </svg>
+            {type === 3 && (
+              <div className="flex size-full items-center justify-center">
+                <svg width="132" height="132" viewBox="0 0 32 32" className="-rotate-90">
+                  <circle r="12" cx="16" cy="16" fill="none" stroke="var(--accent-soft)" strokeWidth="7" />
+                  <motion.circle r="12" cx="16" cy="16" fill="none" stroke="var(--accent)" strokeWidth="7" strokeDasharray="75.4" initial={{ strokeDashoffset: 75.4 }} animate={{ strokeDashoffset: 27 }} transition={{ duration: 0.9, ease: "easeOut" }} />
+                </svg>
+              </div>
             )}
           </motion.div>
         </AnimatePresence>
       </div>
+      <p className="mt-4 text-center font-mono text-[11px] text-faint">picked from the shape of your data — override anytime</p>
     </div>
   );
 }
 
-function DashboardVisual() {
+function DashboardScene() {
   const [arranged, setArranged] = useState(false);
-  
+
   useEffect(() => {
-    const t = setTimeout(() => setArranged(true), 1200);
-    return () => clearTimeout(t);
+    const timer = window.setTimeout(() => setArranged(true), 1000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
-    <div style={{ width: '100%', maxWidth: '440px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-      
-      <motion.div layout transition={{ type: 'spring', damping: 20 }} style={{ gridColumn: arranged ? 'span 2' : 'span 3', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '15px', height: '130px', display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600, marginBottom: 'auto' }}>Monthly revenue</span>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '5px', height: '58%' }}>
-          {[42,54,48,64,78].map((h,i) => <div key={i} style={{ flex: 1, height: `${h}%`, background: 'var(--accent)', opacity: 0.5 + (i*0.1), borderRadius: '3px' }} />)}
+    <div className="mx-auto grid h-full max-w-md content-center gap-3" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      <motion.div layout transition={spring} className={`flex h-[132px] flex-col rounded-xl border border-border bg-surface-2 p-4 ${arranged ? "col-span-2" : "col-span-3"}`}>
+        <span className="mb-auto text-xs font-semibold text-text">Monthly revenue</span>
+        <div className="flex h-[58%] items-end gap-1.5">
+          {[42, 54, 48, 64, 78].map((h, i) => (
+            <span key={i} className="flex-1 rounded-[3px] bg-accent" style={{ height: `${h}%`, opacity: 0.5 + i * 0.1 }} />
+          ))}
         </div>
       </motion.div>
-      
       <AnimatePresence>
-        {arranged && (
-          <motion.div initial={{ opacity: 0, scale: 0.5, y: -50 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ type: 'spring', damping: 15 }} style={{ background: 'var(--surface2)', border: '1px solid var(--accent-line)', borderRadius: '12px', padding: '15px', height: '130px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 0 0 2px var(--accent)' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)' }}>New Widget</span>
-            <span style={{ fontSize: '26px', fontWeight: 700 }}>24k</span>
+        {arranged ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.6, y: -40 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={spring}
+            className="flex h-[132px] flex-col justify-between rounded-xl border border-accent-line bg-surface-2 p-4 shadow-[0_0_0_2px_var(--accent)]"
+          >
+            <span className="text-xs font-semibold text-accent-strong">New widget</span>
+            <span className="font-syne text-2xl font-bold text-text">24k</span>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
-
-      <motion.div layout transition={{ type: 'spring', damping: 20 }} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '15px', height: '96px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600 }}>Active users</span>
-        <span style={{ fontSize: '26px', fontWeight: 700 }}>8,412</span>
+      <motion.div layout transition={spring} className="flex h-24 flex-col justify-between rounded-xl border border-border bg-surface-2 p-4">
+        <span className="text-xs font-semibold text-text">Active users</span>
+        <span className="font-syne text-2xl font-bold text-text">8,412</span>
       </motion.div>
-      
-      <motion.div layout transition={{ type: 'spring', damping: 20 }} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '15px', height: '96px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600 }}>Churn</span>
-        <span style={{ fontSize: '22px', fontWeight: 700 }}>1.8%</span>
+      <motion.div layout transition={spring} className="flex h-24 flex-col justify-between rounded-xl border border-border bg-surface-2 p-4">
+        <span className="text-xs font-semibold text-text">Churn</span>
+        <span className="font-syne text-xl font-bold text-text">1.8%</span>
       </motion.div>
-
-      {!arranged && (
-        <motion.div layout style={{ background: 'var(--surface2)', border: '1px dashed var(--border2)', borderRadius: '12px', height: '96px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--faint)', fontSize: '12.5px' }}>
-          ＋ drop here
-        </motion.div>
-      )}
-
+      <motion.div layout transition={spring} className="flex h-24 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface-2 p-4 font-mono text-[11px] text-accent-strong">
+        <span className="relative flex size-1.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
+        </span>
+        auto-refresh
+      </motion.div>
     </div>
   );
 }
 
-function ShareVisual() {
+function ShareScene() {
   const [copied, setCopied] = useState(false);
-  
+
   useEffect(() => {
-    const t1 = setTimeout(() => setCopied(true), 800);
-    const t2 = setTimeout(() => setCopied(false), 3000);
-    return () => { clearTimeout(t1); clearTimeout(t2); }
+    const on = window.setTimeout(() => setCopied(true), 900);
+    const off = window.setTimeout(() => setCopied(false), 3400);
+    return () => { window.clearTimeout(on); window.clearTimeout(off); };
   }, []);
 
   return (
-    <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-      <div style={{ position: 'relative' }}>
-        <button style={{ background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none', borderRadius: '999px', padding: '12px 24px', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-          🔗 Share Dashboard
-        </button>
-        <AnimatePresence>
-          {copied && (
-            <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 5, scale: 0.9 }}
-              style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '12px', background: 'var(--surface2)', border: '1px solid var(--accent-line)', borderRadius: '8px', padding: '8px 14px', fontSize: '12.5px', color: 'var(--text)', whiteSpace: 'nowrap', boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', gap: '8px', zIndex: 50 }}
-            >
-              <span style={{ color: 'var(--accent)' }}>✓</span> querywise.app/share/x7f2
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      
-      <div style={{ width: '100%', height: '180px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', opacity: 0.5, marginTop: '20px' }} />
-    </div>
-  );
-}
-
-function SecurityVisual() {
-  const steps = [
-    { label: "Credentials enter", id: "cred" },
-    { label: "Encrypting...", id: "enc" },
-    { label: "Read-Only Validated ✓", id: "val" },
-    { label: "Audit Logged ✓", id: "aud" }
-  ];
-  const [active, setActive] = useState(0);
-
-  useEffect(() => {
-    let curr = 0;
-    const int = setInterval(() => {
-      curr++;
-      if (curr >= steps.length) clearInterval(int);
-      else setActive(curr);
-    }, 1200);
-    return () => clearInterval(int);
-  }, []);
-
-  return (
-    <div style={{ width: '100%', maxWidth: '380px', border: '1px solid var(--border)', borderRadius: '16px', background: 'var(--surface2)', padding: '30px 24px' }}>
-      {steps.map((step, i) => {
-        const isDone = i <= active;
-        const isCurr = i === active;
-        return (
-          <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: i === steps.length - 1 ? 0 : '24px' }}>
-            <motion.div 
-              animate={{ 
-                background: isDone ? 'var(--accent)' : 'var(--surface)',
-                borderColor: isDone ? 'var(--accent)' : 'var(--border)',
-                scale: isCurr ? 1.1 : 1
-              }}
-              style={{ width: '24px', height: '24px', borderRadius: '50%', border: '2px solid', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              {isDone && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ color: 'var(--accent-ink)', fontSize: '12px' }}>✓</motion.span>}
-            </motion.div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <motion.span animate={{ color: isDone ? 'var(--text)' : 'var(--muted)' }} style={{ fontSize: '14px', fontWeight: 600 }}>
-                {step.label}
-              </motion.span>
-              {isCurr && i === 1 && (
-                <motion.div style={{ height: '4px', background: 'var(--surface)', borderRadius: '2px', overflow: 'hidden' }}>
-                  <motion.div initial={{ width: 0 }} animate={{ width: '100%' }} transition={{ duration: 1.1, ease: 'linear' }} style={{ height: '100%', background: 'var(--accent)' }} />
-                </motion.div>
-              )}
-            </div>
+    <div className="mx-auto flex h-full max-w-md flex-col justify-center gap-4">
+      {/* the dashboard being shared — dimmed backdrop, not an empty box */}
+      <div className="relative overflow-hidden rounded-xl border border-border bg-surface-2 p-4 opacity-90">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-semibold text-text">Company KPIs</span>
+          <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent-strong">
+            <span className="size-1.5 rounded-full bg-accent" />
+            LIVE DATA
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2 flex h-16 items-end gap-1 rounded-lg border border-border/70 bg-surface p-2">
+            {[40, 55, 48, 66, 60, 82, 74].map((h, i) => (
+              <span key={i} className="flex-1 rounded-t-[2px] bg-accent/70" style={{ height: `${h}%` }} />
+            ))}
           </div>
-        );
-      })}
+          <div className="flex h-16 flex-col justify-between rounded-lg border border-border/70 bg-surface p-2">
+            <span className="text-[9px] font-semibold text-faint">MRR</span>
+            <span className="font-syne text-sm font-bold text-text">$84k</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2.5">
+        <Link2 className="size-3.5 shrink-0 text-accent-strong" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">querywise.app/shared/x7f2-kq91</span>
+        <span className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${copied ? "bg-accent-soft text-accent-strong" : "bg-accent text-accent-ink"}`}>
+          {copied ? "✓ Copied" : "Copy link"}
+        </span>
+      </div>
+      <div className="flex items-center justify-center gap-4 font-mono text-[11px] text-faint">
+        <span className="flex items-center gap-1.5"><Lock className="size-3" strokeWidth={1.75} />password optional</span>
+        <span>·</span>
+        <span>SQL never exposed</span>
+      </div>
     </div>
   );
 }
 
-function ConnectionsVisual() {
+function SecurityScene() {
+  const steps = ["Credentials encrypted at rest", "Connection pinned & isolated", "Every query validated read-only", "Full audit trail recorded"];
+  const [done, setDone] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setDone((current) => {
+        if (current >= steps.length) { window.clearInterval(timer); return current; }
+        return current + 1;
+      });
+    }, 850);
+    return () => window.clearInterval(timer);
+  }, [steps.length]);
+
   return (
-    <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '13px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-        <span style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px' }}>🐘</span>
-        <span style={{ fontSize: '13.5px', fontWeight: 600 }}>production_db</span>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--accent)' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)' }}></span>connected</span>
+    <div className="mx-auto flex h-full max-w-sm flex-col justify-center gap-5">
+      <div className="rounded-2xl border border-border bg-surface-2 p-6">
+        {steps.map((label, i) => {
+          const isDone = i < done;
+          return (
+            <div key={label} className={`flex items-center gap-3.5 ${i < steps.length - 1 ? "mb-5" : ""}`}>
+              <motion.span
+                animate={{ backgroundColor: isDone ? "var(--accent)" : "var(--surface)", borderColor: isDone ? "var(--accent)" : "var(--border)" }}
+                transition={{ duration: 0.25 }}
+                className="flex size-6 shrink-0 items-center justify-center rounded-full border-2"
+              >
+                {isDone ? <Check className="size-3 text-accent-ink" strokeWidth={3} /> : null}
+              </motion.span>
+              <span className={`text-sm font-medium transition-colors duration-300 ${isDone ? "text-text" : "text-faint"}`}>{label}</span>
+            </div>
+          );
+        })}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '13px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-        <span style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px' }}>🐘</span>
-        <span style={{ fontSize: '13.5px', fontWeight: 600 }}>staging_db</span>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--accent)' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)' }}></span>connected</span>
+      <div className="flex justify-center gap-2">
+        {["AES-256", "read-only role", "SOC2-ready logs"].map((badge) => (
+          <span key={badge} className="rounded-full border border-border bg-surface px-3 py-1 font-mono text-[10.5px] text-muted">{badge}</span>
+        ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '13px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-        <span style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px' }}>🐘</span>
-        <span style={{ fontSize: '13.5px', fontWeight: 600 }}>dev_local</span>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#F2C36D' }}><motion.span animate={{ opacity: [1, 0.4] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#F2C36D' }}></motion.span>syncing</span>
-      </div>
+    </div>
+  );
+}
+
+function ConnectionsScene() {
+  const rows = [
+    { name: "production_db", detail: "acme_analytics · 42 tables", status: "connected" as const },
+    { name: "staging_db", detail: "acme_staging · 42 tables", status: "connected" as const },
+    { name: "dev_local", detail: "acme_dev · syncing schema", status: "syncing" as const },
+  ];
+  return (
+    <div className="mx-auto flex h-full max-w-md flex-col justify-center gap-2.5">
+      {rows.map((row, i) => (
+        <motion.div
+          key={row.name}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.09, ...spring }}
+          className="flex items-center gap-3.5 rounded-xl border border-border bg-surface-2 px-4 py-3.5"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-[9px] bg-accent-soft">
+            <Database className="size-4 text-accent-strong" strokeWidth={1.75} />
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-[13.5px] font-semibold text-text">{row.name}</span>
+            <span className="truncate font-mono text-[10.5px] text-faint">{row.detail}</span>
+          </span>
+          {row.status === "connected" ? (
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11.5px] text-accent-strong">
+              <span className="size-1.5 rounded-full bg-accent" />
+              connected
+            </span>
+          ) : (
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11.5px] text-warning">
+              <span className="size-1.5 rounded-full bg-warning" style={{ animation: "qw-pulse 1.4s ease-in-out infinite" }} />
+              syncing
+            </span>
+          )}
+        </motion.div>
+      ))}
+      <p className="mt-2 text-center font-mono text-[11px] text-faint">one workspace · every environment · always in sync</p>
     </div>
   );
 }
