@@ -149,6 +149,9 @@ model Conversation {
   deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz(6)
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  // SPEC-02 §4: distilled cross-turn analysis memory (entities, filters, window,
+  // block summaries, rolling summary). Additive/nullable so historical rows load.
+  analysisState  Json?              @map("analysis_state")
 
   @@unique([id, ownerUserId, connectionId], map: "v2_conversations_id_owner_connection_key")
   @@index([ownerUserId, lastActivityAt(sort: Desc), id(sort: Desc)], map: "v2_conversations_owner_activity_idx")
