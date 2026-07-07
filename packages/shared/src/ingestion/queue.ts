@@ -9,12 +9,14 @@ import {
   SCHEMA_INGESTION_JOB_TYPE,
   SCHEMA_INGESTION_PAYLOAD_VERSION,
   SCHEMA_INGESTION_QUEUE_NAME,
+  SCHEMA_REFRESH_JOB_NAME,
+  SCHEMA_REFRESH_QUEUE_NAME,
   type SchemaIngestionIntent,
   type SchemaIngestionJobData,
 } from "./types";
 
 type BullMqQueueConstructor = new (name: string, options: { connection: unknown }) => {
-  add: (name: string, data: SchemaIngestionJobData, options: Record<string, unknown>) => Promise<unknown>;
+  add: (name: string, data: unknown, options: Record<string, unknown>) => Promise<unknown>;
   close?: () => Promise<void>;
 };
 
@@ -168,4 +170,67 @@ export async function publishQueuedSchemaIngestionOutbox(limit = 25): Promise<nu
   }
   devLog("debug", "schema-ingestion.outbox-relay.completed", "Schema ingestion outbox relay completed.", { queuedCount: jobs.length, published, failed });
   return published;
+}
+
+/**
+ * SPEC-03 §6.2 — registers (idempotently) a BullMQ repeatable job that periodically scans for schema
+ * drift. Enrichment only re-runs for changed entities thanks to per-entity fingerprint reuse, so this
+ * is pure wiring. Gated by the caller on `QUERYWISE_SCHEMA_REFRESH_CRON`.
+ */
+export async function scheduleSchemaRefreshRepeatable(cronPattern: string): Promise<"scheduled" | "not-configured"> {
+  const connection = redisConnectionOptions();
+  const bullmq = await optionalBullMq();
+  if (!connection || !bullmq) {
+    devLog("warn", "schema-refresh.schedule.not-configured", "Scheduled schema refresh could not be registered (Redis/BullMQ unavailable).", {
+      hasRedisConnection: Boolean(connection),
+      hasBullMq: Boolean(bullmq),
+    });
+    return "not-configured";
+  }
+  const queue = new bullmq.Queue(SCHEMA_REFRESH_QUEUE_NAME, { connection });
+  try {
+    await queue.add(
+      SCHEMA_REFRESH_JOB_NAME,
+      {},
+      {
+        repeat: { pattern: cronPattern },
+        jobId: "schema-refresh-scheduler",
+        removeOnComplete: { count: 10 },
+        removeOnFail: { count: 50 },
+      },
+    );
+    devLog("info", "schema-refresh.schedule.registered", "Scheduled schema refresh registered.", { cronPattern });
+    return "scheduled";
+  } finally {
+    await queue.close?.();
+  }
+}
+
+/**
+ * Scans every active connection and enqueues a schema-ingestion refresh. Re-introspection compares
+ * the fingerprint and only re-enriches changed entities (per-entity fingerprint reuse). Invoked by
+ * the repeatable job registered via {@link scheduleSchemaRefreshRepeatable}.
+ */
+export async function enqueueScheduledSchemaRefresh(): Promise<{ scanned: number; enqueued: number }> {
+  const connections = await getAppDb().databaseConnection.findMany({
+    where: { deletedAt: null, status: "connected" },
+    select: { id: true, ownerUserId: true },
+  });
+  let enqueued = 0;
+  for (const connection of connections) {
+    try {
+      await enqueueSchemaIngestion({
+        connectionId: connection.id as ResourceId,
+        ownerUserId: connection.ownerUserId,
+        intent: "scheduled-refresh",
+      });
+      enqueued += 1;
+    } catch (error) {
+      devLogError("schema-refresh.enqueue-failed", "Scheduled refresh failed to enqueue a connection; continuing.", error, {
+        connectionId: connection.id,
+      });
+    }
+  }
+  devLog("info", "schema-refresh.scan.completed", "Scheduled schema refresh scan completed.", { scanned: connections.length, enqueued });
+  return { scanned: connections.length, enqueued };
 }
