@@ -5,7 +5,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "test": "tsx test/ingestion-logic.test.ts"
   },
   "dependencies": {
     "@query-wise/shared": "workspace:*",
