@@ -6,7 +6,7 @@ import { resolveChartConfig } from "@/lib/charts";
 import { createResultPreview } from "@/lib/query/preview";
 import { getErrorMessage } from "../../client";
 import {
-  AGENT_BUDGETS,
+  MODEL_ROW_SLICE,
   type AgentRunState,
   type AnalystAgentEmitters,
   type AnalystAgentRuntime,
@@ -16,10 +16,10 @@ import {
 export function compactResultForModel(result: BoundedQueryResult) {
   return {
     columns: result.columns.map((column) => column.name),
-    rows: result.rows.slice(0, AGENT_BUDGETS.modelRowSlice),
+    rows: result.rows.slice(0, MODEL_ROW_SLICE),
     rowCount: result.returnedRowCount,
     totalRowCount: result.totalRowCount,
-    truncated: result.truncated || result.rows.length > AGENT_BUDGETS.modelRowSlice,
+    truncated: result.truncated || result.rows.length > MODEL_ROW_SLICE,
     executionTimeMs: result.executionTimeMs,
   };
 }
@@ -40,7 +40,7 @@ export function createRunSqlTool(deps: {
       purpose: z.string().trim().min(1).max(120).describe("Short user-facing label, e.g. 'Top products by revenue'"),
     }),
     execute: async ({ sql, purpose }) => {
-      if (state.sqlAttempts >= AGENT_BUDGETS.maxSqlAttempts) {
+      if (state.sqlAttempts >= state.budget.maxSqlAttempts) {
         return { error: "Query budget exhausted. Answer with the results you already have." };
       }
       state.sqlAttempts += 1;

@@ -4,7 +4,6 @@ import type { SchemaInfo } from "@/types";
 import { devLog } from "@query-wise/shared/observability";
 import { getErrorMessage } from "../../client";
 import {
-  AGENT_BUDGETS,
   type AgentRunState,
   type AnalystAgentEmitters,
   type AnalystAgentRuntime,
@@ -42,7 +41,7 @@ export function createSampleValuesTool(deps: {
       limit: z.number().int().min(1).max(MAX_SAMPLE_VALUES).default(MAX_SAMPLE_VALUES),
     }),
     execute: async ({ table, column, limit }) => {
-      if (state.sampleCalls >= AGENT_BUDGETS.maxSampleCalls) {
+      if (state.sampleCalls >= state.budget.maxSampleCalls) {
         return { error: "Sampling budget exhausted. Proceed with what you know." };
       }
       state.sampleCalls += 1;
