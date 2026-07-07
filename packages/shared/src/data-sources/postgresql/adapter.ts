@@ -1,6 +1,6 @@
 
 import { Client } from "pg";
-import type { BoundedQueryResult, ConnectionTestResult, DataSourceCapability, SqlDataSourceAdapter } from "../../types";
+import type { BoundedQueryResult, ConnectionTestResult, DataSourceCapability, IntrospectionQueryResult, SqlDataSourceAdapter } from "../../types";
 import { AppError } from "../../dal/core";
 import { resolvePublicEndpoint } from "./network-policy";
 import { parsePostgresUrl } from "./url";
@@ -89,6 +89,28 @@ export const postgresqlAdapter: SqlDataSourceAdapter = {
         released = true;
         client.release();
       }
+    }
+  },
+  async executeIntrospectionQuery(connectionId, credentialVersion, secret, query, options): Promise<IntrospectionQueryResult> {
+    // Trusted, worker-authored SQL only (profiling / join inference). Permits bind parameters and
+    // system-catalog reads that the user-facing executeReadQuery deliberately blocks, but still
+    // enforces a READ ONLY transaction with a bounded statement timeout via the pooled connection.
+    const parsed = parsePostgresUrl(secret.connectionString);
+    const endpoint = await resolvePublicEndpoint(parsed.host);
+    const pool = await getPostgresPool(connectionId, credentialVersion, parsed, endpoint.address);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN READ ONLY");
+      await client.query(`SET LOCAL statement_timeout = ${Math.max(1_000, Math.min(options.timeoutMs, 30_000))}`);
+      await client.query("SET LOCAL lock_timeout = '2s'");
+      await client.query("SET LOCAL idle_in_transaction_session_timeout = '20s'");
+      const result = await client.query(query.text, query.values as unknown[] | undefined);
+      return { rows: result.rows as Array<Record<string, unknown>> };
+    } catch (error) {
+      throw mapPostgresError(error);
+    } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
+      client.release();
     }
   },
   dispose: disposePostgresPools,
