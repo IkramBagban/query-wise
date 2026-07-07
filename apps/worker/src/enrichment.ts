@@ -285,10 +285,9 @@ export async function describeEntities(
         }
         
         for (const col of item.omittedColumns) {
-          desc.columns.push({
-            name: col.name,
-            description: `${col.name} is a ${col.nativeType} column.`,
-          });
+          // SPEC-03 §6.3: mark truncated columns null rather than padding with useless boilerplate,
+          // so the web tier renders nothing for them instead of noise.
+          desc.columns.push({ name: col.name, description: null });
         }
         
         desc.entityFingerprint = computeEntityFingerprint(entities.find(e => e.id === item.entity.id)!);
@@ -309,7 +308,10 @@ export async function describeEntities(
 
 
 function tableSummaryText(entity: MetadataEntity, description: SchemaEntityDescription): string {
-  const columns = description.columns.map((column) => `${column.name}: ${column.description}`).join("; ");
+  // Columns with a null description (truncated, §6.3) contribute only their name to the embed text.
+  const columns = description.columns
+    .map((column) => (column.description ? `${column.name}: ${column.description}` : column.name))
+    .join("; ");
   return `${entity.namespace}.${entity.name}: ${description.description}. Columns: ${columns}`;
 }
 
