@@ -26,7 +26,12 @@ function tableRelationshipHints(schema: SchemaInfo, tableName: string): string[]
   return schema.relationships
     .filter((relationship) => relationship.fromTable === tableName || relationship.toTable === tableName)
     .slice(0, 12)
-    .map((relationship) => `${relationship.fromTable}.${relationship.fromColumn} -> ${relationship.toTable}.${relationship.toColumn}`);
+    .map((relationship) => {
+      const join = `${relationship.fromTable}.${relationship.fromColumn} -> ${relationship.toTable}.${relationship.toColumn}`;
+      // SPEC-03: heuristically-inferred joins are flagged so the model treats
+      // them as suggestions rather than declared foreign keys.
+      return relationship.inferred ? `${join} (inferred)` : join;
+    });
 }
 
 function redactSampleValue(columnName: string, value: unknown): unknown {

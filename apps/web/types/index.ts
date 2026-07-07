@@ -27,6 +27,8 @@ export interface SchemaColumn {
   enumValues?: string[];
   range?: { min: string; max: string };
   topValues?: Array<{ value: string; count?: number }>;
+  /** LLM-generated column description from ingestion enrichment (SPEC-01 §2). */
+  description?: string;
 }
 
 /**
@@ -37,6 +39,10 @@ export interface SchemaTable {
   columns: SchemaColumn[];
   rowCount?: number;
   sampleData?: Record<string, unknown>[];
+  /** LLM-generated table description from ingestion enrichment (SPEC-01 §2). */
+  description?: string;
+  /** Suggested analytical questions produced at ingestion (SPEC-01 §2). */
+  sampleQuestions?: string[];
 }
 
 /**
@@ -58,6 +64,12 @@ export interface Relationship {
   fromColumn: string;
   toTable: string;
   toColumn: string;
+  /**
+   * True when the relationship was inferred (e.g. by name/type heuristics)
+   * rather than declared as a foreign key. Rendered as an "(inferred)" join
+   * hint so the model treats it as a suggestion, not a guarantee (SPEC-03).
+   */
+  inferred?: boolean;
 }
 
 /**
