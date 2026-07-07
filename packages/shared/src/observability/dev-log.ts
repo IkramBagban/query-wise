@@ -74,7 +74,8 @@ export function getDevelopmentLogPath(): string | null {
 }
 
 function emitToConsole(entry: DevLogEntry): void {
-  const line = JSON.stringify(entry);
+  // const line = JSON.stringify(entry);
+  const line = entry
   if (entry.level === "error") {
     console.error(line);
   } else if (entry.level === "warn") {
