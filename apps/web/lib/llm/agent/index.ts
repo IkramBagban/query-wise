@@ -17,9 +17,14 @@ import { createDescribeTablesTool } from "./tools/describe-tables";
 import { createRunSqlTool } from "./tools/run-sql";
 import { createSampleValuesTool } from "./tools/sample-values";
 import { createSetChartTool } from "./tools/set-chart";
+import { createSearchSchemaTool } from "./tools/search-schema";
+import { createExplainQueryTool } from "./tools/explain-query";
+import { createGetColumnStatsTool } from "./tools/get-column-stats";
+import { runSelfVerification } from "./verification";
 import {
-  AGENT_BUDGETS,
   AgentExecutionError,
+  resolveAgentBudget,
+  type AgentMemoryContext,
   type AgentRunState,
   type AnalystAgentResult,
   type RunAnalystAgentParams,
@@ -27,6 +32,7 @@ import {
 
 export type {
   AgentActivityEvent,
+  AgentMemoryContext,
   AgentQueryStatsEvent,
   AgentResultBlock,
   AgentSqlPreviewEvent,
@@ -57,22 +63,49 @@ function renderHistoryMessage(message: ChatMessage): AgentMessage {
 }
 
 /**
+ * Render distilled conversation memory (SPEC-02 §4) as a single, compact
+ * context message: rolling summary, established filters / window, and recent
+ * block headlines. This is what makes "now break that down by region" resolve
+ * correctly ten turns deep, after the verbatim window has scrolled away.
+ * Returns null when there is nothing worth injecting.
+ */
+function renderMemoryPreamble(memory: AgentMemoryContext | undefined): string | null {
+  if (!memory) return null;
+  const parts: string[] = [];
+  if (memory.rollingSummary?.trim()) parts.push(`Earlier in this conversation: ${memory.rollingSummary.trim()}`);
+  if (memory.entities?.length) parts.push(`Entities discussed: ${memory.entities.join(", ")}`);
+  if (memory.timeWindow?.trim()) parts.push(`Established time window: ${memory.timeWindow.trim()}`);
+  if (memory.activeFilters?.length) parts.push(`Active filters: ${memory.activeFilters.join("; ")}`);
+  if (memory.blockSummaries?.length) parts.push(`Recent results:\n${memory.blockSummaries.join("\n")}`);
+  if (parts.length === 0) return null;
+  return [
+    "CONVERSATION MEMORY (for resolving follow-ups like \"break that down\" or \"same period\"; reuse these unless the user changes them):",
+    ...parts,
+  ].join("\n");
+}
+
+/**
  * Token-aware history selection (SPEC-01 §3): keep the last ~2 turns verbatim,
  * then add older messages newest-first until the history token budget is spent;
- * drop the rest. Replaces the fixed `history.slice(-12)`.
+ * drop the rest. Replaces the fixed `history.slice(-12)`. A memory preamble
+ * (SPEC-02 §4) is prepended within the same budget when present.
  */
 function buildMessages(
   history: ChatMessage[],
   question: string,
   historyBudgetTokens: number,
   maxMessages?: number,
+  memory?: AgentMemoryContext,
 ): AgentMessage[] {
   const rendered = history.map(renderHistoryMessage);
   const verbatimCount = Math.min(rendered.length, HISTORY_VERBATIM_MESSAGES);
   const tail = rendered.slice(rendered.length - verbatimCount);
   const older = rendered.slice(0, rendered.length - verbatimCount);
 
-  let usedTokens = tail.reduce((sum, message) => sum + estimateTokens(message.content), 0);
+  const memoryPreamble = renderMemoryPreamble(memory);
+  const memoryTokens = memoryPreamble ? estimateTokens(memoryPreamble) : 0;
+
+  let usedTokens = tail.reduce((sum, message) => sum + estimateTokens(message.content), 0) + memoryTokens;
   const kept: AgentMessage[] = [];
   for (let index = older.length - 1; index >= 0; index -= 1) {
     if (maxMessages !== undefined && kept.length + tail.length >= maxMessages) break;
@@ -87,6 +120,12 @@ function buildMessages(
     messages = messages.slice(messages.length - maxMessages);
   }
 
+  // Memory rides in front of the retained history so follow-up resolution has it
+  // regardless of how much verbatim history fit the budget.
+  if (memoryPreamble) {
+    messages = [{ role: "user", content: memoryPreamble }, ...messages];
+  }
+
   const last = messages[messages.length - 1];
   if (!last || last.role !== "user" || last.content.trim() !== question.trim()) {
     messages.push({ role: "user", content: question });
@@ -98,12 +137,16 @@ function buildTools(params: RunAnalystAgentParams, state: AgentRunState): ToolSe
   const shared = { state, runtime: params.runtime, emitters: params };
   // describe_tables is ALWAYS registered (SPEC-01 §3): with the tiered schema
   // any table may appear only in the Tier-A index, so the agent must be able to
-  // fetch full column detail for it on demand.
+  // fetch full column detail for it on demand. search_schema / explain_query /
+  // get_column_stats are the SPEC-02 §1 perception tools, also always available.
   return {
     run_sql: createRunSqlTool(shared),
     sample_values: createSampleValuesTool({ ...shared, schema: params.schema }),
     describe_tables: createDescribeTablesTool({ schema: params.schema, state, emitters: params }),
     set_chart: createSetChartTool({ state, emitters: params }),
+    search_schema: createSearchSchemaTool({ schema: params.schema, state, emitters: params }),
+    explain_query: createExplainQueryTool(shared),
+    get_column_stats: createGetColumnStatsTool({ schema: params.schema, state, emitters: params }),
   };
 }
 
@@ -186,18 +229,30 @@ function renderBlockDigests(state: AgentRunState): string {
  */
 export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<AnalystAgentResult> {
   const startedAt = Date.now();
-  const state: AgentRunState = { blocks: [], transcript: [], sqlAttempts: 0, sampleCalls: 0 };
+  // Adaptive step/attempt budget (SPEC-02 §2): explicit override wins, else the
+  // cheap no-LLM complexity heuristic picks standard vs extended.
+  const { budget: agentBudget, profile: budgetProfile } = resolveAgentBudget(params.question, params.budget);
+  const state: AgentRunState = {
+    blocks: [],
+    transcript: [],
+    sqlAttempts: 0,
+    sampleCalls: 0,
+    searchCalls: 0,
+    budget: agentBudget,
+  };
   const budget = resolveContextBudget(params.provider, params.model);
   const tools = buildTools(params, state);
 
   let streamedText = false;
 
   // One streamed attempt. `recovery` re-runs with a shrunken context after a
-  // true mid-run context overflow (SPEC-01 §1).
+  // true mid-run context overflow (SPEC-01 §1). `correction` appends a
+  // verification-driven fix message and caps the extra steps (SPEC-02 §3).
   const streamOnce = async (
     candidateModel: string,
     apiKey: string,
     recovery = false,
+    correction?: { draftAnswer: string; message: string; maxSteps: number },
   ): Promise<string> => {
     const assembled = assembleAgentSystemPrompt(params.schema, {
       rankedTableNames: params.rankedTables,
@@ -212,6 +267,8 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       params.question,
       historyBudget,
       recovery ? HISTORY_VERBATIM_MESSAGES : undefined,
+      // Recovery already ran once; drop memory to reclaim tokens for the retry.
+      recovery ? undefined : params.memory,
     );
     if (recovery && state.blocks.length > 0) {
       messages.push({
@@ -222,6 +279,11 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
           `${renderBlockDigests(state)}\n` +
           "Write the final analyst answer now using these results. Only run additional SQL if strictly necessary.",
       });
+    }
+    if (correction) {
+      // The draft answer, then the verifier's correction request (SPEC-02 §3).
+      messages.push({ role: "assistant", content: correction.draftAnswer });
+      messages.push({ role: "user", content: correction.message });
     }
 
     // Stable prefix first (system → schema), dynamic content (history/question)
@@ -253,7 +315,7 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       model: getModel(params.provider, candidateModel, apiKey),
       messages: modelMessages,
       tools,
-      stopWhen: stepCountIs(AGENT_BUDGETS.maxSteps),
+      stopWhen: stepCountIs(correction ? correction.maxSteps : state.budget.maxSteps),
       maxOutputTokens: 2500,
       temperature: 0.2,
       providerOptions: getThinkingProviderOptions(params.provider),
@@ -334,6 +396,9 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     model: params.model,
     tableCount: params.schema.tables.length,
     rankedTables: params.rankedTables?.length ?? 0,
+    budgetProfile,
+    budget: agentBudget,
+    memoryInjected: Boolean(params.memory),
   });
 
   const failure = (error: unknown): AgentExecutionError =>
@@ -349,12 +414,18 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   let recovered = false;
   const candidates = getModelCandidates(params.provider, params.model);
   const apiKeys = params.apiKeys;
+  // Remember which model/key actually produced the answer so the verification
+  // correction pass (SPEC-02 §3) reuses the same one instead of replaying fallback.
+  let usedModel = candidates[0];
+  let usedKey = apiKeys[0];
 
   outer: for (let index = 0; index < candidates.length; index += 1) {
     let success = false;
     for (let keyAttempt = 0; keyAttempt < apiKeys.length; keyAttempt += 1) {
       try {
         answer = await streamOnce(candidates[index], apiKeys[keyAttempt]);
+        usedModel = candidates[index];
+        usedKey = apiKeys[keyAttempt];
         success = true;
         break;
       } catch (error) {
@@ -372,6 +443,8 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
           });
           try {
             answer = await streamOnce(candidates[index], apiKeys[keyAttempt], true);
+            usedModel = candidates[index];
+            usedKey = apiKeys[keyAttempt];
             success = true;
             break outer;
           } catch (recoveryError) {
@@ -399,6 +472,24 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript },
     );
   }
+
+  // Self-verification pass (SPEC-02 §3): checks the drafted answer against the
+  // block data, runs a bounded correction on issues, else appends a caveat.
+  // Skipped for trivial/KPI questions and when disabled, so it never adds
+  // latency where it cannot help.
+  answer = await runSelfVerification({
+    question: params.question,
+    mode: state.blocks.length > 0 ? "query" : "conversation",
+    answer,
+    state,
+    provider: params.provider,
+    model: params.model,
+    apiKeys: params.apiKeys,
+    abortSignal: params.abortSignal,
+    emitters: params,
+    runCorrection: (message, maxSteps) =>
+      streamOnce(usedModel, usedKey, false, { draftAnswer: answer, message, maxSteps }),
+  });
 
   // Charts are resolved eagerly (default in run_sql, refined in set_chart) so
   // they stream live; this is only a safety net for blocks missing a config.

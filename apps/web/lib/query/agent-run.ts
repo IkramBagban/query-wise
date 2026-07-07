@@ -17,6 +17,11 @@ import { statusEvent, type QueryStreamEmitter } from "./sse";
 import { throwIfQueryRunAborted } from "./cancellation";
 import { elapsedMs, generateAndPersistTitle, toV2ChartConfig } from "./run-helpers";
 import { adaptiveRetrievalLimit, retrieveCandidateTables } from "@/lib/retrieval/retrieval";
+import {
+  getConversationAnalysisState,
+  toAgentMemoryContext,
+  updateConversationMemory,
+} from "@/lib/conversations";
 
 /**
  * Relevance pre-seeding (SPEC-01 §3): rank the schema's tables against the
@@ -43,6 +48,35 @@ async function rankTablesForQuestion(schema: SchemaInfo, question: string): Prom
  * here, then this module drives persisting → completed.
  */
 
+/**
+ * Parse the root plan node out of `EXPLAIN (FORMAT JSON)` output. Postgres
+ * returns a single row `{ "QUERY PLAN": [{ Plan: { "Total Cost", "Plan Rows" } }] }`;
+ * the pg driver may hand it back already parsed or as a JSON string. Returns
+ * null when neither Total Cost nor Plan Rows can be located.
+ */
+function parseExplainPlan(rows: Array<Record<string, unknown>>): { totalCost: number; planRows: number } | null {
+  const first = rows[0];
+  if (!first) return null;
+  let planColumn = first["QUERY PLAN"] ?? Object.values(first)[0];
+  if (typeof planColumn === "string") {
+    try {
+      planColumn = JSON.parse(planColumn);
+    } catch {
+      return null;
+    }
+  }
+  const root = Array.isArray(planColumn) ? planColumn[0] : planColumn;
+  const plan = (root as { Plan?: Record<string, unknown> } | undefined)?.Plan;
+  if (!plan) return null;
+  const totalCost = Number(plan["Total Cost"]);
+  const planRows = Number(plan["Plan Rows"]);
+  if (!Number.isFinite(totalCost) && !Number.isFinite(planRows)) return null;
+  return {
+    totalCost: Number.isFinite(totalCost) ? totalCost : 0,
+    planRows: Number.isFinite(planRows) ? planRows : 0,
+  };
+}
+
 /** Wraps the connection-scoped runtime as the agent's SQL contract. */
 function createAgentRuntime(
   runtime: QueryRuntimeDependencies,
@@ -62,6 +96,10 @@ function createAgentRuntime(
     async executeSql(normalizedSql) {
       const query: ProviderQuery = { kind: "sql", dialectId: "postgresql", text: normalizedSql };
       return runtime.executeValidatedReadQuery(context, query, abortSignal);
+    },
+    async explainSql(sql) {
+      const rows = await runtime.explainReadQuery(context, sql, abortSignal);
+      return parseExplainPlan(rows);
     },
   };
 }
@@ -133,13 +171,18 @@ export async function runAgentQueryRun(input: {
   const agentRuntime = createAgentRuntime(input.runtime, input.context, abortSignal);
   const agentStartedAt = Date.now();
 
-  const rankedTables = await rankTablesForQuestion(input.schema, input.question);
+  const [rankedTables, analysisState] = await Promise.all([
+    rankTablesForQuestion(input.schema, input.question),
+    // SPEC-02 §4: distilled cross-turn memory, injected within the history budget.
+    getConversationAnalysisState(run.conversationId).catch(() => undefined),
+  ]);
 
   const result = await runAnalystAgent({
     question: input.question,
     history: input.history,
     schema: input.schema,
     rankedTables,
+    memory: toAgentMemoryContext(analysisState),
     runtime: agentRuntime,
     provider: llmConfig.provider,
     model: llmConfig.model,
@@ -207,6 +250,16 @@ export async function runAgentQueryRun(input: {
     assistantMessage: result.answer,
     abortSignal,
     queryRunId: run.id,
+  });
+
+  // SPEC-02 §4: refresh distilled conversation memory off the critical path.
+  // Fire-and-forget, exactly like title generation — never blocks the response.
+  void updateConversationMemory({
+    conversationId: run.conversationId,
+    question: input.question,
+    answer: result.answer,
+    blocks: result.blocks,
+    abortSignal,
   });
 
   devLog("info", "query.run.agent-persisted", "Analyst agent run persisted.", {
