@@ -4,8 +4,12 @@ export const SCHEMA_INGESTION_QUEUE_NAME = "schema-ingestion";
 export const SCHEMA_INGESTION_JOB_TYPE = "schema-ingestion.refresh";
 export const SCHEMA_INGESTION_PAYLOAD_VERSION = 1;
 
-export type SchemaIngestionIntent = "initial-connect" | "credential-refresh" | "manual-refresh" | "schema-fingerprint";
-export type SchemaIngestionStage = "queued" | "introspecting" | "fingerprinting" | "describing" | "embedding" | "ready" | "failed";
+// SPEC-03 §6.2 — env-gated recurring schema drift detection.
+export const SCHEMA_REFRESH_QUEUE_NAME = "schema-refresh";
+export const SCHEMA_REFRESH_JOB_NAME = "schema-refresh.scan";
+
+export type SchemaIngestionIntent = "initial-connect" | "credential-refresh" | "manual-refresh" | "schema-fingerprint" | "scheduled-refresh";
+export type SchemaIngestionStage = "queued" | "introspecting" | "fingerprinting" | "profiling" | "sampling" | "describing" | "embedding" | "ready" | "failed";
 
 export interface SchemaIngestionJobData {
   connectionId: ResourceId;
@@ -30,7 +34,10 @@ export interface SchemaEntityDescription {
   entityId: string;
   entityFingerprint?: string;
   description: string;
-  columns: Array<{ name: string; description: string }>;
+  // `description: null` marks a column omitted from LLM enrichment (e.g. wide-table truncation,
+  // SPEC-03 §6.3) so the web tier can render nothing instead of useless boilerplate. Widening from
+  // `string` to `string | null` is backward-compatible — historical string values still deserialize.
+  columns: Array<{ name: string; description: string | null }>;
   sampleQuestions: string[];
 }
 

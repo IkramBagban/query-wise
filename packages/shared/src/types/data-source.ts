@@ -47,6 +47,21 @@ export interface QueryExecutionOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * A trusted, worker-authored read-only query used by the ingestion pipeline for profiling and join
+ * inference (SPEC-03 §3/§5). Unlike user queries it supports bind parameters and system-catalog
+ * reads (e.g. `pg_stats`); the adapter still runs it inside a READ ONLY transaction with a statement
+ * timeout. `text` is never derived from end-user input.
+ */
+export interface IntrospectionQuery {
+  text: string;
+  values?: unknown[];
+}
+
+export interface IntrospectionQueryResult {
+  rows: Array<Record<string, unknown>>;
+}
+
 export interface ResultColumn {
   name: string;
   canonicalType: MetadataColumn["canonicalType"];
@@ -87,6 +102,25 @@ export interface CanonicalDataSourceMetadata {
 }
 
 export interface MetadataNamespace { name: string }
+
+/**
+ * Per-column statistics produced by the profiling stage (SPEC-03 §3). All fields are optional so
+ * historical snapshots (which never carried this key) keep deserializing. `min`/`max` are rendered
+ * by the web tier's `toLegacySchema` into the existing `range[x -> y]` prompt field.
+ */
+export interface ColumnProfile {
+  /** Estimated number of distinct values (pg_stats n_distinct, converted from negative fractions). */
+  distinctCount?: number;
+  /** Fraction of rows that are NULL (pg_stats null_frac), 0-1. */
+  nullFraction?: number;
+  /** Minimum observed value (bounded MIN scan). Serialized as string/number for JSON stability. */
+  min?: string | number;
+  /** Maximum observed value (bounded MAX scan). */
+  max?: string | number;
+  /** Most-common values with optional frequency counts (pg_stats most_common_vals/freqs). */
+  topValues?: Array<{ value: string; count?: number }>;
+}
+
 export interface MetadataEntity {
   id: string;
   namespace: string;
@@ -96,6 +130,19 @@ export interface MetadataEntity {
   estimatedRowCount: number | null;
   estimatedRowCountMeasuredAt: IsoDateTime | null;
   topValues?: Record<string, string[]>;
+  /**
+   * Importance score (0-1) assigned by SPEC-03 §1 scoring. Enrichment stages process entities in
+   * descending order; the web tier can use it for Tier-B selection tie-breaking. Optional/additive.
+   */
+  importanceScore?: number;
+  /** Per-column profile statistics (SPEC-03 §3). Additive/optional. */
+  columnProfiles?: Record<string, ColumnProfile>;
+  /** Entity fingerprint at which profiling last succeeded — enables per-entity resumable skipping. */
+  profiledFingerprint?: string;
+  profiledAt?: IsoDateTime;
+  /** Entity fingerprint at which value sampling last succeeded — enables resumable skipping. */
+  sampledFingerprint?: string;
+  sampledAt?: IsoDateTime;
 }
 export interface MetadataColumn {
   name: string;
@@ -112,6 +159,13 @@ export interface MetadataRelationship {
   fromColumns: string[];
   toEntityId: string;
   toColumns: string[];
+  /**
+   * True when this relationship was inferred from data (SPEC-03 §5) rather than read from a declared
+   * foreign-key constraint. The web tier renders inferred joins marked "(inferred)". Additive/optional.
+   */
+  inferred?: boolean;
+  /** Value-overlap containment ratio (0-1) for inferred relationships. Declared FKs omit this. */
+  confidence?: number;
 }
 
 export interface QuerySafetyPolicy {
@@ -157,5 +211,16 @@ export interface SqlDataSourceAdapter {
     query: ProviderQuery,
     options: QueryExecutionOptions,
   ): Promise<BoundedQueryResult>;
+  /**
+   * Runs a trusted worker-authored read-only introspection query (SPEC-03 profiling/join inference).
+   * Optional so the adapter contract stays additive for providers without profiling support.
+   */
+  executeIntrospectionQuery?(
+    connectionId: ResourceId,
+    credentialVersion: number,
+    secret: DataSourceSecret,
+    query: IntrospectionQuery,
+    options: { timeoutMs: number },
+  ): Promise<IntrospectionQueryResult>;
   dispose(connectionId: ResourceId): Promise<void>;
 }
