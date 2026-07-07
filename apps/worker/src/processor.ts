@@ -1,6 +1,6 @@
 
 import { Prisma } from "@prisma/client";
-import type { CanonicalDataSourceMetadata, ResourceId } from "@query-wise/shared/types";
+import type { CanonicalDataSourceMetadata, MetadataEntity, MetadataRelationship, ResourceId } from "@query-wise/shared/types";
 import { getAppDb, withAppDbTransaction } from "@query-wise/shared/app-db";
 import { AppError } from "@query-wise/shared/dal/core";
 import { createResourceId } from "@query-wise/shared/domain";
@@ -8,9 +8,12 @@ import { getDataSourceAdapter, requireCapability } from "@query-wise/shared/data
 import { getConnectionSecretForIngestion } from "@query-wise/shared/connections";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { describeEntities, createEmbeddingRecords } from "./enrichment";
-import { computeSchemaFingerprint, summarizeMetadata } from "./fingerprint";
-import { persistSchemaEmbeddings } from "./vector-store";
+import { computeEntityFingerprint, computeSchemaFingerprint, summarizeMetadata } from "./fingerprint";
+import { loadEmbeddingResumeState, persistSchemaEmbeddings } from "./vector-store";
 import { sampleEntityValues } from "./sampling";
+import { profileEntities } from "./profiling";
+import { inferJoinRelationships } from "./join-inference";
+import { scoreAndRankEntities } from "./importance";
 import type {
   EnrichedSchemaMetadata,
   SchemaEntityDescription,
@@ -27,6 +30,15 @@ const DEFAULT_OPTIONS = {
   maxRelationships: 10_000,
   timeoutMs: 30_000,
 };
+
+/** Persist a snapshot checkpoint at most once every N invocations to bound DB write amplification. */
+function throttle(persist: () => Promise<void>, everyN = 15): () => Promise<void> {
+  let count = 0;
+  return async () => {
+    count += 1;
+    if (count % everyN === 0) await persist();
+  };
+}
 
 function elapsedMs(startedAt: number): number {
   return Date.now() - startedAt;
@@ -83,9 +95,12 @@ function connectionStatusForStage(stage: SchemaIngestionStage) {
   if (stage === "queued") return "queued";
   // Introspection/fingerprinting run before a snapshot exists, so the connection is not yet queryable.
   if (stage === "introspecting" || stage === "fingerprinting") return "running";
-  // Progressive readiness (P0): once a snapshot exists, the schema is queryable. Describing and
-  // embedding are background enrichment that must not flip the connection back to un-queryable.
-  if (stage === "describing" || stage === "embedding" || stage === "ready") return "ready";
+  // Progressive readiness (P0): once a snapshot exists, the schema is queryable. Profiling, sampling,
+  // describing, and embedding are background enrichment that must not flip the connection back to
+  // un-queryable.
+  if (stage === "profiling" || stage === "sampling" || stage === "describing" || stage === "embedding" || stage === "ready") {
+    return "ready";
+  }
   return "error";
 }
 
@@ -119,12 +134,70 @@ function readDescriptions(metadata: unknown): Record<string, SchemaEntityDescrip
   return maybeMetadata?.enrichment?.descriptions ?? {};
 }
 
+function readEntities(metadata: unknown): MetadataEntity[] {
+  const maybeMetadata = metadata as Partial<CanonicalDataSourceMetadata> | null;
+  return Array.isArray(maybeMetadata?.entities) ? (maybeMetadata!.entities as MetadataEntity[]) : [];
+}
+
+function readRelationships(metadata: unknown): MetadataRelationship[] {
+  const maybeMetadata = metadata as Partial<CanonicalDataSourceMetadata> | null;
+  return Array.isArray(maybeMetadata?.relationships) ? (maybeMetadata!.relationships as MetadataRelationship[]) : [];
+}
+
+/**
+ * SPEC-03 §2 resumability: carry per-entity profile/sample enrichment and prior inferred join edges
+ * forward from the last snapshot for entities whose structural fingerprint is unchanged, so retries
+ * skip already-done work. Mutates `metadata.entities` in place and returns carried inferred edges.
+ */
+function carryForwardEnrichment(metadata: CanonicalDataSourceMetadata, priorMetadata: unknown): MetadataRelationship[] {
+  const priorEntities = readEntities(priorMetadata);
+  if (priorEntities.length === 0) return [];
+
+  const priorByFingerprint = new Map<string, MetadataEntity>();
+  const priorById = new Map<string, MetadataEntity>();
+  for (const entity of priorEntities) {
+    priorByFingerprint.set(computeEntityFingerprint(entity), entity);
+    priorById.set(entity.id, entity);
+  }
+
+  const unchangedEntityIds = new Set<string>();
+  const currentEntityIds = new Set<string>();
+  for (const entity of metadata.entities) {
+    currentEntityIds.add(entity.id);
+    const fingerprint = computeEntityFingerprint(entity);
+    const match = priorByFingerprint.get(fingerprint);
+    const priorSameId = priorById.get(entity.id);
+    if (priorSameId && computeEntityFingerprint(priorSameId) === fingerprint) unchangedEntityIds.add(entity.id);
+    if (!match) continue;
+    if (match.columnProfiles && match.profiledFingerprint === fingerprint) {
+      entity.columnProfiles = match.columnProfiles;
+      entity.profiledFingerprint = fingerprint;
+      entity.profiledAt = match.profiledAt;
+    }
+    if (match.topValues && match.sampledFingerprint === fingerprint) {
+      entity.topValues = match.topValues;
+      entity.sampledFingerprint = fingerprint;
+      entity.sampledAt = match.sampledAt;
+    }
+  }
+
+  // Reuse prior inferred edges only when both endpoints are unchanged and still present.
+  return readRelationships(priorMetadata).filter(
+    (relationship) =>
+      relationship.inferred === true &&
+      currentEntityIds.has(relationship.fromEntityId) &&
+      currentEntityIds.has(relationship.toEntityId) &&
+      unchangedEntityIds.has(relationship.fromEntityId) &&
+      unchangedEntityIds.has(relationship.toEntityId),
+  );
+}
+
 async function createIngestionSnapshot(input: {
   connectionId: ResourceId;
   ownerUserId: string;
   metadata: CanonicalDataSourceMetadata;
   schemaFingerprint: string;
-}): Promise<{ snapshotId: ResourceId; snapshotVersion: number; existingDescriptions: Record<string, SchemaEntityDescription> }> {
+}): Promise<{ snapshotId: ResourceId; snapshotVersion: number; existingDescriptions: Record<string, SchemaEntityDescription>; carriedInferred: MetadataRelationship[] }> {
   return withAppDbTransaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`schema-ingestion:${input.connectionId}`}))`;
     const latest = await tx.schemaSnapshot.findFirst({
@@ -135,7 +208,12 @@ async function createIngestionSnapshot(input: {
       where: { connectionId: input.connectionId, status: "succeeded", schemaHash: input.schemaFingerprint },
       orderBy: { snapshotVersion: "desc" },
     });
-    const existingDescriptions = readDescriptions(latestSuccessful?.metadata ?? latest?.metadata);
+    const priorMetadata = latestSuccessful?.metadata ?? latest?.metadata;
+    const existingDescriptions = readDescriptions(priorMetadata);
+    // Carry profile/sample enrichment + inferred edges forward before persisting the first snapshot.
+    const carriedInferred = carryForwardEnrichment(input.metadata, priorMetadata);
+    if (carriedInferred.length > 0) input.metadata.relationships.push(...carriedInferred);
+
     const snapshotId = createResourceId();
     const snapshotVersion = (latest?.snapshotVersion ?? 0) + 1;
     input.metadata.snapshotVersion = snapshotVersion;
@@ -161,7 +239,7 @@ async function createIngestionSnapshot(input: {
       where: { id: input.connectionId },
       data: { schemaSyncStatus: "ready" },
     });
-    return { snapshotId, snapshotVersion, existingDescriptions };
+    return { snapshotId, snapshotVersion, existingDescriptions, carriedInferred };
   });
 }
 
@@ -246,6 +324,7 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
       data: { schemaSyncStatus: "running" },
     });
 
+    // ── Stage: introspect (the ONLY stage whose failure fails the whole job). ─────────────────────
     const introspectionStartedAt = Date.now();
     devLog("info", "schema-ingestion.introspection.started", "Schema ingestion metadata introspection started.", {
       connectionId: data.connectionId,
@@ -258,13 +337,12 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
       relationshipCount: metadata.relationships.length,
     });
 
-    const fingerprintStartedAt = Date.now();
+    // Fingerprint is computed from declared introspection only, before any inferred edges are added,
+    // so it stays stable across runs and inferred joins never perturb per-entity reuse.
     const schemaFingerprint = computeSchemaFingerprint(metadata);
-    devLog("info", "schema-ingestion.fingerprint.completed", "Schema ingestion schema fingerprint computed.", {
-      connectionId: data.connectionId,
-      durationMs: elapsedMs(fingerprintStartedAt),
-      schemaFingerprint,
-    });
+
+    // ── Stage: importance scoring (§1) — orders every downstream enrichment stage. ────────────────
+    const ranked = scoreAndRankEntities(metadata.entities, metadata.relationships);
 
     const snapshot = await createIngestionSnapshot({
       connectionId: data.connectionId,
@@ -273,80 +351,134 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
       schemaFingerprint,
     });
     snapshotId = snapshot.snapshotId;
-    
-    // Sampling mutates `metadata` in place; completeSnapshot persists the enriched copy once done.
-    const samplingPromise = sampleEntityValues(data.connectionId, metadata);
+    const existingDescriptions = snapshot.existingDescriptions;
+    // Snapshot is now queryable (progressive readiness preserved). Every stage below is individually
+    // failure-tolerant: it catches its own errors and continues so one stage never blocks the next.
 
-    await saveSnapshotProgress({
-      snapshotId,
-      metadata,
-      connectionId: data.connectionId,
-      stage: "describing",
-      schemaFingerprint,
-      descriptions: snapshot.existingDescriptions,
-    });
+    // ── Stage: profile (§3) — pg_stats then bounded MIN/MAX, importance-ordered, resumable. ───────
+    const profileStartedAt = Date.now();
+    try {
+      await profileEntities(
+        data.connectionId,
+        ranked,
+        throttle(() =>
+          saveSnapshotProgress({
+            snapshotId: snapshot.snapshotId,
+            metadata,
+            connectionId: data.connectionId,
+            stage: "profiling",
+            schemaFingerprint,
+            descriptions: existingDescriptions,
+          }),
+        ),
+      );
+    } catch (error) {
+      devLogError("schema-ingestion.profiling.stage-failed", "Profiling stage failed; continuing.", error, { connectionId: data.connectionId });
+    }
+    await saveSnapshotProgress({ snapshotId, metadata, connectionId: data.connectionId, stage: "profiling", schemaFingerprint, descriptions: existingDescriptions });
+    devLog("info", "schema-ingestion.profiling.completed", "Schema ingestion profiling stage completed.", { connectionId: data.connectionId, durationMs: elapsedMs(profileStartedAt) });
 
+    // ── Stage: join inference (§5) — runs in the profile/sample window; appends inferred edges. ───
+    try {
+      const inference = await inferJoinRelationships(data.connectionId, metadata.entities, metadata.relationships);
+      if (inference.added.length > 0) {
+        metadata.relationships.push(...inference.added);
+        await saveSnapshotProgress({ snapshotId, metadata, connectionId: data.connectionId, stage: "profiling", schemaFingerprint, descriptions: existingDescriptions });
+      }
+    } catch (error) {
+      devLogError("schema-ingestion.join-inference.stage-failed", "Join inference stage failed; continuing.", error, { connectionId: data.connectionId });
+    }
+
+    // ── Stage: sample (§4) — importance-ordered, per-table budget, concurrent, resumable. ─────────
+    const sampleStartedAt = Date.now();
+    try {
+      await sampleEntityValues(
+        data.connectionId,
+        ranked,
+        throttle(() =>
+          saveSnapshotProgress({
+            snapshotId: snapshot.snapshotId,
+            metadata,
+            connectionId: data.connectionId,
+            stage: "sampling",
+            schemaFingerprint,
+            descriptions: existingDescriptions,
+          }),
+        ),
+      );
+    } catch (error) {
+      devLogError("schema-ingestion.sampling.stage-failed", "Sampling stage failed; continuing.", error, { connectionId: data.connectionId });
+    }
+    await saveSnapshotProgress({ snapshotId, metadata, connectionId: data.connectionId, stage: "sampling", schemaFingerprint, descriptions: existingDescriptions });
+    devLog("info", "schema-ingestion.sampling.completed", "Schema ingestion sampling stage completed.", { connectionId: data.connectionId, durationMs: elapsedMs(sampleStartedAt) });
+
+    // ── Stage: describe (§2) — importance-ordered; per-entity fingerprint reuse already built in. ─
     const descriptionStartedAt = Date.now();
     devLog("info", "schema-ingestion.descriptions.started", "Schema ingestion entity description stage started.", {
       connectionId: data.connectionId,
       entityCount: metadata.entities.length,
-      existingDescriptionCount: Object.keys(snapshot.existingDescriptions).length,
+      existingDescriptionCount: Object.keys(existingDescriptions).length,
     });
-    const descriptions = await describeEntities(metadata.entities, snapshot.existingDescriptions, async (nextDescriptions) => {
-      await saveSnapshotProgress({
-        snapshotId: snapshot.snapshotId,
-        metadata,
-        connectionId: data.connectionId,
-        stage: "describing",
-        schemaFingerprint,
-        descriptions: nextDescriptions,
+    let descriptions = existingDescriptions;
+    try {
+      descriptions = await describeEntities(ranked, existingDescriptions, async (nextDescriptions) => {
+        await saveSnapshotProgress({
+          snapshotId: snapshot.snapshotId,
+          metadata,
+          connectionId: data.connectionId,
+          stage: "describing",
+          schemaFingerprint,
+          descriptions: nextDescriptions,
+        });
       });
-      devLog("debug", "schema-ingestion.descriptions.progress", "Schema ingestion entity descriptions progressed.", {
-        connectionId: data.connectionId,
-        describedEntityCount: Object.keys(nextDescriptions).length,
-        totalEntityCount: metadata.entities.length,
-      });
-    });
+    } catch (error) {
+      devLogError("schema-ingestion.descriptions.stage-failed", "Description stage failed; continuing with existing/fallback descriptions.", error, { connectionId: data.connectionId });
+    }
     devLog("info", "schema-ingestion.descriptions.completed", "Schema ingestion entity description stage completed.", {
       connectionId: data.connectionId,
       durationMs: elapsedMs(descriptionStartedAt),
       describedEntityCount: Object.keys(descriptions).length,
     });
 
+    // ── Stage: embed (§2/§6.1) — importance-ordered, resumable, model-drift-safe. ─────────────────
     const embeddingStartedAt = Date.now();
-    devLog("info", "schema-ingestion.embeddings.started", "Schema ingestion embedding stage started.", {
-      connectionId: data.connectionId,
-      entityCount: metadata.entities.length,
-    });
-    const embeddings = await createEmbeddingRecords({
-      connectionId: data.connectionId,
-      schemaFingerprint,
-      entities: metadata.entities,
-      descriptions,
-    });
+    const currentEmbeddingModel = process.env.QUERYWISE_EMBEDDING_MODEL ?? null;
+    let embeddedEntityIds: string[] = [];
+    let embeddingPersistence: "persisted" | "metadata-only" = "metadata-only";
+    try {
+      const resume = await loadEmbeddingResumeState({ connectionId: data.connectionId, schemaFingerprint, currentModel: currentEmbeddingModel });
+      if (resume.driftModels.length > 0) {
+        devLog("warn", "schema-ingestion.embedding-model-drift", "Existing embeddings use a different model; re-embedding all entities.", {
+          connectionId: data.connectionId,
+          currentModel: currentEmbeddingModel,
+          priorModels: resume.driftModels,
+        });
+      }
+      // On model drift, force a full re-embed so retrieval never silently degrades to a stale model.
+      const alreadyEmbeddedEntityIds = resume.driftModels.length > 0 ? new Set<string>() : resume.alreadyEmbedded;
+      const embeddings = await createEmbeddingRecords({
+        connectionId: data.connectionId,
+        schemaFingerprint,
+        entities: ranked,
+        descriptions,
+        alreadyEmbeddedEntityIds,
+      });
+      embeddedEntityIds = [...new Set([...alreadyEmbeddedEntityIds, ...embeddings.map((embedding) => embedding.entityId)])];
+      embeddingPersistence = await withAppDbTransaction(async (tx) => persistSchemaEmbeddings(tx, embeddings));
+      devLog("info", "schema-ingestion.embeddings.completed", "Schema ingestion embedding stage completed.", {
+        connectionId: data.connectionId,
+        durationMs: elapsedMs(embeddingStartedAt),
+        embeddingRecordCount: embeddings.length,
+        embeddedEntityCount: embeddedEntityIds.length,
+        embeddingPersistence,
+      });
+    } catch (error) {
+      devLogError("schema-ingestion.embeddings.stage-failed", "Embedding stage failed; snapshot still completes.", error, { connectionId: data.connectionId });
+    }
+    await saveSnapshotProgress({ snapshotId, metadata, connectionId: data.connectionId, stage: "embedding", schemaFingerprint, descriptions, embeddedEntityIds });
 
-    const embeddedEntityIds = [...new Set(embeddings.map((embedding) => embedding.entityId))];
-    await saveSnapshotProgress({
-      snapshotId,
-      metadata,
-      connectionId: data.connectionId,
-      stage: "embedding",
-      schemaFingerprint,
-      descriptions,
-      embeddedEntityIds,
-    });
-
-    const embeddingPersistence = await withAppDbTransaction(async (tx) => persistSchemaEmbeddings(tx, embeddings));
-    devLog("info", "schema-ingestion.embeddings.completed", "Schema ingestion embedding stage completed.", {
-      connectionId: data.connectionId,
-      durationMs: elapsedMs(embeddingStartedAt),
-      embeddingRecordCount: embeddings.length,
-      embeddedEntityCount: embeddedEntityIds.length,
-      embeddingPersistence,
-    });
-
+    // ── Stage: complete. ──────────────────────────────────────────────────────────────────────────
     const completionStartedAt = Date.now();
-    await samplingPromise;
     await completeSnapshot({
       connectionId: data.connectionId,
       snapshotId,
