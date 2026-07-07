@@ -95,9 +95,22 @@ export function getStatusCode(error: unknown): number | null {
 
 export function isRetryableError(error: unknown): boolean {
   const statusCode = getStatusCode(error);
-  
+
   const message = getErrorMessage(error).toLowerCase();
   if (message.includes("tool call") || message.includes("invalid_request_error")) {
+    return true;
+  }
+
+  // Groq TPM/RPM rate limits arrive as HTTP 413 (not 429) yet are transient:
+  // treat the token-per-minute shape as retryable so the agent's key-rotation /
+  // backoff loop kicks in instead of surfacing a false context overflow.
+  if (
+    message.includes("tokens per minute") ||
+    message.includes("tpm") ||
+    message.includes("requests per minute") ||
+    message.includes("rpm") ||
+    message.includes("rate limit")
+  ) {
     return true;
   }
 
@@ -112,6 +125,34 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return "";
+}
+
+/**
+ * True context overflow (prompt exceeds the model's working memory) — the
+ * recoverable failure the context engine reacts to mid-run (SPEC-01 §1).
+ * Excludes TPM-shaped 413s, which are transient rate limits handled by retry.
+ */
+export function isContextOverflowError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const isTpm =
+    message.includes("tokens per minute") ||
+    message.includes("tpm") ||
+    message.includes("requests per minute") ||
+    message.includes("rpm") ||
+    message.includes("rate limit");
+  if (isTpm) return false;
+
+  if (
+    message.includes("context length") ||
+    message.includes("maximum context") ||
+    message.includes("context_length_exceeded") ||
+    message.includes("prompt is too long")
+  ) {
+    return true;
+  }
+  const statusCode = getStatusCode(error);
+  if (statusCode === 413) return true;
+  return message.includes("too large");
 }
 
 export function isAuthError(error: unknown): boolean {

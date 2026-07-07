@@ -19,6 +19,18 @@ export function toUserFacingError(error: unknown): { code: string; message: stri
   const statusCode = extractDeepStatusCode(error);
   const lowerMessage = message.toLowerCase();
 
+  // Groq (and similar providers) surface token-per-minute rate limits as HTTP
+  // 413, which is shape-identical to a true context overflow. TPM limits are
+  // transient and retryable (backoff + key rotation) — never a permanent
+  // CONTEXT_TOO_LARGE. Detect the TPM markers so the 413 branch below can
+  // exclude them and only classify genuine prompt-length overflows.
+  const isTpmRateLimit =
+    lowerMessage.includes("tokens per minute") ||
+    lowerMessage.includes("tpm") ||
+    lowerMessage.includes("rate limit") ||
+    lowerMessage.includes("requests per minute") ||
+    lowerMessage.includes("rpm");
+
   // ── Auth / API key errors ──────────────────────────────────────────
   if (isAuthError(error)) {
     return {
@@ -27,8 +39,8 @@ export function toUserFacingError(error: unknown): { code: string; message: stri
     };
   }
 
-  // ── Rate limiting (429) ────────────────────────────────────────────
-  if (statusCode === 429 || lowerMessage.includes("rate limit") || lowerMessage.includes("quota")) {
+  // ── Rate limiting (429, or a TPM-shaped 413) ───────────────────────
+  if (statusCode === 429 || isTpmRateLimit || lowerMessage.includes("quota")) {
     const retrySeconds = extractRetryDelay(message);
     const retryHint = retrySeconds
       ? ` Please try again in about ${Math.ceil(retrySeconds)} seconds.`
@@ -61,17 +73,29 @@ export function toUserFacingError(error: unknown): { code: string; message: stri
     lowerMessage.includes("unsupported") ||
     lowerMessage.includes("deprecated")
   ) {
+    console.log("Error mapping: model not found or unsupported", { error, statusCode, message });
     return {
       code: "MODEL_NOT_FOUND",
       message: "The configured AI model could not be found. Please check your model settings.",
     };
   }
 
-  // ── Request too large (413) ────────────────────────────────────────
-  if (statusCode === 413 || lowerMessage.includes("too large") || lowerMessage.includes("context length")) {
+  // ── True context overflow (413 without TPM markers) ────────────────
+  // A genuine prompt-length overflow: the assembled input exceeds the model's
+  // working memory. TPM-shaped 413s were already handled above. The copy must
+  // not blame the user — the context engine trims and recovery is automatic.
+  if (
+    (statusCode === 413 && !isTpmRateLimit) ||
+    lowerMessage.includes("context length") ||
+    lowerMessage.includes("maximum context") ||
+    lowerMessage.includes("context_length_exceeded") ||
+    lowerMessage.includes("prompt is too long") ||
+    (lowerMessage.includes("too large") && !isTpmRateLimit)
+  ) {
     return {
       code: "CONTEXT_TOO_LARGE",
-      message: "Your query produced too much context for the AI model. Try simplifying your question or starting a new conversation.",
+      message:
+        "This conversation exceeded the model's working memory. I've trimmed older context — please retry; if it persists, start a new conversation.",
     };
   }
 
