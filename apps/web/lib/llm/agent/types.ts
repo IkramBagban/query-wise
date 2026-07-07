@@ -133,6 +133,12 @@ export interface RunAnalystAgentParams extends AnalystAgentEmitters {
   model: string;
   apiKeys: string[];
   abortSignal?: AbortSignal;
+  /**
+   * Table names in descending relevance order for the current question,
+   * pre-seeded from retrieval (SPEC-01 §3). Drives Tier-B membership in the
+   * tiered schema context. Optional — assembly falls back to schema order.
+   */
+  rankedTables?: string[];
 }
 
 /** Mutable per-run state shared by the tools. */

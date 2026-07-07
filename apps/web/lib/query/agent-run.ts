@@ -16,6 +16,24 @@ import type { QueryRuntimeContext, QueryRuntimeDependencies } from "./runtime";
 import { statusEvent, type QueryStreamEmitter } from "./sse";
 import { throwIfQueryRunAborted } from "./cancellation";
 import { elapsedMs, generateAndPersistTitle, toV2ChartConfig } from "./run-helpers";
+import { adaptiveRetrievalLimit, retrieveCandidateTables } from "@/lib/retrieval/retrieval";
+
+/**
+ * Relevance pre-seeding (SPEC-01 §3): rank the schema's tables against the
+ * question so the context assembler can fill Tier B with the most relevant
+ * tables. Uses pgvector when embeddings exist, with lexical fallback; on small
+ * schemas (≤15 tables) retrieval is skipped and every table is a candidate.
+ * Never throws — a failed ranking simply yields schema-order Tier-B selection.
+ */
+async function rankTablesForQuestion(schema: SchemaInfo, question: string): Promise<string[]> {
+  try {
+    const limit = adaptiveRetrievalLimit(schema.tables.length);
+    const candidates = await retrieveCandidateTables({ schema, question, limit });
+    return candidates.map((candidate) => candidate.tableName);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Analyst-agent path for the durable query run (docs/AGENTIC_ARCHITECTURE.md
@@ -115,10 +133,13 @@ export async function runAgentQueryRun(input: {
   const agentRuntime = createAgentRuntime(input.runtime, input.context, abortSignal);
   const agentStartedAt = Date.now();
 
+  const rankedTables = await rankTablesForQuestion(input.schema, input.question);
+
   const result = await runAnalystAgent({
     question: input.question,
     history: input.history,
     schema: input.schema,
+    rankedTables,
     runtime: agentRuntime,
     provider: llmConfig.provider,
     model: llmConfig.model,

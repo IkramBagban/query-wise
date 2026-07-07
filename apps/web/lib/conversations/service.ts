@@ -242,18 +242,47 @@ export async function listMessages(input: {
   };
 }
 
+/**
+ * The SQL an assistant turn actually ran, for the `[SQL used: …]` history
+ * annotation (SPEC-01 §3). Prefers the per-block SQL of the query run, capped at
+ * the 2 most recent statements; falls back to the legacy single generated query.
+ */
+function recentSqlForRun(run: { resultBlocks: unknown; generatedQuery: unknown }): string | undefined {
+  const blocks = (run.resultBlocks as QueryResultBlock[] | null) ?? [];
+  const statements = blocks
+    .map((block) => block?.sql)
+    .filter((sql): sql is string => typeof sql === "string" && sql.trim().length > 0);
+  if (statements.length > 0) return statements.slice(-2).join("\n");
+  const generated = run.generatedQuery as { text?: string } | null;
+  if (generated?.text?.trim()) return generated.text.trim();
+  return undefined;
+}
+
 export async function recentConversationHistory(conversationId: string, limit = 20) {
   const records = await getAppDb().message.findMany({
     where: { conversationId },
     orderBy: [{ sequence: "desc" }, { id: "desc" }],
     take: limit,
   });
-  return records.reverse().map((message) => ({
-    id: message.id,
-    role: message.role === "system" ? "assistant" as const : message.role,
-    content: message.content,
-    timestamp: message.createdAt.valueOf(),
-  }));
+  const runIds = records.flatMap((message) => (message.queryRunId ? [message.queryRunId] : []));
+  const runs = runIds.length
+    ? await getAppDb().queryRun.findMany({
+        where: { id: { in: runIds } },
+        select: { id: true, resultBlocks: true, generatedQuery: true },
+      })
+    : [];
+  const runsById = new Map(runs.map((run) => [run.id, run]));
+  return records.reverse().map((message) => {
+    const run = message.queryRunId ? runsById.get(message.queryRunId) : null;
+    const sql = run ? recentSqlForRun(run) : undefined;
+    return {
+      id: message.id,
+      role: message.role === "system" ? ("assistant" as const) : message.role,
+      content: message.content,
+      timestamp: message.createdAt.valueOf(),
+      ...(sql ? { sql } : {}),
+    };
+  });
 }
 
 /**

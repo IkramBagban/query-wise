@@ -1683,6 +1683,49 @@ Why this is the right approach:
 - Tradeoffs: `lib/retrieval/` currently has no live importers (its consumers land with SPEC-01/SPEC-02); it is retained deliberately rather than deleted. Historical V2 conversations are persisted messages, not live events, so they still render.
 - How to test: `pnpm --filter @query-wise/web exec tsc --noEmit` passes with zero references to `planStagedNlSqlQuery`, `beginExplainStream`, `QUERYWISE_AGENT_V3`, `generateSQL`, `buildSchemaContext`, `buildConstrainedAgentSystemPrompt`, `cleanGeneratedSql`. `lib/nl-sql/` no longer exists. A data question streams thinking → `run_sql` → block-data → answer, persists its title, and cancels cleanly; a non-data message answers directly with no tool call; a conversation created under V2 still renders its historical messages/charts.
 
+## SPEC-01 Context Engine: budgeted, tiered, self-recovering context (2026-07-07)
+
+Replaces blind prompt concatenation with a token-budgeted, tiered, self-recovering context system. Permanently fixes the `CONTEXT_TOO_LARGE` failure class and removes the 30-table cliff. All model assumptions flow through `lib/llm-config.ts` with env overrides — nothing hardcodes the dev-only Groq model.
+
+### What changed
+
+1. **413 error classification + retryability (`lib/query/error-mapping.ts`, `lib/llm/client.ts`).** Groq surfaces token-per-minute (TPM) rate limits as HTTP 413 — shape-identical to a true context overflow. `toUserFacingError` now detects TPM markers (`tokens per minute`/`tpm`/`rate limit`/`rpm`) and maps them to the retryable `RATE_LIMITED`; only a 413 *without* TPM markers (or explicit `context length`/`maximum context`/`prompt is too long`) maps to `CONTEXT_TOO_LARGE`, with new non-blaming copy ("This conversation exceeded the model's working memory. I've trimmed older context — please retry…"). `isRetryableError` returns `true` for the TPM shape so the agent's key-rotation/backoff loop engages instead of failing. Added `isContextOverflowError` (used by in-run recovery).
+
+2. **Enrichment wiring (`types/index.ts`, `lib/query/runtime.ts`, `lib/llm/prompts.ts`, `lib/llm/agent/system-prompt.ts`).** Ingestion already produced per-table/per-column LLM descriptions + sample questions (`metadata.enrichment.descriptions`, keyed by `entityId = namespace.name`) but `toLegacySchema` dropped them. `SchemaTable`/`SchemaColumn` gained optional `description` (+ `sampleQuestions` on the table); `toLegacySchema` now populates them. `buildStructuredTableContext` renders a one-line table description header and appends per-column descriptions (truncated to ~100 chars); the Tier-A index line carries a one-sentence table description. `describe_tables` inherits this via `buildStructuredTableContext`.
+
+3. **Token-budgeted tiered assembly (`lib/llm/agent/context-budget.ts` [new], `lib/llm-config.ts`, `lib/llm/agent/system-prompt.ts`, `lib/query/agent-run.ts`, `lib/llm/agent/index.ts`, `lib/conversations/service.ts`).** `INDEX_REGIME_THRESHOLD`/`usesIndexRegime` are deleted — one code path at every schema size:
+   - `estimateTokens(text) = ceil(chars/4 * 1.1)` behind one swappable function; `getModelInputBudget(provider, model)` gives a per-provider input budget (100k for Gemini/Anthropic tiers; a conservative TPM-sized default for Groq — *not* the context window), env-overridable via `QUERYWISE_MODEL_INPUT_BUDGET`. The assembler targets ≤80% of budget; schema gets ~40%, history ~20%.
+   - **Tier A (always, every table):** compact index — name, one-sentence description, ~rowCount, key columns, related tables. **Tier B (top-K relevant):** full column detail via `buildStructuredTableContext`, greedily fitted to the schema budget in relevance order.
+   - **Relevance pre-seeding:** `runAgentQueryRun` calls the relocated retrieval (`lib/retrieval/retrieval.ts`, pgvector + lexical fallback, `adaptiveRetrievalLimit` skips retrieval and returns all tables for ≤15-table schemas) and passes ranked table names into `RunAnalystAgentParams.rankedTables`. `describe_tables` is now **always registered** so the agent can fetch detail for any Tier-A-only table.
+   - **History budget:** last ~2 turns (4 messages) verbatim, then older messages newest-first until the history token share is exhausted. Fixed the never-populated `message.sql`: `recentConversationHistory` now reads the assistant turn's query-run `resultBlocks` (capped at the 2 most recent SQL statements, legacy `generatedQuery` fallback) so the `[SQL used: …]` annotation fires.
+   - Logs `agent.context.assembled` per assembly and per step with section sizes (system/schema/tierA/tierB/history tokens + table counts).
+
+4. **Tool-result compaction across steps (`lib/llm/agent/index.ts`).** `ai@6.0.141` supports `prepareStep`, so compaction runs in that hook: the most recent `run_sql` result stays verbatim (50 rows); older `run_sql` results are rewritten to a digest `{ blockIndex, purpose, columns, rowCount, truncated, sampleRows: first 3 }`; `sample_values`/`describe_tables` stay verbatim; error results stay verbatim. The system prompt tells the model older results are summarized and the full data is still shown to the user.
+
+5. **Prompt caching (`lib/llm/agent/index.ts`, `lib/llm/agent/system-prompt.ts`).** Prompt is ordered stable-prefix-first: static instructions → schema tiers (in the system message) → dynamic history/question (in the message list). Anthropic gets `cacheControl: { type: "ephemeral" }` via `providerOptions.anthropic` on the system message; Google caches the stable prefix implicitly. `usage.cachedInputTokens` is logged via `devLog` (`agent.cache.usage`) when the provider reports it.
+
+6. **In-run recovery (`lib/llm/agent/index.ts`).** When a stream attempt fails with a *true* context overflow **after** side effects (streamed text or executed tools — model fallback is then unsafe), the loop makes exactly one compact-and-retry attempt instead of throwing: schema dropped one tier (Tier B off), history reduced to the last 2 turns, and digests of already-executed blocks injected so the model can finish without re-querying. If the retry also fails, it throws with the partial transcript preserved.
+
+7. **SPEC-03 web touchpoints (owned here per the task split).** `toLegacySchema` maps per-entity `columnProfiles.{min,max}` into the column `range` field (read defensively — absent on older snapshots/until the worker writes it) and carries a relationship `inferred` flag through to the web `Relationship` type; `lib/retrieval/schema-context.ts` renders `inferred` joins as `… (inferred)` hints, and the analyst system prompt tells the model inferred joins are heuristic, not declared FKs.
+
+### Why
+Blind concatenation either dumped every column of every table (≤30 tables) or a bare name index (>30) and re-sent all accumulated 50-row tool results every step, with nothing counting tokens — so large schemas and long conversations tripped Groq's TPM limit, which was then mis-classified as a permanent user-facing `CONTEXT_TOO_LARGE`. Enrichment descriptions (the highest-signal schema context) were produced at ingestion and silently dropped.
+
+### Key tradeoffs / risks
+- Token counting is approximate (`chars/4` + 10% margin) behind `estimateTokens` so a real tokenizer can be swapped later without touching call sites.
+- Tier A is *always* every table (compact). On a very large schema paired with a very small budget (e.g. 200 tables on the dev-only Groq TPM budget) the compact index alone can exceed the ~40% schema share, leaving Tier B empty — that index is the intended irreducible floor; production-tier budgets (100k) leave ample headroom.
+- Mid-run recovery can re-stream answer text the user already saw partially (inherent to retrying after side effects); acceptable per spec, transcript preserved.
+- Schema/metadata changes are additive and read defensively, so historical conversations and pre-enrichment snapshots still render.
+
+### How to test
+- `pnpm --filter @query-wise/web exec tsc --noEmit` and the worker `tsc --noEmit` build clean; no references to `INDEX_REGIME_THRESHOLD`/`usesIndexRegime` remain.
+- A 30-table and a 31-table schema produce the same tiered shape (differing only in Tier-B membership).
+- With a 200-table schema + 10-turn conversation, `agent.context.assembled` logs the assembled estimate under the model budget.
+- Enrichment descriptions appear in the system prompt (Tier A one-liner + Tier B column lines) and in `describe_tables` output for a connection that completed ingestion.
+- A simulated Groq TPM 413 retries with backoff/key rotation and surfaces `RATE_LIMITED`, never `CONTEXT_TOO_LARGE`.
+- A simulated true overflow mid-run triggers exactly one `agent.context.recovery` compact-and-retry before failing.
+- In a 5-query run, step N's request carries digests (not 50-row payloads) for the older blocks; the most recent stays verbatim.
+
 ## SPEC-03 Ingestion Pipeline: prioritized DAG, profiling, join inference (2026-07-07)
 
 Worker-side implementation of `docs/specs/SPEC-03-INGESTION-PIPELINE.md`. All changes are confined to `apps/worker/**` and `packages/shared/**`; the web-tier reads (SPEC-03 §3 `toLegacySchema` range mapping and §5 join rendering) are the parallel agent's and consume the metadata shapes persisted here.
