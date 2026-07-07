@@ -6,8 +6,11 @@ if (!process.env.QUERYWISE_LOG_ENABLED) {
 }
 
 import {
+  enqueueScheduledSchemaRefresh,
   publishQueuedSchemaIngestionOutbox,
+  scheduleSchemaRefreshRepeatable,
   SCHEMA_INGESTION_QUEUE_NAME,
+  SCHEMA_REFRESH_QUEUE_NAME,
   type SchemaIngestionJobData,
 } from "@query-wise/shared/ingestion";
 import { getAppDb } from "@query-wise/shared/app-db";
@@ -92,10 +95,31 @@ async function main(): Promise<void> {
     devLogError("schema-ingestion.worker.error", "Schema ingestion worker emitted an error.", error);
   });
 
+  // SPEC-03 §6.2 — env-gated recurring drift detection. Registers a repeatable job and a worker that
+  // enqueues an ingestion refresh per connection; unchanged entities are skipped downstream.
+  const refreshCron = process.env.QUERYWISE_SCHEMA_REFRESH_CRON;
+  let refreshWorker: InstanceType<BullMqWorkerConstructor> | null = null;
+  if (refreshCron) {
+    const scheduled = await scheduleSchemaRefreshRepeatable(refreshCron);
+    refreshWorker = new bullmq.Worker(
+      SCHEMA_REFRESH_QUEUE_NAME,
+      async () => {
+        devLog("info", "schema-refresh.worker.scan-started", "Scheduled schema refresh scan started.");
+        return enqueueScheduledSchemaRefresh();
+      },
+      { connection: redisConnectionOptions(), concurrency: 1 },
+    );
+    refreshWorker.on("failed", (job, error) => {
+      devLogError("schema-refresh.worker.job-failed", "Scheduled schema refresh job failed.", error, { jobId: (job as { id?: string } | undefined)?.id });
+    });
+    devLog("info", "schema-refresh.worker.started", "Scheduled schema refresh worker started.", { cronPattern: refreshCron, scheduled });
+  }
+
   const shutdown = async () => {
     devLog("info", "schema-ingestion.worker.shutdown-started", "Schema ingestion worker shutdown started.");
     clearInterval(relay);
     await worker.close();
+    await refreshWorker?.close();
     await getAppDb().$disconnect();
     devLog("info", "schema-ingestion.worker.shutdown-completed", "Schema ingestion worker shutdown completed.");
     process.exit(0);
