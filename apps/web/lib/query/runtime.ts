@@ -23,6 +23,13 @@ export interface QueryRuntimeDependencies {
   loadGenerationSchema(context: QueryRuntimeContext): Promise<SchemaInfo>;
   validateReadQuery(context: QueryRuntimeContext, query: ProviderQuery): Promise<QueryValidationResult>;
   executeValidatedReadQuery(context: QueryRuntimeContext, query: ProviderQuery, signal?: AbortSignal): Promise<BoundedQueryResult>;
+  /**
+   * Estimate a statement's cost via `EXPLAIN (FORMAT JSON)` — never ANALYZE
+   * (SPEC-02 §1.2). Validates the inner statement through the read-only policy,
+   * then plans (does not execute) it in a READ ONLY transaction. Returns the raw
+   * planner rows; the caller parses out cost/row estimates.
+   */
+  explainReadQuery(context: QueryRuntimeContext, sql: string, signal?: AbortSignal): Promise<Array<Record<string, unknown>>>;
 }
 
 function stringList(value: unknown): string[] {
@@ -65,6 +72,23 @@ function readEnrichmentDescriptions(metadata: CanonicalDataSourceMetadata): Reco
   return {};
 }
 
+/** Shape of a persisted SPEC-03 column profile as it appears in snapshot metadata. */
+interface PersistedColumnProfile {
+  distinctCount?: number;
+  nullFraction?: number;
+  min?: string | number;
+  max?: string | number;
+  topValues?: Array<{ value: string; count?: number }>;
+}
+
+function readColumnProfile(
+  entity: CanonicalDataSourceMetadata["entities"][number],
+  columnName: string,
+): PersistedColumnProfile | undefined {
+  const profiles = (entity as unknown as { columnProfiles?: Record<string, PersistedColumnProfile> }).columnProfiles;
+  return profiles?.[columnName];
+}
+
 /**
  * Per-entity column profiles (SPEC-03): the worker writes numeric/temporal
  * min/max under `entity.columnProfiles[columnName]`. Read defensively — the
@@ -74,10 +98,29 @@ function columnRangeFromProfile(
   entity: CanonicalDataSourceMetadata["entities"][number],
   columnName: string,
 ): { min: string; max: string } | undefined {
-  const profiles = (entity as unknown as { columnProfiles?: Record<string, { min?: unknown; max?: unknown }> }).columnProfiles;
-  const profile = profiles?.[columnName];
+  const profile = readColumnProfile(entity, columnName);
   if (!profile || profile.min == null || profile.max == null) return undefined;
   return { min: String(profile.min), max: String(profile.max) };
+}
+
+/**
+ * Full cached column statistics from the SPEC-03 profile store, surfaced onto
+ * SchemaColumn.stats for the `get_column_stats` tool (SPEC-02 §1.3). Returns
+ * undefined when the snapshot predates profiling.
+ */
+function columnStatsFromProfile(
+  entity: CanonicalDataSourceMetadata["entities"][number],
+  columnName: string,
+): PersistedColumnProfile | undefined {
+  const profile = readColumnProfile(entity, columnName);
+  if (!profile) return undefined;
+  const hasAny =
+    profile.distinctCount != null ||
+    profile.nullFraction != null ||
+    profile.min != null ||
+    profile.max != null ||
+    (profile.topValues?.length ?? 0) > 0;
+  return hasAny ? profile : undefined;
 }
 
 function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string | null): SchemaInfo {
@@ -122,6 +165,7 @@ function toLegacySchema(metadata: CanonicalDataSourceMetadata, summary: string |
             ),
             topValues: sampled?.length ? sampled.map((value) => ({ value })) : undefined,
             range: columnRangeFromProfile(entity, column.name),
+            stats: columnStatsFromProfile(entity, column.name),
             description: columnDescriptions.get(column.name) || undefined,
           };
         }),
@@ -198,6 +242,47 @@ const defaultDependencies: QueryRuntimeDependencies = {
       query,
       { timeoutMs: 15_000, maxRows: 500, maxBytes: 2 * 1024 * 1024, signal },
     );
+  },
+  async explainReadQuery(context, sql, signal) {
+    signal?.throwIfAborted();
+    const { record, secret } = await getConnectionSecret(context.connectionId);
+    const adapter = getDataSourceAdapter(record.providerId);
+    requireCapability(adapter, "sql-validation");
+    // Validate the INNER statement under the same read-only policy as run_sql, so
+    // the EXPLAIN can only ever wrap a safe SELECT/WITH — never a write.
+    const validation = await adapter.validateQuery(
+      { kind: "sql", dialectId: "postgresql", text: sql },
+      {
+        schemaVersion: 1,
+        readOnly: true,
+        singleStatement: true,
+        blockComments: true,
+        blockSystemCatalogs: true,
+        maxExecutionMs: 15_000,
+        maxReturnedRows: 500,
+      },
+    );
+    if (!validation.valid || !validation.normalizedQuery) {
+      throw new AppError(
+        "QUERY_VALIDATION_BLOCKED",
+        `The statement cannot be explained under the read-only policy: ${validation.violations.map((v) => v.message).join("; ") || "invalid statement"}`,
+        true,
+      );
+    }
+    if (!adapter.executeIntrospectionQuery) {
+      throw new AppError("QUERY_EXECUTION_FAILED", "This connection does not support query cost estimation.", true);
+    }
+    // EXPLAIN (no ANALYZE) plans but never executes the query; run it through the
+    // trusted introspection path (READ ONLY, bounded timeout) because the
+    // user-facing execute path wraps SQL in a subquery, which EXPLAIN forbids.
+    const { rows } = await adapter.executeIntrospectionQuery(
+      record.id,
+      record.credentialVersion,
+      secret,
+      { text: `EXPLAIN (FORMAT JSON) ${validation.normalizedQuery.text}` },
+      { timeoutMs: 15_000 },
+    );
+    return rows;
   },
 };
 

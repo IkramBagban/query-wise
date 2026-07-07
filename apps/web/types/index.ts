@@ -15,6 +15,24 @@ export interface DbConnection {
 /**
  * Column metadata extracted from schema introspection.
  */
+/**
+ * Cached per-column statistics surfaced from the SPEC-03 profiling stage
+ * (`entity.columnProfiles`). Read by the `get_column_stats` tool (SPEC-02 §1.3);
+ * all fields optional so older snapshots without profiles keep working.
+ */
+export interface ColumnStatistics {
+  /** Estimated number of distinct values. */
+  distinctCount?: number;
+  /** Fraction of rows that are NULL (0-1). */
+  nullFraction?: number;
+  /** Minimum observed value (bounded scan). */
+  min?: string | number;
+  /** Maximum observed value (bounded scan). */
+  max?: string | number;
+  /** Most-common values with optional frequency counts. */
+  topValues?: Array<{ value: string; count?: number }>;
+}
+
 export interface SchemaColumn {
   name: string;
   type: string;
@@ -29,6 +47,8 @@ export interface SchemaColumn {
   topValues?: Array<{ value: string; count?: number }>;
   /** LLM-generated column description from ingestion enrichment (SPEC-01 §2). */
   description?: string;
+  /** Cached profiling statistics from ingestion (SPEC-03 §3 / SPEC-02 §1.3). */
+  stats?: ColumnStatistics;
 }
 
 /**
