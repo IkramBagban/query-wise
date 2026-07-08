@@ -11,6 +11,7 @@ import type {
   DashboardDto,
   DashboardListItem,
   PublicDashboardDto,
+  WidgetMode,
   WidgetRefreshResultDto,
   QueryRunDto,
   QueryStreamEvent,
@@ -54,6 +55,9 @@ export const conversationsApi = {
   get: (id: string, signal?: AbortSignal) => apiRequest<ConversationDto>(`/api/conversations/${id}`, { signal }),
   create: (connectionId: string) =>
     apiRequest<ConversationDto>("/api/conversations", { method: "POST", body: { connectionId } }),
+  update: (id: string, input: { title?: string; status?: "active" | "archived" }) =>
+    apiRequest<ConversationDto>(`/api/conversations/${id}`, { method: "PATCH", body: input }),
+  remove: (id: string) => apiRequest<void>(`/api/conversations/${id}`, { method: "DELETE" }),
   messages: (id: string, limit = 100, cursor?: string) =>
     apiRequest<CursorPage<ConversationMessageDto>>(`/api/conversations/${id}/messages`, {
       query: pageQuery(limit, cursor),
@@ -132,7 +136,8 @@ export const dashboardsApi = {
   list: (limit = 25, cursor?: string, signal?: AbortSignal) =>
     apiRequest<CursorPage<DashboardListItem>>("/api/dashboards", { query: pageQuery(limit, cursor), signal }),
   get: (id: string, signal?: AbortSignal) => apiRequest<DashboardDto>(`/api/dashboards/${id}`, { signal }),
-  create: (name: string) => apiRequest<DashboardDto>("/api/dashboards", { method: "POST", body: { name } }),
+  create: (name: string, mode?: WidgetMode) =>
+    apiRequest<DashboardDto>("/api/dashboards", { method: "POST", body: { name, mode } }),
   update: (id: string, name: string) =>
     apiRequest<{ id: string; updatedAt: string }>(`/api/dashboards/${id}`, {
       method: "PATCH",
@@ -189,13 +194,18 @@ export const dashboardsApi = {
       `/api/dashboards/${dashboardId}/refresh`,
       { method: "POST", body, signal },
     ),
-  // SPEC-06 §4.2/§5: dashboard-level default range + auto-refresh cadence.
+  // SPEC-06 §2/§4.2/§5: dashboard-level mode + default range + auto-refresh cadence.
   updateSettings: (
     dashboardId: string,
-    body: { defaultDateRange?: DashboardDateRange | null; refreshIntervalSeconds?: number | null },
+    body: {
+      mode?: WidgetMode;
+      defaultDateRange?: DashboardDateRange | null;
+      refreshIntervalSeconds?: number | null;
+    },
   ) =>
     apiRequest<{
       id: string;
+      mode: WidgetMode;
       defaultDateRange: DashboardDateRange | null;
       refreshIntervalSeconds: number | null;
       updatedAt: string;
