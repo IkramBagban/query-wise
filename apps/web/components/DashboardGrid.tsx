@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, GripVertical, LayoutGrid, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, Check, LayoutGrid, RefreshCw, RotateCcw } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 
-import { V2Chart } from "@/components/V2Chart";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,8 +12,17 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { dashboardsApi } from "@/lib/api-client";
 import type { DashboardDto } from "@/lib/api-client";
+import type { BoundedResultPreview, DashboardDateRange } from "@query-wise/shared/types";
+import { isBoundedResultPreview } from "@/components/V2Chart";
+import { DateRangePicker } from "@/components/dashboard/primitives";
+import { LiveWidgetCard, type LiveWidgetView } from "@/components/dashboard/LiveWidgetCard";
+// Click-to-drill / "Ask about this" (SPEC-06 §7) removed per product decision.
+// import { DrillDrawer, type DrillTarget } from "@/components/dashboard/DrillDrawer";
 
 type DashboardWidget = DashboardDto["widgets"][number];
+
+const STALENESS_MS = 10 * 60 * 1000; // §4.2 default staleness window
+const WAVE_STAGGER_MS = 60; // §8b staggered refresh wave
 
 export interface DashboardGridProps {
   widgets: DashboardWidget[];
@@ -23,6 +31,9 @@ export interface DashboardGridProps {
   onLayoutSaved?: () => void;
   busyWidget?: string | null;
   onRemoveWidget?: (widgetId: string) => void;
+  canRefresh?: boolean;
+  defaultDateRange?: DashboardDateRange | null;
+  refreshIntervalSeconds?: number | null;
 }
 
 export function WidgetCardSkeleton() {
@@ -40,20 +51,41 @@ export function WidgetCardSkeleton() {
 
 function widgetsToLayout(widgets: DashboardWidget[]): Layout {
   return widgets.map(
-    (w): LayoutItem => ({
-      i: w.id,
-      x: w.layout.x,
-      y: w.layout.y,
-      w: w.layout.w,
-      h: w.layout.h,
-      minW: 2,
-      minH: 3,
-    }),
+    (w): LayoutItem => ({ i: w.id, x: w.layout.x, y: w.layout.y, w: w.layout.w, h: w.layout.h, minW: 2, minH: 3 }),
   );
 }
 
 function copyLayout(layout: Layout): Layout {
   return layout.map((item) => ({ ...item }));
+}
+
+/* --------------------------- live widget state ---------------------------- */
+
+interface WidgetState {
+  preview: BoundedResultPreview;
+  lastRefreshedAt: string | null;
+  error: string | null;
+  refreshing: boolean;
+  pulseKey: number;
+}
+
+function initialStates(widgets: DashboardWidget[]): Record<string, WidgetState> {
+  const map: Record<string, WidgetState> = {};
+  for (const widget of widgets) {
+    map[widget.id] = {
+      preview: widget.snapshot as BoundedResultPreview,
+      lastRefreshedAt: widget.lastRefreshedAt ?? null,
+      error: widget.lastRefreshError ?? null,
+      refreshing: false,
+      pulseKey: 0,
+    };
+  }
+  return map;
+}
+
+function isStale(lastRefreshedAt: string | null, windowMs: number): boolean {
+  if (!lastRefreshedAt) return true;
+  return Date.now() - new Date(lastRefreshedAt).getTime() > windowMs;
 }
 
 export function DashboardGrid({
@@ -63,6 +95,9 @@ export function DashboardGrid({
   onLayoutSaved,
   busyWidget = null,
   onRemoveWidget,
+  canRefresh = false,
+  defaultDateRange = null,
+  refreshIntervalSeconds = null,
 }: DashboardGridProps) {
   const { containerRef, width, mounted } = useContainerWidth({ initialWidth: 1280 });
   const [layout, setLayout] = useState<Layout>(() => widgetsToLayout(widgets));
@@ -76,30 +111,160 @@ export function DashboardGrid({
   const scopeRef = useRef(0);
   const previousEditingRef = useRef(isEditing);
 
+  /* ---------------------------- live state ------------------------------- */
+
+  const [states, setStates] = useState<Record<string, WidgetState>>(() => initialStates(widgets));
+  const [range, setRange] = useState<DashboardDateRange | null>(defaultDateRange);
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const statesRef = useRef(states);
+  statesRef.current = states;
+
+  const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
+  const liveWidgets = useMemo(() => widgets.filter((w) => w.mode === "live"), [widgets]);
+  const hasFilterBound = useMemo(() => widgets.some((w) => Boolean(w.filterBinding)), [widgets]);
+
+  const setWidgetState = useCallback((id: string, patch: Partial<WidgetState>) => {
+    setStates((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], ...patch } } : prev));
+  }, []);
+
+  const refreshOne = useCallback(
+    async (widgetId: string, nextRange: DashboardDateRange | null) => {
+      const widget = widgetMap.get(widgetId);
+      if (!widget || widget.mode !== "live") return;
+      setWidgetState(widgetId, { refreshing: true });
+      try {
+        const result = await dashboardsApi.refreshWidget(dashboardId, widgetId, {
+          range: nextRange ?? null,
+          force: true,
+        });
+        if (result.status === "ok" && result.result) {
+          setWidgetState(widgetId, {
+            preview: result.result,
+            lastRefreshedAt: result.lastRefreshedAt,
+            error: null,
+            refreshing: false,
+          });
+        } else if (result.status === "error") {
+          setWidgetState(widgetId, { error: result.error?.message ?? "Couldn't refresh.", refreshing: false });
+        } else {
+          setWidgetState(widgetId, { refreshing: false });
+        }
+      } catch (reason) {
+        setWidgetState(widgetId, {
+          error: reason instanceof Error ? reason.message : "Couldn't refresh.",
+          refreshing: false,
+        });
+      }
+    },
+    [dashboardId, setWidgetState, widgetMap],
+  );
+
+  // §8b: staggered wave in reading order (top-left first).
+  const readingOrder = useCallback(
+    (ids: string[]): string[] => {
+      const order = new Map(layout.map((item, index) => [item.i, item.y * 1000 + item.x + index * 0.001]));
+      return [...ids].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+    },
+    [layout],
+  );
+
+  const refreshWave = useCallback(
+    async (widgetIds: string[], nextRange: DashboardDateRange | null) => {
+      const ordered = readingOrder(widgetIds);
+      await Promise.all(
+        ordered.map(
+          (id, index) =>
+            new Promise<void>((resolve) => {
+              window.setTimeout(() => {
+                void refreshOne(id, nextRange).finally(resolve);
+              }, index * WAVE_STAGGER_MS);
+            }),
+        ),
+      );
+    },
+    [readingOrder, refreshOne],
+  );
+
+  const refreshAll = useCallback(async () => {
+    if (!canRefresh || refreshingAll) return;
+    setRefreshingAll(true);
+    try {
+      await refreshWave(liveWidgets.map((w) => w.id), range);
+    } finally {
+      setRefreshingAll(false);
+    }
+  }, [canRefresh, liveWidgets, range, refreshWave, refreshingAll]);
+
+  // §4.2: on load, refresh live widgets that are stale beyond the window.
+  const didLoadRefresh = useRef(false);
+  useEffect(() => {
+    if (didLoadRefresh.current || !canRefresh) return;
+    didLoadRefresh.current = true;
+    const windowMs = refreshIntervalSeconds ? refreshIntervalSeconds * 1000 : STALENESS_MS;
+    const stale = liveWidgets
+      .filter((w) => isStale(statesRef.current[w.id]?.lastRefreshedAt ?? null, windowMs))
+      .map((w) => w.id);
+    if (stale.length) void refreshWave(stale, range);
+  }, [canRefresh, liveWidgets, range, refreshIntervalSeconds, refreshWave]);
+
+  // §5: changing the global range refreshes bound live widgets in a wave, and
+  // pulses snapshot/unbound widgets' borders to signal "intentionally unchanged."
+  const changeRange = useCallback(
+    (nextRange: DashboardDateRange | null) => {
+      setRange(nextRange);
+      void dashboardsApi.updateSettings(dashboardId, { defaultDateRange: nextRange }).catch(() => undefined);
+      const bound = widgets.filter((w) => w.mode === "live" && Boolean(w.filterBinding)).map((w) => w.id);
+      const unaffected = widgets.filter((w) => !(w.mode === "live" && Boolean(w.filterBinding))).map((w) => w.id);
+      setStates((prev) => {
+        const next = { ...prev };
+        for (const id of unaffected) if (next[id]) next[id] = { ...next[id], pulseKey: next[id].pulseKey + 1 };
+        return next;
+      });
+      if (bound.length) void refreshWave(bound, nextRange);
+    },
+    [dashboardId, refreshWave, widgets],
+  );
+
+  // §4.2: optional auto-refresh, paused when the tab is hidden.
+  useEffect(() => {
+    if (!canRefresh || !refreshIntervalSeconds) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        if (document.visibilityState === "visible") void refreshAll();
+      }, refreshIntervalSeconds * 1000);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const onVisibility = () => (document.visibilityState === "visible" ? start() : stop());
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [canRefresh, refreshIntervalSeconds, refreshAll]);
+
+  /* --------------------------- layout persistence ------------------------ */
+
   const drainSaveQueue = useCallback(async () => {
     if (savingRef.current) return;
     savingRef.current = true;
     const scope = scopeRef.current;
-
-    // Serialize writes and consume the latest queued layout so an older response cannot win.
     while (scope === scopeRef.current && pendingLayoutRef.current) {
       const nextLayout = pendingLayoutRef.current;
       pendingLayoutRef.current = null;
       setSaveState("saving");
       setSaveError(null);
-
       try {
         await dashboardsApi.updateWidgetLayouts(
           dashboardId,
           nextLayout.map((item) => ({
             id: item.i,
-            layout: {
-              schemaVersion: 1 as const,
-              x: item.x,
-              y: item.y,
-              w: item.w,
-              h: item.h,
-            },
+            layout: { schemaVersion: 1 as const, x: item.x, y: item.y, w: item.w, h: item.h },
           })),
         );
         if (scope !== scopeRef.current) break;
@@ -116,7 +281,6 @@ export function DashboardGrid({
         break;
       }
     }
-
     savingRef.current = false;
     if (scope === scopeRef.current && !failedLayoutRef.current && !pendingLayoutRef.current) {
       setSaveState("saved");
@@ -167,15 +331,30 @@ export function DashboardGrid({
     void drainSaveQueue();
   }, [drainSaveQueue]);
 
-  const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
-
   const stableLayouts = useMemo(
     () => ({ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }),
     [layout],
   );
 
+  const anyRefreshing = refreshingAll || Object.values(states).some((s) => s.refreshing);
+
   return (
     <div className="space-y-2">
+      {/* SPEC-06 §5/§6: live controls — date range + Refresh all + freshness. */}
+      {canRefresh && liveWidgets.length ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {hasFilterBound ? (
+              <DateRangePicker value={range} onChange={changeRange} disabled={anyRefreshing} />
+            ) : null}
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void refreshAll()} disabled={anyRefreshing}>
+            <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
+            {anyRefreshing ? "Refreshing…" : "Refresh all"}
+          </Button>
+        </div>
+      ) : null}
+
       {isEditing && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent-line bg-accent-soft px-4 py-2.5 text-[13px] text-muted">
           <div className="flex items-center gap-2">
@@ -213,30 +392,14 @@ export function DashboardGrid({
       ) : null}
 
       <style>{`
-        .react-resizable-handle {
-          background: none;
-          border: none;
-        }
+        .react-resizable-handle { background: none; border: none; }
         .react-resizable-handle::after {
-          content: '';
-          position: absolute;
-          right: 4px;
-          bottom: 4px;
-          width: 8px;
-          height: 8px;
-          border-right: 2px solid var(--accent);
-          border-bottom: 2px solid var(--accent);
-          border-bottom-right-radius: 3px;
-          opacity: 0.7;
+          content: ''; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px;
+          border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+          border-bottom-right-radius: 3px; opacity: 0.7;
         }
-        .react-grid-placeholder {
-          background: var(--accent-soft);
-          border: 1.5px dashed var(--accent-line);
-          border-radius: 12px;
-        }
-        .react-grid-item.react-draggable-dragging {
-          z-index: 20;
-        }
+        .react-grid-placeholder { background: var(--accent-soft); border: 1.5px dashed var(--accent-line); border-radius: 12px; }
+        .react-grid-item.react-draggable-dragging { z-index: 20; }
       `}</style>
 
       <div ref={containerRef}>
@@ -249,64 +412,38 @@ export function DashboardGrid({
             rowHeight={80}
             margin={[12, 12]}
             dragConfig={{ enabled: isEditing }}
-            resizeConfig={{
-              enabled: isEditing,
-              handles: ["se", "sw", "ne", "nw", "e", "w", "n", "s"],
-            }}
+            resizeConfig={{ enabled: isEditing, handles: ["se", "sw", "ne", "nw", "e", "w", "n", "s"] }}
             onLayoutChange={isEditing ? (newLayout) => handleLayoutChange(newLayout) : undefined}
             compactor={verticalCompactor}
           >
             {layout.map((layoutItem) => {
               const widget = widgetMap.get(layoutItem.i);
               if (!widget) return null;
-              const rows = widget.snapshot?.returnedRowCount;
+              const state = states[widget.id];
+              if (!state) return null;
+              const view: LiveWidgetView = {
+                id: widget.id,
+                title: widget.title,
+                mode: widget.mode,
+                chartConfig: widget.chartConfig,
+                preview: isBoundedResultPreview(state.preview)
+                  ? state.preview
+                  : (widget.snapshot as BoundedResultPreview),
+                lastRefreshedAt: state.lastRefreshedAt,
+                error: state.error,
+                refreshing: state.refreshing,
+                filterBound: Boolean(widget.filterBinding),
+                pulseKey: state.pulseKey,
+              };
               return (
                 <div key={widget.id}>
-                  <Card
-                    className={cn(
-                      "group/widget flex h-full flex-col overflow-hidden rounded-xl transition-all duration-200",
-                      isEditing
-                        ? "border-accent-line shadow-[0_0_0_3px_var(--accent-soft)]"
-                        : "hover:border-border-2",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "flex shrink-0 items-center gap-2 border-b border-border bg-surface-2/50 px-3.5 py-2.5",
-                        isEditing && "cursor-grab active:cursor-grabbing",
-                      )}
-                    >
-                      {isEditing ? (
-                        <GripVertical className="size-3.5 shrink-0 text-faint" strokeWidth={1.75} aria-hidden />
-                      ) : null}
-                      <h2 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text">{widget.title}</h2>
-                      {typeof rows === "number" ? (
-                        <span className="hidden shrink-0 whitespace-nowrap rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[10px] text-faint sm:block">
-                          {rows} {rows === 1 ? "row" : "rows"}
-                        </span>
-                      ) : null}
-                      {isEditing && onRemoveWidget ? (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          aria-label={`Remove ${widget.title}`}
-                          className="h-7 w-7 shrink-0 p-0"
-                          loading={busyWidget === widget.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveWidget(widget.id);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : null}
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-hidden p-3">
-                      <div className="h-full w-full">
-                        <V2Chart preview={widget.snapshot} config={widget.chartConfig} />
-                      </div>
-                    </div>
-                  </Card>
+                  <LiveWidgetCard
+                    view={view}
+                    isEditing={isEditing}
+                    removing={busyWidget === widget.id}
+                    onRefresh={() => void refreshOne(widget.id, range)}
+                    onRemove={onRemoveWidget ? () => onRemoveWidget(widget.id) : undefined}
+                  />
                 </div>
               );
             })}
@@ -317,13 +454,7 @@ export function DashboardGrid({
   );
 }
 
-export function EditLayoutButton({
-  isEditing,
-  onToggle,
-}: {
-  isEditing: boolean;
-  onToggle: () => void;
-}) {
+export function EditLayoutButton({ isEditing, onToggle }: { isEditing: boolean; onToggle: () => void }) {
   if (isEditing) {
     return (
       <Button type="button" variant="primary" size="sm" onClick={onToggle}>

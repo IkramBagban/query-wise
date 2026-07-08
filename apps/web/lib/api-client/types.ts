@@ -5,6 +5,7 @@ import type {
   ConnectionDto,
   ConversationDto,
   CursorPage,
+  DashboardDateRange,
   DashboardOwnerDto,
   DashboardViewerDto,
   IsoDateTime,
@@ -12,6 +13,8 @@ import type {
   PublicDashboardDto,
   QueryRunDto,
   ResourceId,
+  WidgetMode,
+  WidgetRefreshResultDto,
 } from "@query-wise/shared/types";
 
 export type DashboardDto = DashboardOwnerDto | DashboardViewerDto;
@@ -137,6 +140,7 @@ export interface CreateWidgetInput {
   chartConfig: ChartConfig;
   layout: { schemaVersion: 1; x: number; y: number; w: number; h: number };
   snapshot: BoundedResultPreview;
+  mode?: WidgetMode;
 }
 
 export type {
@@ -144,7 +148,10 @@ export type {
   ConnectionDto,
   ConversationDto,
   CursorPage,
+  DashboardDateRange,
   MessageDto,
   PublicDashboardDto,
   QueryRunDto,
+  WidgetMode,
+  WidgetRefreshResultDto,
 };

@@ -67,14 +67,26 @@ export type ChartType = "bar" | "line" | "pie" | "scatter" | "area" | "table";
 export interface ChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; seriesKey?: string; title?: string }
 export interface PublicChartConfig { schemaVersion: 1; type: ChartType; xKey?: string; yKey?: string; yKeys?: string[]; nameKey?: string; valueKey?: string; title?: string }
 export interface WidgetLayout { schemaVersion: 1; x: number; y: number; w: number; h: number }
+// SPEC-06 §2: a widget is "snapshot" (frozen) or "live" (re-executes on demand).
+export type WidgetMode = "live" | "snapshot";
+// SPEC-06 §5: the global date-range control. Presets or an explicit custom span.
+export type DateRangePreset = "7d" | "30d" | "90d" | "mtd" | "qtd" | "ytd";
+export type DashboardDateRange = { preset: DateRangePreset } | { from: IsoDateTime; to: IsoDateTime };
+// SPEC-06 §5: pin-time binding of the query's primary time predicate. Present only
+// when the stored SQL carries the :qw_from/:qw_to parameter markers.
+export interface WidgetFilterBinding { dateColumn: string; tableAlias: string | null; defaultRange: DashboardDateRange }
 export interface DashboardRecord extends OwnedResource, SoftDeletableResource { name: string }
-export interface DashboardWidgetRecord extends DurableResource { dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null }
+export interface DashboardWidgetRecord extends DurableResource { dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null; mode: WidgetMode; connectionId: ResourceId | null; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null }
 export interface DashboardAccessGrantRecord extends DurableResource { dashboardId: ResourceId; recipientUserId: ClerkUserId; permission: "view" }
 export interface DashboardShareLinkRecord extends DurableResource { dashboardId: ResourceId; tokenHash: string; encryptedToken: EncryptedPayload | null; passwordHash: string | null; version: number; viewCount: number; lastViewedAt: IsoDateTime | null; expiresAt: IsoDateTime | null; revokedAt: IsoDateTime | null }
-export interface DashboardOwnerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null }
-export interface DashboardViewerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview }
-export interface DashboardOwnerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "owner"; widgets: DashboardOwnerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
-export interface DashboardViewerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "viewer"; widgets: DashboardViewerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
+export interface DashboardOwnerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null; mode: WidgetMode; connectionId: ResourceId | null; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null }
+export interface DashboardViewerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; mode: WidgetMode; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null }
+export interface DashboardOwnerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "owner"; defaultDateRange: DashboardDateRange | null; refreshIntervalSeconds: number | null; widgets: DashboardOwnerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
+export interface DashboardViewerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "viewer"; defaultDateRange: DashboardDateRange | null; refreshIntervalSeconds: number | null; widgets: DashboardViewerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
+// SPEC-06 §4.1: single-widget refresh outcome. `result` overwrites the rendered
+// preview on success; `error` is set (and the old snapshot kept) on failure.
+export interface WidgetRefreshResultDto { widgetId: ResourceId; status: "ok" | "error" | "skipped"; result: BoundedResultPreview | null; lastRefreshedAt: IsoDateTime | null; error: { code: string; message: string } | null }
+export interface DashboardRefreshResultDto { contractVersion: ContractVersion; dashboardId: ResourceId; widgets: WidgetRefreshResultDto[] }
 export interface PublicDashboardWidgetDto { id: ResourceId; title: string; chartConfig: PublicChartConfig; layout: WidgetLayout; result: BoundedResultPreview | null; error: { code: string; message: string } | null }
 export interface PublicDashboardDto { contractVersion: ContractVersion; dashboard: { name: string; updatedAt: IsoDateTime; widgets: PublicDashboardWidgetDto[] }; share: { expiresAt: IsoDateTime | null } }
 export interface AuditLogRecord extends DurableResource { actorUserId: ClerkUserId | null; action: string; resourceType: string; resourceId: string | null; outcome: string; metadata: Record<string, JsonValue> }

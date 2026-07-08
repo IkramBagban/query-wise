@@ -530,6 +530,9 @@ export function DashboardDetailView({
           dashboardId={dashboardId}
           isEditing={isEditing && owner}
           busyWidget={busyWidget}
+          canRefresh={owner}
+          defaultDateRange={dashboard.defaultDateRange}
+          refreshIntervalSeconds={dashboard.refreshIntervalSeconds}
           onRemoveWidget={(widgetId) =>
             void mutateWidget(widgetId, () =>
               dashboardsApi.removeWidget(dashboardId, widgetId),

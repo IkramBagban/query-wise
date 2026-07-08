@@ -17,14 +17,22 @@ import type {
   DashboardViewerDto,
   JsonValue,
 } from "@query-wise/shared/types";
+import type {
+  DashboardDateRange,
+  WidgetFilterBinding,
+  WidgetMode,
+} from "@query-wise/shared/types";
 import {
   DashboardNameSchema,
+  DashboardSettingsSchema,
   WidgetCreateSchema,
   WidgetLayoutBatchSchema,
+  WidgetModeSchema,
   WidgetUpdateSchema,
 } from "./schemas";
 import { validationError } from "./http";
 import { claimPendingEmailGrants } from "@/lib/sharing/grants";
+import { analyzeFilterBinding, getConnectionDateColumns } from "./filter-binding";
 
 const DASHBOARD_LIST_ENDPOINT = "dashboards";
 const MAX_WIDGETS = 50;
@@ -40,6 +48,24 @@ function iso(value: Date): string {
   return value.toISOString();
 }
 
+function isoOrNull(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function toWidgetMode(value: string): WidgetMode {
+  return value === "snapshot" ? "snapshot" : "live";
+}
+
+function toFilterBinding(value: Prisma.JsonValue | null): WidgetFilterBinding | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as unknown as WidgetFilterBinding;
+}
+
+function toDateRange(value: Prisma.JsonValue | null): DashboardDateRange | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as unknown as DashboardDateRange;
+}
+
 function ownerWidget(widget: DashboardWidget): DashboardOwnerDto["widgets"][number] {
   return {
     id: widget.id,
@@ -51,6 +77,11 @@ function ownerWidget(widget: DashboardWidget): DashboardOwnerDto["widgets"][numb
     snapshot: widget.snapshot as unknown as DashboardOwnerDto["widgets"][number]["snapshot"],
     queryDefinition:
       widget.queryDefinition as unknown as DashboardOwnerDto["widgets"][number]["queryDefinition"],
+    mode: toWidgetMode(widget.mode),
+    connectionId: widget.connectionId,
+    lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
+    lastRefreshError: widget.lastRefreshError,
+    filterBinding: toFilterBinding(widget.filterBinding),
     createdAt: iso(widget.createdAt),
     updatedAt: iso(widget.updatedAt),
   };
@@ -64,6 +95,10 @@ function viewerWidget(widget: DashboardWidget): DashboardViewerDto["widgets"][nu
     chartConfig: widget.chartConfig as unknown as DashboardViewerDto["widgets"][number]["chartConfig"],
     layout: widget.layout as unknown as DashboardViewerDto["widgets"][number]["layout"],
     snapshot: widget.snapshot as unknown as DashboardViewerDto["widgets"][number]["snapshot"],
+    mode: toWidgetMode(widget.mode),
+    lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
+    lastRefreshError: widget.lastRefreshError,
+    filterBinding: toFilterBinding(widget.filterBinding),
     createdAt: iso(widget.createdAt),
     updatedAt: iso(widget.updatedAt),
   };
@@ -79,12 +114,15 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
     throw new AppError("RESULT_LIMIT_EXCEEDED", "Dashboard exceeds the widget limit.");
   }
 
+  const defaultDateRange = toDateRange(dashboard.defaultDateRange ?? null);
   if (dashboard.ownerUserId === userId) {
     return {
       contractVersion: "querywise.v2",
       id: dashboard.id,
       name: dashboard.name,
       access: "owner",
+      defaultDateRange,
+      refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
       widgets: widgets.map(ownerWidget),
       createdAt: iso(dashboard.createdAt),
       updatedAt: iso(dashboard.updatedAt),
@@ -95,6 +133,8 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
     id: dashboard.id,
     name: dashboard.name,
     access: "viewer",
+    defaultDateRange,
+    refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
     widgets: widgets.map(viewerWidget),
     createdAt: iso(dashboard.createdAt),
     updatedAt: iso(dashboard.updatedAt),
@@ -210,17 +250,44 @@ export async function createWidget(dashboardId: string, input: unknown) {
   const parsed = WidgetCreateSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
   const dashboard = await requireDashboardAccess(dashboardId, "edit");
+
+  // SPEC-06 §4.1/§5: denormalize the connection off the originating run so a later
+  // conversation/run deletion never orphans the widget, and (§5) analyze the SQL
+  // for a bindable date predicate — injecting :qw_from/:qw_to markers so the global
+  // range picker can rewrite it later. Both happen outside the capacity transaction
+  // because they read the run + schema snapshot; the values are folded into insert.
+  let connectionId: string | null = null;
+  let queryDefinition = parsed.data.queryDefinition ?? null;
+  let filterBinding: WidgetFilterBinding | null = null;
+
+  if (parsed.data.queryRunId) {
+    const run = await getAppDb().queryRun.findFirst({
+      where: { id: parsed.data.queryRunId, ownerUserId: dashboard.ownerUserId },
+      select: { id: true, connectionId: true },
+    });
+    if (!run) throw resourceNotFound();
+    connectionId = run.connectionId;
+  }
+
+  if (connectionId && queryDefinition?.text) {
+    try {
+      const dateColumns = await getConnectionDateColumns(connectionId, dashboard.ownerUserId);
+      const analysis = dateColumns.length ? analyzeFilterBinding(queryDefinition.text, dateColumns) : null;
+      if (analysis) {
+        queryDefinition = { ...queryDefinition, text: analysis.sqlText };
+        filterBinding = analysis.binding;
+      }
+    } catch {
+      // Binding is a best-effort convenience; never block a pin on analysis failure.
+    }
+  }
+
+  const mode: WidgetMode = parsed.data.mode ?? "live";
+
   return getAppDb().$transaction(async (tx) => {
     // Serialize writers for this dashboard so the count and insert form one
     // atomic capacity check across all application instances.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`dashboard-widgets:${dashboardId}`}))`;
-    if (parsed.data.queryRunId) {
-      const run = await tx.queryRun.findFirst({
-        where: { id: parsed.data.queryRunId, ownerUserId: dashboard.ownerUserId },
-        select: { id: true },
-      });
-      if (!run) throw resourceNotFound();
-    }
     const count = await tx.dashboardWidget.count({ where: { dashboardId } });
     if (count >= MAX_WIDGETS) {
       throw new AppError("RESULT_LIMIT_EXCEEDED", "A dashboard can contain at most 50 widgets.");
@@ -234,9 +301,10 @@ export async function createWidget(dashboardId: string, input: unknown) {
         layout: jsonInput(parsed.data.layout),
         snapshot: jsonInput(parsed.data.snapshot),
         queryRunId: parsed.data.queryRunId ?? null,
-        queryDefinition: parsed.data.queryDefinition
-          ? jsonInput(parsed.data.queryDefinition)
-          : Prisma.JsonNull,
+        connectionId,
+        mode,
+        filterBinding: filterBinding ? jsonInput(filterBinding) : Prisma.JsonNull,
+        queryDefinition: queryDefinition ? jsonInput(queryDefinition) : Prisma.JsonNull,
       },
     });
     await tx.dashboard.update({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
@@ -274,6 +342,7 @@ export async function updateWidget(
         layout: parsed.data.layout ? jsonInput(parsed.data.layout) : undefined,
         snapshot: parsed.data.snapshot ? jsonInput(parsed.data.snapshot) : undefined,
         queryRunId: parsed.data.queryRunId,
+        mode: parsed.data.mode ?? undefined,
         queryDefinition:
           parsed.data.queryDefinition === null
             ? Prisma.JsonNull
@@ -281,6 +350,52 @@ export async function updateWidget(
               ? jsonInput(parsed.data.queryDefinition)
               : undefined,
       },
+    });
+    await tx.dashboard.update({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
+    return ownerWidget(widget);
+  });
+}
+
+/**
+ * SPEC-06 §4.2/§5: persist dashboard-level live controls (default date range,
+ * auto-refresh cadence). Additive — omitted keys are left unchanged.
+ */
+export async function updateDashboardSettings(dashboardId: string, input: unknown) {
+  const parsed = DashboardSettingsSchema.safeParse(input);
+  if (!parsed.success) throw validationError(parsed.error);
+  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await getAppDb().dashboard.update({
+    where: { id: dashboardId },
+    data: {
+      defaultDateRange:
+        parsed.data.defaultDateRange === undefined
+          ? undefined
+          : parsed.data.defaultDateRange === null
+            ? Prisma.JsonNull
+            : jsonInput(parsed.data.defaultDateRange),
+      refreshIntervalSeconds:
+        parsed.data.refreshIntervalSeconds === undefined ? undefined : parsed.data.refreshIntervalSeconds,
+    },
+  });
+  return {
+    id: dashboard.id,
+    defaultDateRange: toDateRange(dashboard.defaultDateRange ?? null),
+    refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
+    updatedAt: iso(dashboard.updatedAt),
+  };
+}
+
+/** SPEC-06 §2: toggle a single widget between live and snapshot from its menu. */
+export async function updateWidgetMode(dashboardId: string, widgetId: string, input: unknown) {
+  const parsed = WidgetModeSchema.safeParse((input as { mode?: unknown })?.mode);
+  if (!parsed.success) throw validationError(parsed.error);
+  await requireDashboardAccess(dashboardId, "edit");
+  return getAppDb().$transaction(async (tx) => {
+    const existing = await tx.dashboardWidget.findFirst({ where: { id: widgetId, dashboardId } });
+    if (!existing) throw resourceNotFound();
+    const widget = await tx.dashboardWidget.update({
+      where: { id: widgetId },
+      data: { mode: parsed.data },
     });
     await tx.dashboard.update({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
     return ownerWidget(widget);

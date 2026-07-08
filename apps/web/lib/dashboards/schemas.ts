@@ -97,6 +97,19 @@ export const ProviderQuerySchema = z
   })
   .strict();
 
+// SPEC-06 §2: widget mode. New widgets default to "live" (see service.ts).
+export const WidgetModeSchema = z.enum(["live", "snapshot"]);
+
+// SPEC-06 §5: the global date-range value — a preset or an explicit custom span.
+export const DateRangePresetSchema = z.enum(["7d", "30d", "90d", "mtd", "qtd", "ytd"]);
+export const DashboardDateRangeSchema = z.union([
+  z.object({ preset: DateRangePresetSchema }).strict(),
+  z
+    .object({ from: z.string().datetime(), to: z.string().datetime() })
+    .strict()
+    .refine((value) => new Date(value.from) < new Date(value.to), "Custom range must have from < to."),
+]);
+
 export const WidgetCreateSchema = z
   .object({
     title: WidgetTitleSchema,
@@ -105,12 +118,30 @@ export const WidgetCreateSchema = z
     snapshot: BoundedSnapshotSchema,
     queryRunId: ResourceIdSchema.nullish(),
     queryDefinition: ProviderQuerySchema.nullish(),
+    mode: WidgetModeSchema.optional(),
   })
   .strict();
 
 export const WidgetUpdateSchema = WidgetCreateSchema.partial()
   .strict()
   .refine((value) => Object.keys(value).length > 0, "No widget changes supplied.");
+
+// SPEC-06 §4.1/§5: refresh a single widget, optionally under a chosen range.
+export const WidgetRefreshSchema = z
+  .object({
+    range: DashboardDateRangeSchema.nullish(),
+    force: z.boolean().optional(),
+  })
+  .strict();
+
+// SPEC-06 §4.2/§5: dashboard-level live controls.
+export const DashboardSettingsSchema = z
+  .object({
+    defaultDateRange: DashboardDateRangeSchema.nullish(),
+    refreshIntervalSeconds: z.number().int().min(15).max(86_400).nullish(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "No dashboard settings supplied.");
 
 export const WidgetLayoutBatchSchema = z
   .object({

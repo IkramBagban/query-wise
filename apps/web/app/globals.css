@@ -140,6 +140,15 @@
   --warning: #f59e0b;
   --danger: #ef4444;
   --radius: 8px;
+
+  /* SPEC-04 motion vocabulary (reused by SPEC-06 live dashboards, §8b). Easings
+     and durations are theme-independent, so they live only in :root. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1); /* entrances */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);     /* state changes */
+  --dur-micro: 120ms;
+  --dur-state: 200ms;
+  --dur-enter: 320ms;
+  --dur-hero: 600ms;
   --skeleton-base: #dce8d9;
   --skeleton-highlight: rgba(255, 255, 255, 0.72);
   
@@ -373,9 +382,27 @@ html{scroll-behavior:smooth}
     @keyframes qw-feature-progress{from{width:0%}to{width:100%}}
     .qw-marquee-group:hover .qw-marquee-track{animation-play-state:paused}
     @keyframes qw-stamp{0%{opacity:0;transform:scale(1.25) rotate(-4deg)}100%{opacity:1;transform:none}}
+    /* SPEC-06 §8b: 2px indeterminate progress bar sliding across a refreshing
+       widget's top edge (never a blank repaint). */
+    @keyframes qw-live-progress{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}
+    .qw-live-bar{position:absolute;top:0;left:0;height:2px;width:25%;background:var(--accent);border-radius:2px;animation:qw-live-progress 0.9s var(--ease-standard) infinite}
+    /* SPEC-06 §8b: one-shot tint sweep on a number that moved (green up / amber down). */
+    @keyframes qw-tint-up{0%{background-color:color-mix(in srgb,var(--success) 26%,transparent)}100%{background-color:transparent}}
+    @keyframes qw-tint-down{0%{background-color:color-mix(in srgb,var(--warning) 30%,transparent)}100%{background-color:transparent}}
+    .qw-tint-up{animation:qw-tint-up 0.8s var(--ease-standard) both;border-radius:4px}
+    .qw-tint-down{animation:qw-tint-down 0.8s var(--ease-standard) both;border-radius:4px}
+    /* SPEC-06 §8b: refresh icon does one 360° spin on click. */
+    @keyframes qw-spin-once{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+    .qw-spin-once{animation:qw-spin-once 0.5s var(--ease-out-expo)}
+    /* SPEC-06 §8b: unaffected snapshot widgets pulse their border once on a range
+       change to signal "intentionally not changed." */
+    @keyframes qw-border-pulse{0%{box-shadow:0 0 0 0 var(--accent-line)}40%{box-shadow:0 0 0 2px var(--accent-line)}100%{box-shadow:0 0 0 0 transparent}}
+    .qw-border-pulse{animation:qw-border-pulse 0.6s var(--ease-standard)}
     @media (prefers-reduced-motion: reduce){
       [data-reveal]{opacity:1;transform:none;transition:none}
       *{animation-duration:0.001s !important}
+      .qw-live-bar{animation:none;width:100%;opacity:0.5}
+      .qw-tint-up,.qw-tint-down,.qw-spin-once,.qw-border-pulse{animation:none}
     }
 .hover-style-0:hover { color:var(--text);background:var(--accent-soft) !important; }
 .hover-style-1:hover { color:var(--text);background:var(--accent-soft) !important; }

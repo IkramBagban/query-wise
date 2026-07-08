@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "plugins": [],
+    "paths": {
+      "@/*": ["./*"],
+      "@query-wise/shared": ["../../packages/shared/src"],
+      "@query-wise/shared/*": ["../../packages/shared/src/*"],
+      ".prisma/client": ["../../node_modules/.prisma-gen/client/index.d.ts"],
+      ".prisma/client/*": ["../../node_modules/.prisma-gen/client/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", ".next"]
+}

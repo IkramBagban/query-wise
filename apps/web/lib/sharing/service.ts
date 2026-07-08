@@ -19,6 +19,8 @@ import {
   validationError,
   WidgetLayoutSchema,
 } from "@/lib/dashboards";
+import { applyRangeMarkers, hasFilterMarkers } from "@/lib/dashboards/filter-binding";
+import type { DashboardDateRange, WidgetFilterBinding } from "@query-wise/shared/types";
 import {
   createShareToken,
   decryptShareToken,
@@ -375,10 +377,17 @@ async function activeShare(token: string): Promise<DashboardShareLink> {
   return share;
 }
 
+function widgetFilterBinding(widget: DashboardWidget): WidgetFilterBinding | null {
+  const value = widget.filterBinding;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as unknown as WidgetFilterBinding;
+}
+
 async function executePublicWidget(
   widget: DashboardWidget,
   dashboardOwnerUserId: string,
   deadline: number,
+  defaultDateRange: DashboardDateRange | null,
 ): Promise<PublicDashboardDto["dashboard"]["widgets"][number]> {
   const chartConfig = ChartConfigSchema.parse(widget.chartConfig);
   const layout = WidgetLayoutSchema.parse(widget.layout);
@@ -429,13 +438,20 @@ async function executePublicWidget(
       },
     };
   }
+  // SPEC-06 §5: filter-bound widgets store the query with :qw_from/:qw_to markers,
+  // so it intentionally differs from the run's SQL. For those we substitute the
+  // dashboard's default range and re-validate through the read-only policy below
+  // (which is the safety guarantee); the exact-match guard applies only to
+  // unbound widgets, preserving today's tamper protection.
+  const markerBound = hasFilterMarkers(query.data.text);
   const generatedQuery = ProviderQuerySchema.safeParse(run.generatedQuery);
   if (
-    run.dialectId !== query.data.dialectId ||
-    !generatedQuery.success ||
-    generatedQuery.data.kind !== query.data.kind ||
-    generatedQuery.data.dialectId !== query.data.dialectId ||
-    !queriesMatch(generatedQuery.data, query.data)
+    !markerBound &&
+    (run.dialectId !== query.data.dialectId ||
+      !generatedQuery.success ||
+      generatedQuery.data.kind !== query.data.kind ||
+      generatedQuery.data.dialectId !== query.data.dialectId ||
+      !queriesMatch(generatedQuery.data, query.data))
   ) {
     return {
       ...base,
@@ -462,11 +478,38 @@ async function executePublicWidget(
         },
       };
     }
+    let executable: ProviderQuery = query.data as ProviderQuery;
+    if (markerBound) {
+      const boundText = applyRangeMarkers(query.data.text, widgetFilterBinding(widget), defaultDateRange);
+      const validation = await adapter.validateQuery(
+        { kind: "sql", dialectId: query.data.dialectId, text: boundText },
+        {
+          schemaVersion: 1,
+          readOnly: true,
+          singleStatement: true,
+          blockComments: true,
+          blockSystemCatalogs: true,
+          maxExecutionMs: 15_000,
+          maxReturnedRows: 500,
+        },
+      );
+      if (!validation.valid || !validation.normalizedQuery) {
+        return {
+          ...base,
+          result: null,
+          error: {
+            code: "WIDGET_QUERY_MISMATCH",
+            message: "This chart cannot be refreshed because its saved query is no longer valid.",
+          },
+        };
+      }
+      executable = validation.normalizedQuery;
+    }
     const result = await adapter.executeReadQuery(
       record.id,
       record.credentialVersion,
       secret,
-      query.data as ProviderQuery,
+      executable,
       {
         timeoutMs: Math.min(15_000, remainingMs),
         maxRows: 500,
@@ -493,6 +536,7 @@ async function executePublicWidget(
 async function executePublicWidgets(
   widgets: DashboardWidget[],
   dashboardOwnerUserId: string,
+  defaultDateRange: DashboardDateRange | null,
 ): Promise<PublicDashboardDto["dashboard"]["widgets"]> {
   const results = new Array<PublicDashboardDto["dashboard"]["widgets"][number]>(widgets.length);
   const deadline = Date.now() + PUBLIC_DASHBOARD_EXECUTION_BUDGET_MS;
@@ -506,6 +550,7 @@ async function executePublicWidgets(
           widgets[index],
           dashboardOwnerUserId,
           deadline,
+          defaultDateRange,
         );
       } catch (error) {
         const chartConfig = ChartConfigSchema.safeParse(widgets[index].chartConfig);
@@ -573,7 +618,11 @@ export async function getPublicDashboard(
     cacheKey,
     Math.min(PUBLIC_DASHBOARD_CACHE_TTL_SECONDS, secondsUntilExpiry),
     async () => {
-      const publicWidgets = await executePublicWidgets(widgets, dashboard.ownerUserId);
+      const publicDefaultRange =
+        dashboard.defaultDateRange && typeof dashboard.defaultDateRange === "object" && !Array.isArray(dashboard.defaultDateRange)
+          ? (dashboard.defaultDateRange as unknown as DashboardDateRange)
+          : null;
+      const publicWidgets = await executePublicWidgets(widgets, dashboard.ownerUserId, publicDefaultRange);
       const generated: PublicDashboardDto = {
         contractVersion: "querywise.v2",
         dashboard: {

@@ -7,9 +7,11 @@ import type {
   ConversationListItem,
   CreateConnectionInput,
   CursorPage,
+  DashboardDateRange,
   DashboardDto,
   DashboardListItem,
   PublicDashboardDto,
+  WidgetRefreshResultDto,
   QueryRunDto,
   QueryStreamEvent,
   SchemaDto,
@@ -165,6 +167,39 @@ export const dashboardsApi = {
     }),
   removeWidget: (dashboardId: string, widgetId: string) =>
     apiRequest<void>(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, { method: "DELETE" }),
+  // SPEC-06 §4.1: single-widget refresh.
+  refreshWidget: (
+    dashboardId: string,
+    widgetId: string,
+    body: { range?: DashboardDateRange | null; force?: boolean } = {},
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<WidgetRefreshResultDto>(`/api/dashboards/${dashboardId}/widgets/${widgetId}/refresh`, {
+      method: "POST",
+      body,
+      signal,
+    }),
+  // SPEC-06 §4.1: batch "Refresh all" — returns per-widget results.
+  refreshAll: (
+    dashboardId: string,
+    body: { range?: DashboardDateRange | null; force?: boolean } = {},
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<{ dashboardId: string; widgets: WidgetRefreshResultDto[] }>(
+      `/api/dashboards/${dashboardId}/refresh`,
+      { method: "POST", body, signal },
+    ),
+  // SPEC-06 §4.2/§5: dashboard-level default range + auto-refresh cadence.
+  updateSettings: (
+    dashboardId: string,
+    body: { defaultDateRange?: DashboardDateRange | null; refreshIntervalSeconds?: number | null },
+  ) =>
+    apiRequest<{
+      id: string;
+      defaultDateRange: DashboardDateRange | null;
+      refreshIntervalSeconds: number | null;
+      updatedAt: string;
+    }>(`/api/dashboards/${dashboardId}/settings`, { method: "PATCH", body }),
 };
 
 export const publicSharesApi = {
