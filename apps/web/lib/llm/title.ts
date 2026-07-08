@@ -1,6 +1,7 @@
 import "server-only";
 import { generateText } from "ai";
-import { getModel, type Provider, withModelFallback } from "./client";
+import { getModel, type Provider } from "./client";
+import { runRoutedTask } from "./model-router";
 
 const MAX_CONVERSATION_TITLE_LENGTH = 120;
 
@@ -27,37 +28,38 @@ export async function generateConversationTitle(params: {
   abortSignal?: AbortSignal;
 }): Promise<string> {
   const system = [
-    "You write short, useful conversation titles for an analytics chat app.",
-    "Return only the title text.",
-    "Do not use quotation marks, punctuation at the end, markdown, or labels.",
-  ].join(" ");
-
-  const prompt = [
-    "Create a concise title from the first user message and the first assistant response.",
-    "Requirements:",
-    "- 3 to 6 words when possible.",
-    "- Describe the actual analysis or conversation topic.",
-    "- Do not copy the user's full prompt.",
-    "- Do not mention SQL unless SQL itself is the topic.",
-    "",
-    "User message:",
-    params.userMessage.slice(0, 1200),
-    "",
-    "Assistant response:",
-    params.assistantMessage.slice(0, 1200),
+    "You name analytics conversations for a data app.",
+    "Write a specific, descriptive title of 3 to 6 words (never 1–2 words).",
+    "Name the metric/entity and the angle, like a dashboard tab a person would recognize.",
+    "Use Title Case. No quotes, no trailing punctuation, no markdown, no labels, no 'Analysis of' filler.",
+    "Examples:",
+    "- Question 'how many orders last month' -> Monthly Order Volume",
+    "- Question 'top customers by revenue' -> Top Customers By Revenue",
+    "- Question 'why did signups drop in June' -> June Signup Decline Drivers",
   ].join("\n");
 
-  const { text } = await withModelFallback({
-    provider: params.provider,
-    model: params.model,
-    apiKeys: params.apiKeys,
-    execute: async (candidateModel, apiKey) =>
+  const prompt = [
+    "Write the title for this conversation based on its first exchange.",
+    "",
+    "User asked:",
+    params.userMessage.slice(0, 1200),
+    "",
+    "Assistant answered:",
+    params.assistantMessage.slice(0, 1200),
+    "",
+    "Title (3-6 words, Title Case):",
+  ].join("\n");
+
+  // Utility work: run on the cheap cross-provider chain, off the agent's quota.
+  const { text } = await runRoutedTask({
+    task: "utility",
+    execute: ({ provider, model, apiKey }) =>
       generateText({
-        model: getModel(params.provider, candidateModel, apiKey),
+        model: getModel(provider, model, apiKey),
         system,
         prompt,
-        maxOutputTokens: 32,
-        temperature: 0.1,
+        maxOutputTokens: 24,
+        temperature: 0.3,
         abortSignal: params.abortSignal,
       }),
   });

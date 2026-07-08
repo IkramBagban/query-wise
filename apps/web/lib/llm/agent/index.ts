@@ -5,12 +5,20 @@ import { resolveChartConfig } from "@/lib/charts";
 import type { ChatMessage } from "@/types";
 import {
   getModel,
-  getModelCandidates,
   getThinkingProviderOptions,
   isContextOverflowError,
   isRetryableError,
   shouldFallbackToAnotherModel,
 } from "../client";
+import {
+  isRateLimitError,
+  markKeyCooled,
+  MAX_LLM_ATTEMPTS,
+  planAttempts,
+  resolveTaskChain,
+  type LlmCandidate,
+  type RoutedAttempt,
+} from "../model-router";
 import { assembleAgentSystemPrompt } from "./system-prompt";
 import { estimateTokens, resolveContextBudget } from "./context-budget";
 import { createDescribeTablesTool } from "./tools/describe-tables";
@@ -249,11 +257,13 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   // true mid-run context overflow (SPEC-01 §1). `correction` appends a
   // verification-driven fix message and caps the extra steps (SPEC-02 §3).
   const streamOnce = async (
-    candidateModel: string,
+    candidate: LlmCandidate,
     apiKey: string,
     recovery = false,
     correction?: { draftAnswer: string; message: string; maxSteps: number },
   ): Promise<string> => {
+    const candidateModel = candidate.model;
+    const candidateProvider = candidate.provider;
     const assembled = assembleAgentSystemPrompt(params.schema, {
       rankedTableNames: params.rankedTables,
       schemaBudgetTokens: budget.schema,
@@ -292,7 +302,7 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     const systemMessage: ModelMessage = {
       role: "system",
       content: system,
-      ...(params.provider === "anthropic"
+      ...(candidateProvider === "anthropic"
         ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } }
         : {}),
     };
@@ -312,13 +322,13 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     });
 
     const result = streamText({
-      model: getModel(params.provider, candidateModel, apiKey),
+      model: getModel(candidateProvider, candidateModel, apiKey),
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(correction ? correction.maxSteps : state.budget.maxSteps),
       maxOutputTokens: 2500,
       temperature: 0.2,
-      providerOptions: getThinkingProviderOptions(params.provider),
+      providerOptions: getThinkingProviderOptions(candidateProvider),
       abortSignal: params.abortSignal,
       // §4 tool-result compaction: digest older run_sql results before each step.
       prepareStep: ({ messages: stepMessages, stepNumber }) => {

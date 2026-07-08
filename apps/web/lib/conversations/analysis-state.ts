@@ -207,6 +207,7 @@ export async function updateConversationMemory(input: {
         provider: llmConfig.provider,
         model: llmConfig.model,
         apiKeys: llmConfig.apiKeys,
+        task: "utility",
         schema: memoryUpdateSchema,
         schemaName: "conversation_memory",
         system: MEMORY_SYSTEM,

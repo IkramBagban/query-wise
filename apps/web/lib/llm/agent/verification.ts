@@ -135,6 +135,7 @@ export async function runSelfVerification(params: {
         provider: params.provider,
         model: params.model,
         apiKeys: params.apiKeys,
+        task: "utility",
         schema: verificationSchema,
         schemaName: "answer_verification",
         system: VERIFIER_SYSTEM,
