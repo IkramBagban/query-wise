@@ -223,6 +223,10 @@ model Dashboard {
   ownerUserId String    @map("owner_user_id")
   name        String
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  // SPEC-06 §5: global date-range filter applied to filter-bound live widgets.
+  defaultDateRange Json? @map("default_date_range")
+  // SPEC-06 §4.2: optional auto-refresh cadence; also overrides the staleness window.
+  refreshIntervalSeconds Int? @map("refresh_interval_seconds")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -239,6 +243,19 @@ model DashboardWidget {
   layout          Json
   snapshot        Json
   queryDefinition Json?    @map("query_definition")
+  // SPEC-06 §2: "live" re-executes on load/demand; "snapshot" renders the frozen
+  // snapshot forever. New widgets default live; the migration backfills existing
+  // rows to "snapshot" so nothing that works today changes behavior.
+  mode            String   @default("live")
+  // SPEC-06 §4.1: denormalized connection so a deleted conversation/run never
+  // orphans a widget. Nullable for pre-SPEC-06 widgets (fall back to queryRunId).
+  connectionId    String?  @map("connection_id") @db.Uuid
+  // SPEC-06 §4.1/§6: refresh bookkeeping surfaced as freshness affordances.
+  lastRefreshedAt DateTime? @map("last_refreshed_at") @db.Timestamptz(6)
+  lastRefreshError String?  @map("last_refresh_error")
+  // SPEC-06 §5: { dateColumn, tableAlias, defaultRange } | null. Present only when
+  // the pinned query carries the :qw_from/:qw_to parameter markers.
+  filterBinding   Json?    @map("filter_binding")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
