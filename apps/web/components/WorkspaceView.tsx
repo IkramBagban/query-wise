@@ -403,7 +403,7 @@ function DataSourceStatusPicker({
               <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-accent-line">
                 <Plus className="size-3.5" />
               </span>
-              Add source — paste a read-only string
+              Add source
             </button>
           </div>
         </div>
@@ -861,7 +861,7 @@ export function EmptyWorkspaceView() {
             Ask your <span className="text-gradient">data</span>
           </h1>
           <p className="mt-2.5 text-base text-muted" style={{ animation: "qw-rise 0.5s cubic-bezier(0.16,1,0.3,1) 0.12s both" }}>
-            Plain English in — SQL, charts, and answers out.
+            Get SQL, charts, and instant answers just by typing what you need.
           </p>
         </div>
 

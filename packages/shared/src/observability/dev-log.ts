@@ -23,7 +23,14 @@ interface DevLogEntry {
 function isEnabled(): boolean {
   return process.env.NODE_ENV === "development" || process.env.QUERYWISE_LOG_ENABLED === "1";
 }
-const logDirectory = path.join(process.cwd(), "logs");
+// Log directory resolution:
+//  - QUERYWISE_LOG_DIR (absolute or relative) wins, so all processes (web +
+//    worker) can be pointed at ONE stable folder regardless of their cwd.
+//  - Otherwise defaults to <cwd>/logs. In Next dev the cwd is apps/web, so the
+//    file lands at apps/web/logs/querywise-development.log.
+const logDirectory = process.env.QUERYWISE_LOG_DIR
+  ? path.resolve(process.env.QUERYWISE_LOG_DIR)
+  : path.join(process.cwd(), "logs");
 const logPath = path.join(logDirectory, "querywise-development.log");
 let writeQueue = Promise.resolve();
 

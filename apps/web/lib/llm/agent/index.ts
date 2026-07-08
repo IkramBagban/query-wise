@@ -219,6 +219,27 @@ function compactToolResults(messages: ModelMessage[], state: AgentRunState): Mod
 }
 
 /** Short digest of already-executed blocks, injected during recovery (SPEC-01 §1). */
+/**
+ * A compact, escalating step-budget reminder injected in the final few steps so
+ * the model wraps up and writes its answer before it is cut off. `remaining` is
+ * steps left including the current one (1 = this is the last step).
+ */
+function stepBudgetNudge(current: number, total: number, remaining: number): string {
+  if (remaining <= 1) {
+    return (
+      `Step ${current} of ${total} — this is your FINAL step. Write the complete analyst answer NOW in prose using the results you already have; do NOT call any tools. ` +
+      "If the analysis isn't fully complete, give the user what you found so far and tell them they can ask a follow-up to continue."
+    );
+  }
+  if (remaining <= 2) {
+    return (
+      `Step ${current} of ${total} — you are almost out of steps. Run at most one more essential query, then write the final answer. ` +
+      "Prefer answering now over gathering more data."
+    );
+  }
+  return `Step ${current} of ${total} — ${remaining} steps left. Start converging: gather only what's essential, then write your final answer.`;
+}
+
 function renderBlockDigests(state: AgentRunState): string {
   return state.blocks
     .map((block) => {
@@ -333,16 +354,27 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       // §4 tool-result compaction: digest older run_sql results before each step.
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
         const compacted = compactToolResults(stepMessages, state);
+        // Step-budget awareness: tell the model where it is in its budget so it
+        // converges and writes the answer BEFORE running out of steps, rather than
+        // getting cut off mid-tool-call. Injected only in the final few steps to
+        // save tokens; a plain user note (not system) avoids the injection warning.
+        const maxSteps = correction ? correction.maxSteps : state.budget.maxSteps;
+        const remaining = Math.max(0, maxSteps - stepNumber);
+        const messagesForStep =
+          !correction && remaining <= 3
+            ? [...compacted, { role: "user" as const, content: stepBudgetNudge(stepNumber + 1, maxSteps, remaining) }]
+            : compacted;
         devLog("debug", "agent.context.assembled", "Per-step assembled context.", {
           stepNumber,
           recovery,
-          stepTokens: compacted.reduce(
+          remaining,
+          stepTokens: messagesForStep.reduce(
             (sum, message) =>
               sum + estimateTokens(typeof message.content === "string" ? message.content : JSON.stringify(message.content)),
             0,
           ),
         });
-        return { messages: compacted };
+        return { messages: messagesForStep };
       },
     });
 
@@ -382,6 +414,44 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       }
     }
     flushReasoning();
+
+    // Finalize fallback: if the model spent its whole step budget on tool calls /
+    // reasoning and never wrote the answer (common on hard multi-query questions),
+    // force one tool-free pass to write the final answer from the executed blocks —
+    // instead of hard-failing with "The model returned no answer text."
+    if (!text.trim() && state.blocks.length > 0) {
+      devLog("info", "agent.finalize", "No answer after step budget; forcing a final answer from blocks.", {
+        model: candidateModel,
+        blocks: state.blocks.length,
+      });
+      const finalize = streamText({
+        model: getModel(candidateProvider, candidateModel, apiKey),
+        messages: [
+          ...modelMessages,
+          {
+            role: "user",
+            content:
+              "You reached your step limit before writing an answer. Here are the query results already shown to the user as result blocks:\n" +
+              `${renderBlockDigests(state)}\n\n` +
+              "Write the final analyst answer now, in prose, using these results. Be specific and cite the key numbers. Do NOT call any tools or write SQL. " +
+              "If the analysis is only partially complete, clearly say what you found so far and tell the user they can ask a follow-up question to continue the deeper analysis.",
+          },
+        ],
+        maxOutputTokens: 1500,
+        temperature: 0.2,
+        providerOptions: getThinkingProviderOptions(candidateProvider),
+        abortSignal: params.abortSignal,
+      });
+      for await (const part of finalize.fullStream) {
+        if (part.type === "text-delta" && part.text) {
+          text += part.text;
+          streamedText = true;
+          params.onTextDelta?.(part.text);
+        } else if (part.type === "error") {
+          throw part.error;
+        }
+      }
+    }
 
     // Cache-hit metrics when the provider reports them (SPEC-01 §5).
     try {

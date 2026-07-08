@@ -207,8 +207,8 @@ export interface AgentBudget {
  * fixed values; `extended` engages for complex, multi-part questions.
  */
 export const AGENT_BUDGET_PROFILES: Record<"standard" | "extended", AgentBudget> = {
-  standard: { maxSteps: 8, maxSqlAttempts: 5, maxSampleCalls: 6, maxSearchCalls: 3 },
-  extended: { maxSteps: 16, maxSqlAttempts: 10, maxSampleCalls: 10, maxSearchCalls: 3 },
+  standard: { maxSteps: 14, maxSqlAttempts: 8, maxSampleCalls: 8, maxSearchCalls: 3 },
+  extended: { maxSteps: 22, maxSqlAttempts: 12, maxSampleCalls: 12, maxSearchCalls: 4 },
 };
 
 export type AgentBudgetProfile = keyof typeof AGENT_BUDGET_PROFILES;
