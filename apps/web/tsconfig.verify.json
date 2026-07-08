@@ -7,8 +7,8 @@
       "@/*": ["./*"],
       "@query-wise/shared": ["../../packages/shared/src"],
       "@query-wise/shared/*": ["../../packages/shared/src/*"],
-      ".prisma/client": ["../../node_modules/.prisma-gen/client/index.d.ts"],
-      ".prisma/client/*": ["../../node_modules/.prisma-gen/client/*"]
+      ".prisma/client": ["../../node_modules/.prisma-gen2/client/index.d.ts"],
+      ".prisma/client/*": ["../../node_modules/.prisma-gen2/client/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

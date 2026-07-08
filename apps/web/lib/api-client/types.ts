@@ -44,6 +44,7 @@ export interface DashboardListItem {
   id: ResourceId;
   name: string;
   access: "owner" | "viewer";
+  mode: WidgetMode;
   widgetCount?: number;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -140,7 +141,6 @@ export interface CreateWidgetInput {
   chartConfig: ChartConfig;
   layout: { schemaVersion: 1; x: number; y: number; w: number; h: number };
   snapshot: BoundedResultPreview;
-  mode?: WidgetMode;
 }
 
 export type {

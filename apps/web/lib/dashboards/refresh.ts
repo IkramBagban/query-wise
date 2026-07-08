@@ -74,11 +74,6 @@ async function refreshWidgetRecord(
   range: DashboardDateRange | null,
   force: boolean,
 ): Promise<WidgetRefreshResultDto> {
-  if (widget.mode !== "live") {
-    // Snapshot widgets are frozen by definition (AC #3, AC #6).
-    return { widgetId: widget.id, status: "skipped", result: null, lastRefreshedAt: null, error: null };
-  }
-
   const parsedQuery = ProviderQuerySchema.safeParse(widget.queryDefinition);
   if (!parsedQuery.success) {
     return errorResult(widget.id, "WIDGET_QUERY_UNAVAILABLE", "This widget has no runnable saved query.");
@@ -147,6 +142,10 @@ export async function refreshWidget(
   const dashboard = await requireDashboardAccess(dashboardId, "edit");
   const widget = await getAppDb().dashboardWidget.findFirst({ where: { id: widgetId, dashboardId } });
   if (!widget) throw resourceNotFound();
+  // SPEC-06 §2 (whole-dashboard mode): snapshot dashboards are frozen by definition.
+  if ((dashboard as any).mode !== "live") {
+    return { widgetId: widget.id, status: "skipped", result: null, lastRefreshedAt: null, error: null };
+  }
   const range = opts.range ?? toDateRange(dashboard.defaultDateRange ?? null);
   return refreshWidgetRecord(widget, dashboard.ownerUserId, range, opts.force ?? true);
 }
@@ -157,9 +156,11 @@ export async function refreshDashboard(
   opts: { range?: DashboardDateRange | null; force?: boolean } = {},
 ): Promise<WidgetRefreshResultDto[]> {
   const dashboard = await requireDashboardAccess(dashboardId, "edit");
+  // SPEC-06 §2 (whole-dashboard mode): a snapshot dashboard refreshes nothing.
+  if ((dashboard as any).mode !== "live") return [];
   const range = opts.range ?? toDateRange(dashboard.defaultDateRange ?? null);
   const widgets = await getAppDb().dashboardWidget.findMany({
-    where: { dashboardId, mode: "live" },
+    where: { dashboardId },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: 51,
   });

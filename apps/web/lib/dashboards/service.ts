@@ -23,11 +23,11 @@ import type {
   WidgetMode,
 } from "@query-wise/shared/types";
 import {
+  DashboardCreateSchema,
   DashboardNameSchema,
   DashboardSettingsSchema,
   WidgetCreateSchema,
   WidgetLayoutBatchSchema,
-  WidgetModeSchema,
   WidgetUpdateSchema,
 } from "./schemas";
 import { validationError } from "./http";
@@ -77,7 +77,6 @@ function ownerWidget(widget: DashboardWidget): DashboardOwnerDto["widgets"][numb
     snapshot: widget.snapshot as unknown as DashboardOwnerDto["widgets"][number]["snapshot"],
     queryDefinition:
       widget.queryDefinition as unknown as DashboardOwnerDto["widgets"][number]["queryDefinition"],
-    mode: toWidgetMode(widget.mode),
     connectionId: widget.connectionId,
     lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
     lastRefreshError: widget.lastRefreshError,
@@ -95,7 +94,6 @@ function viewerWidget(widget: DashboardWidget): DashboardViewerDto["widgets"][nu
     chartConfig: widget.chartConfig as unknown as DashboardViewerDto["widgets"][number]["chartConfig"],
     layout: widget.layout as unknown as DashboardViewerDto["widgets"][number]["layout"],
     snapshot: widget.snapshot as unknown as DashboardViewerDto["widgets"][number]["snapshot"],
-    mode: toWidgetMode(widget.mode),
     lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
     lastRefreshError: widget.lastRefreshError,
     filterBinding: toFilterBinding(widget.filterBinding),
@@ -121,6 +119,7 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
       id: dashboard.id,
       name: dashboard.name,
       access: "owner",
+      mode: toWidgetMode((dashboard as any).mode),
       defaultDateRange,
       refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
       widgets: widgets.map(ownerWidget),
@@ -133,6 +132,7 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
     id: dashboard.id,
     name: dashboard.name,
     access: "viewer",
+    mode: toWidgetMode((dashboard as any).mode),
     defaultDateRange,
     refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
     widgets: widgets.map(viewerWidget),
@@ -164,6 +164,7 @@ export async function listDashboards(input: { cursor?: string; limit?: number })
       dashboard.id,
       dashboard.owner_user_id AS "ownerUserId",
       dashboard.name,
+      dashboard."mode",
       dashboard.deleted_at AS "deletedAt",
       dashboard.created_at AS "createdAt",
       dashboard.updated_at AS "updatedAt",
@@ -189,6 +190,7 @@ export async function listDashboards(input: { cursor?: string; limit?: number })
     id: row.id,
     name: row.name,
     access: row.access,
+    mode: toWidgetMode((row as any).mode),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     widgetCount: Number(row.widgetCount),
@@ -212,11 +214,16 @@ export async function listDashboards(input: { cursor?: string; limit?: number })
 }
 
 export async function createDashboard(input: unknown): Promise<DashboardDto> {
-  const parsed = DashboardNameSchema.safeParse((input as { name?: unknown })?.name);
+  const parsed = DashboardCreateSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
   const { userId } = await requireUser();
   const dashboard = await getAppDb().dashboard.create({
-    data: { id: createResourceId(), ownerUserId: userId, name: parsed.data },
+    data: {
+      id: createResourceId(),
+      ownerUserId: userId,
+      name: parsed.data.name,
+      mode: parsed.data.mode ?? "live",
+    } as any,
   });
   return dashboardDto(dashboard, userId);
 }
@@ -282,8 +289,6 @@ export async function createWidget(dashboardId: string, input: unknown) {
     }
   }
 
-  const mode: WidgetMode = parsed.data.mode ?? "live";
-
   return getAppDb().$transaction(async (tx) => {
     // Serialize writers for this dashboard so the count and insert form one
     // atomic capacity check across all application instances.
@@ -302,7 +307,6 @@ export async function createWidget(dashboardId: string, input: unknown) {
         snapshot: jsonInput(parsed.data.snapshot),
         queryRunId: parsed.data.queryRunId ?? null,
         connectionId,
-        mode,
         filterBinding: filterBinding ? jsonInput(filterBinding) : Prisma.JsonNull,
         queryDefinition: queryDefinition ? jsonInput(queryDefinition) : Prisma.JsonNull,
       },
@@ -342,7 +346,6 @@ export async function updateWidget(
         layout: parsed.data.layout ? jsonInput(parsed.data.layout) : undefined,
         snapshot: parsed.data.snapshot ? jsonInput(parsed.data.snapshot) : undefined,
         queryRunId: parsed.data.queryRunId,
-        mode: parsed.data.mode ?? undefined,
         queryDefinition:
           parsed.data.queryDefinition === null
             ? Prisma.JsonNull
@@ -357,8 +360,9 @@ export async function updateWidget(
 }
 
 /**
- * SPEC-06 §4.2/§5: persist dashboard-level live controls (default date range,
- * auto-refresh cadence). Additive — omitted keys are left unchanged.
+ * SPEC-06 §2/§4.2/§5: persist dashboard-level live controls — the whole-dashboard
+ * live/snapshot mode, the default date range, and the auto-refresh cadence.
+ * Additive — omitted keys are left unchanged.
  */
 export async function updateDashboardSettings(dashboardId: string, input: unknown) {
   const parsed = DashboardSettingsSchema.safeParse(input);
@@ -367,6 +371,7 @@ export async function updateDashboardSettings(dashboardId: string, input: unknow
   const dashboard = await getAppDb().dashboard.update({
     where: { id: dashboardId },
     data: {
+      mode: parsed.data.mode ?? undefined,
       defaultDateRange:
         parsed.data.defaultDateRange === undefined
           ? undefined
@@ -374,32 +379,18 @@ export async function updateDashboardSettings(dashboardId: string, input: unknow
             ? Prisma.JsonNull
             : jsonInput(parsed.data.defaultDateRange),
       refreshIntervalSeconds:
-        parsed.data.refreshIntervalSeconds === undefined ? undefined : parsed.data.refreshIntervalSeconds,
-    },
+        parsed.data.refreshIntervalSeconds === undefined
+          ? undefined
+          : parsed.data.refreshIntervalSeconds,
+    } as any,
   });
   return {
     id: dashboard.id,
+    mode: toWidgetMode(dashboard.mode),
     defaultDateRange: toDateRange(dashboard.defaultDateRange ?? null),
     refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
     updatedAt: iso(dashboard.updatedAt),
   };
-}
-
-/** SPEC-06 §2: toggle a single widget between live and snapshot from its menu. */
-export async function updateWidgetMode(dashboardId: string, widgetId: string, input: unknown) {
-  const parsed = WidgetModeSchema.safeParse((input as { mode?: unknown })?.mode);
-  if (!parsed.success) throw validationError(parsed.error);
-  await requireDashboardAccess(dashboardId, "edit");
-  return getAppDb().$transaction(async (tx) => {
-    const existing = await tx.dashboardWidget.findFirst({ where: { id: widgetId, dashboardId } });
-    if (!existing) throw resourceNotFound();
-    const widget = await tx.dashboardWidget.update({
-      where: { id: widgetId },
-      data: { mode: parsed.data },
-    });
-    await tx.dashboard.update({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
-    return ownerWidget(widget);
-  });
 }
 
 export async function deleteWidget(dashboardId: string, widgetId: string): Promise<void> {

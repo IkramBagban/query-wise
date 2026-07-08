@@ -15,6 +15,14 @@ export const ResourceIdSchema = z.string().uuid();
 export const DashboardNameSchema = z.string().trim().min(1).max(120);
 export const WidgetTitleSchema = z.string().trim().min(1).max(120);
 
+// SPEC-06 §2: choose live vs. snapshot at creation time (default live).
+export const DashboardCreateSchema = z
+  .object({
+    name: DashboardNameSchema,
+    mode: z.enum(["live", "snapshot"]).optional(),
+  })
+  .strict();
+
 export const ChartConfigSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -118,7 +126,6 @@ export const WidgetCreateSchema = z
     snapshot: BoundedSnapshotSchema,
     queryRunId: ResourceIdSchema.nullish(),
     queryDefinition: ProviderQuerySchema.nullish(),
-    mode: WidgetModeSchema.optional(),
   })
   .strict();
 
@@ -134,9 +141,11 @@ export const WidgetRefreshSchema = z
   })
   .strict();
 
-// SPEC-06 §4.2/§5: dashboard-level live controls.
+// SPEC-06 §2/§4.2/§5: dashboard-level live controls (whole-dashboard mode,
+// default date range, auto-refresh cadence).
 export const DashboardSettingsSchema = z
   .object({
+    mode: WidgetModeSchema.optional(),
     defaultDateRange: DashboardDateRangeSchema.nullish(),
     refreshIntervalSeconds: z.number().int().min(15).max(86_400).nullish(),
   })
