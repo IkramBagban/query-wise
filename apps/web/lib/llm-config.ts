@@ -3,17 +3,21 @@ export const LLM_PROVIDER_IDS = ["groq", "google", "anthropic"] as const;
 export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number];
 
 export const DEFAULT_LLM_PROVIDER: LlmProvider = "google";
-export const DEFAULT_LLM_MODEL = "gemini-2.5-flash";
+// Primary agent model. The cross-provider router (lib/llm/model-router.ts) leads
+// the agent chain with this and falls through to Lite / cheaper / Groq on limits.
+export const DEFAULT_LLM_MODEL = "gemini-3.5-flash";
 
 export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]> = {
   groq: [
     "openai/gpt-oss-120b",
-    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
   ],
   google: [
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash",
     "gemini-2.5-flash",
-    "gemini-3-flash-preview",
   ],
   anthropic: [
     "claude-opus-4-6",

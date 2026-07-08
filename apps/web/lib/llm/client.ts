@@ -203,7 +203,7 @@ export function getModelCandidates(
 export async function withRetry<T>(
   apiKeys: string[],
   fn: (apiKey: string) => Promise<T>,
-  maxAttempts = 3,
+  maxAttempts = 5,
 ): Promise<T> {
   const attempts = Math.max(maxAttempts, apiKeys.length);
   for (let attempt = 1; attempt <= attempts; attempt += 1) {

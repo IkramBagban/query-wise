@@ -422,65 +422,84 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   // replaying after streamed text or executed queries would duplicate work.
   let answer = "";
   let recovered = false;
-  const candidates = getModelCandidates(params.provider, params.model);
-  const apiKeys = params.apiKeys;
+
+  // SPEC (key management): route through the shared cross-provider chain. The
+  // caller's configured provider/model is the preferred primary (so the legacy
+  // QUERYWISE_LLM_MODEL still steers it); the router then rotates every non-cooled
+  // key of that model before advancing to the next model in the chain. Capped at
+  // MAX_LLM_ATTEMPTS; rate-limited keys are cooled down so we stop hammering them.
+  const preferred: LlmCandidate = { provider: params.provider, model: params.model };
+  const plan = planAttempts(resolveTaskChain("agent", preferred)).slice(0, MAX_LLM_ATTEMPTS);
+  if (plan.length === 0) {
+    throw failure(new Error("No API keys configured for the agent model chain."));
+  }
   // Remember which model/key actually produced the answer so the verification
   // correction pass (SPEC-02 §3) reuses the same one instead of replaying fallback.
-  let usedModel = candidates[0];
-  let usedKey = apiKeys[0];
+  let used: RoutedAttempt = plan[0];
 
-  outer: for (let index = 0; index < candidates.length; index += 1) {
-    let success = false;
-    for (let keyAttempt = 0; keyAttempt < apiKeys.length; keyAttempt += 1) {
-      try {
-        answer = await streamOnce(candidates[index], apiKeys[keyAttempt]);
-        usedModel = candidates[index];
-        usedKey = apiKeys[keyAttempt];
-        success = true;
-        break;
-      } catch (error) {
-        const sideEffects = streamedText || state.transcript.length > 0;
+  for (let i = 0; i < plan.length; i += 1) {
+    const attempt = plan[i];
+    const candidate: LlmCandidate = { provider: attempt.provider, model: attempt.model };
+    // Surface retry progress in the UI ("Retrying (2/5)") via the first-class
+    // retry activity row. The first try is silent.
+    if (i > 0) {
+      params.onActivity?.({ kind: "retry", label: `Retrying (${i + 1}/${plan.length})` });
+    }
+    try {
+      answer = await streamOnce(candidate, attempt.apiKey);
+      used = attempt;
+      break;
+    } catch (error) {
+      const sideEffects = streamedText || state.transcript.length > 0;
 
-        // In-run recovery (SPEC-01 §1): one compact-and-retry attempt when a
-        // true context overflow strikes after side effects (model fallback is
-        // then unsafe). Rebuilds with compacted results, last-2-turn history,
-        // and the schema dropped one tier.
-        if (sideEffects && isContextOverflowError(error) && !recovered) {
-          recovered = true;
-          devLog("info", "agent.context.recovery", "Attempting compact-and-retry after context overflow.", {
-            model: candidates[index],
-            blocks: state.blocks.length,
-          });
-          try {
-            answer = await streamOnce(candidates[index], apiKeys[keyAttempt], true);
-            usedModel = candidates[index];
-            usedKey = apiKeys[keyAttempt];
-            success = true;
-            break outer;
-          } catch (recoveryError) {
-            throw failure(recoveryError);
-          }
-        }
-
-        const lastCandidate = index === candidates.length - 1;
-        const lastKey = keyAttempt === apiKeys.length - 1;
-
-        if (sideEffects || !isRetryableError(error)) {
-          throw failure(error);
-        }
-        if (lastKey && (lastCandidate || !shouldFallbackToAnotherModel(error))) {
-          throw failure(error);
+      // In-run recovery (SPEC-01 §1): one compact-and-retry attempt when a true
+      // context overflow strikes after side effects (model fallback is then
+      // unsafe). Rebuilds with compacted results, last-2-turn history, schema −1 tier.
+      if (sideEffects && isContextOverflowError(error) && !recovered) {
+        recovered = true;
+        devLog("info", "agent.context.recovery", "Attempting compact-and-retry after context overflow.", {
+          model: attempt.model,
+          blocks: state.blocks.length,
+        });
+        try {
+          answer = await streamOnce(candidate, attempt.apiKey, true);
+          used = attempt;
+          break;
+        } catch (recoveryError) {
+          throw failure(recoveryError);
         }
       }
+
+      if (isRateLimitError(error)) markKeyCooled(attempt.provider, attempt.apiKey);
+
+      // Side effects or a non-retryable error means we can't safely replay.
+      if (sideEffects || !isRetryableError(error)) throw failure(error);
+      const isLast = i === plan.length - 1;
+      if (isLast) throw failure(error);
+      // Rotating to another KEY of the same model is always fine for a retryable
+      // error; crossing to the next MODEL requires a fallback-worthy error.
+      const next = plan[i + 1];
+      const switchingModel = next.provider !== attempt.provider || next.model !== attempt.model;
+      if (switchingModel && !shouldFallbackToAnotherModel(error)) throw failure(error);
     }
-    if (success) break;
   }
 
   if (!answer.trim()) {
-    throw new AgentExecutionError(
-      "The model returned no answer text.",
-      { mode: state.blocks.length > 0 ? "query" : "conversation", blocks: state.blocks, transcript: state.transcript },
-    );
+    const lastThought = state.transcript
+      .filter((t) => t.tool === "thinking")
+      .map((t) => t.summary)
+      .pop();
+
+    if (lastThought && lastThought.trim()) {
+      answer = lastThought.trim();
+    } else if (state.blocks.length > 0) {
+      answer = "Here is the analysis based on the executed queries.";
+    } else {
+      throw new AgentExecutionError(
+        "The model returned no answer text.",
+        { mode: "conversation", blocks: state.blocks, transcript: state.transcript },
+      );
+    }
   }
 
   // Self-verification pass (SPEC-02 §3): checks the drafted answer against the
@@ -498,7 +517,11 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     abortSignal: params.abortSignal,
     emitters: params,
     runCorrection: (message, maxSteps) =>
-      streamOnce(usedModel, usedKey, false, { draftAnswer: answer, message, maxSteps }),
+      streamOnce({ provider: used.provider, model: used.model }, used.apiKey, false, {
+        draftAnswer: answer,
+        message,
+        maxSteps,
+      }),
   });
 
   // Charts are resolved eagerly (default in run_sql, refined in set_chart) so
