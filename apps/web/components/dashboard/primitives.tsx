@@ -173,14 +173,14 @@ export function ModeToggle({
             onClick={() => onChange(option.key)}
             className={cn(
               "relative rounded-md px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.04em] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
-              isActive ? "text-accent-ink" : "text-muted hover:text-text",
+              isActive ? "text-accent-strong" : "text-muted hover:text-text",
             )}
           >
             {isActive ? (
               <motion.span
                 layoutId="dashboard-mode-pill"
                 aria-hidden
-                className="absolute inset-0 -z-10 rounded-md bg-accent"
+                className="absolute inset-0 -z-10 rounded-md bg-accent-soft border border-accent-line/20 shadow-sm"
                 transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 32 }}
               />
             ) : null}
@@ -238,14 +238,14 @@ export function DateRangePicker({
             onClick={() => onChange(option.key === "all" ? null : { preset: option.key })}
             className={cn(
               "relative rounded-md px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.04em] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
-              isActive ? "text-accent-ink" : "text-muted hover:text-text",
+              isActive ? "text-accent-strong" : "text-muted hover:text-text",
             )}
           >
             {isActive ? (
               <motion.span
                 layoutId="range-pill"
                 aria-hidden
-                className="absolute inset-0 -z-10 rounded-md bg-accent"
+                className="absolute inset-0 -z-10 rounded-md bg-accent-soft border border-accent-line/20 shadow-sm"
                 transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 32 }}
               />
             ) : null}

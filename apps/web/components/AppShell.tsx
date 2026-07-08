@@ -341,7 +341,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
           <IconNavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <IconNavButton label="Search chats" icon={Search} onClick={openSearch} />
           <IconNavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
-          <IconNavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} />
+          {/* <IconNavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} /> */}
         </div>
 
         <div className="my-3 h-px w-8 bg-border" />
@@ -393,7 +393,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
           <NavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <NavButton label="Search chats" icon={Search} onClick={openSearch} />
           <NavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
-          <NavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} />
+          {/* <NavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} /> */}
         </nav>
       </div>
 
