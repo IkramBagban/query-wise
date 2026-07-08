@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  ArrowUp,
   BadgeCheck,
   Check,
   Database,
@@ -26,34 +27,37 @@ import FeaturesJourney from "@/components/FeaturesJourney";
 
 const EXAMPLES = [
   {
+    label: "Monthly revenue",
     q: "Show monthly revenue for the last 12 months",
     sql: "SELECT date_trunc('month', o.created_at) AS month,\n       SUM(o.total_amount) AS revenue\nFROM orders o\nWHERE o.created_at >= now() - interval '12 months'\nGROUP BY 1 ORDER BY 1;",
     chartTitle: "Monthly revenue",
-    chartMeta: "12 rows · bar chart (auto)",
+    chartMeta: "12 rows · 38 ms",
     labels: ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"],
     values: [34, 41, 38, 52, 47, 58, 55, 63, 60, 72, 69, 84],
     peakLabel: "$84k",
-    widget: "Saved as widget to 'Company KPIs' dashboard",
+    dash: "Company KPIs",
   },
   {
+    label: "Top products",
     q: "Which products sold the most last quarter?",
     sql: "SELECT p.name, SUM(oi.quantity) AS units_sold\nFROM order_items oi\nJOIN products p ON p.id = oi.product_id\nWHERE oi.created_at >= now() - interval '3 months'\nGROUP BY p.name\nORDER BY units_sold DESC LIMIT 5;",
     chartTitle: "Top products by units sold",
-    chartMeta: "5 rows · bar chart (auto)",
+    chartMeta: "5 rows · 24 ms",
     labels: ["Trail Pack", "Aero Bottle", "Flux Mat", "Core Tee", "Ridge Cap"],
     values: [88, 71, 64, 52, 40],
     peakLabel: "4.2k",
-    widget: "Saved as widget to 'Sales' dashboard",
+    dash: "Sales",
   },
   {
+    label: "Weekly signups",
     q: "How many new customers signed up each week?",
     sql: "SELECT date_trunc('week', created_at) AS week,\n       COUNT(*) AS signups\nFROM customers\nWHERE created_at >= now() - interval '8 weeks'\nGROUP BY 1 ORDER BY 1;",
     chartTitle: "Weekly customer signups",
-    chartMeta: "8 rows · bar chart (auto)",
+    chartMeta: "8 rows · 31 ms",
     labels: ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"],
     values: [30, 42, 38, 55, 61, 58, 74, 82],
     peakLabel: "82",
-    widget: "Saved as widget to 'Growth' dashboard",
+    dash: "Growth",
   },
 ];
 
@@ -81,6 +85,19 @@ function tokenizeSql(sql: string): SqlToken[] {
     tokens.push({ text: t, color });
   }
   return tokens;
+}
+
+/** Splits a token stream into per-line arrays so we can render a gutter. */
+function tokensToLines(tokens: SqlToken[]): SqlToken[][] {
+  const lines: SqlToken[][] = [[]];
+  for (const token of tokens) {
+    const parts = token.text.split("\n");
+    parts.forEach((part, i) => {
+      if (i > 0) lines.push([]);
+      if (part) lines[lines.length - 1].push({ text: part, color: token.color });
+    });
+  }
+  return lines;
 }
 
 /* ----------------------------- Hero demo hook ---------------------------- */
@@ -341,132 +358,242 @@ function Hero({ demo }: { demo: HeroDemoState }) {
 function HeroDemo({ demo }: { demo: HeroDemoState }) {
   const ex = EXAMPLES[demo.exIdx];
   const sqlTokens = tokenizeSql(ex.sql);
+  const sqlLines = tokensToLines(sqlTokens.slice(0, demo.sqlShown));
+  const totalLines = ex.sql.split("\n").length;
   const maxIdx = ex.values.indexOf(Math.max(...ex.values));
   const sqlDone = demo.sqlShown >= sqlTokens.length;
+  const sent = !demo.isTyping && demo.typed.length > 0;
+  const composerActive = demo.isTyping && demo.typed.length > 0;
 
   return (
     <div className="mt-16 w-full max-w-[880px] text-left" style={{ animation: "qw-rise 0.7s cubic-bezier(0.16,1,0.3,1) 0.65s both" }}>
-      {/* example chips */}
-      <div className="mb-4 flex flex-wrap justify-center gap-2.5">
-        {EXAMPLES.map((example, i) => {
-          const on = i === demo.exIdx;
-          return (
-            <button
-              key={example.q}
-              type="button"
-              onClick={() => demo.select(i)}
-              className={`rounded-full border px-3.5 py-2 font-mono text-[12.5px] transition-all duration-200 active:scale-[0.96] ${
-                on ? "border-accent-line bg-accent-soft text-accent-strong" : "border-border bg-surface text-muted hover:border-accent-line hover:text-text"
-              }`}
-            >
-              {example.q}
-            </button>
-          );
-        })}
+      {/* example switcher — segmented, compact */}
+      <div className="mb-5 flex justify-center">
+        <div className="flex items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+          {EXAMPLES.map((example, i) => {
+            const on = i === demo.exIdx;
+            return (
+              <button
+                key={example.label}
+                type="button"
+                onClick={() => demo.select(i)}
+                aria-pressed={on}
+                className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-medium transition-all duration-200 active:scale-[0.97] sm:px-4 ${
+                  on ? "bg-accent text-accent-ink shadow-[0_2px_10px_-2px_var(--accent-line)]" : "text-muted hover:text-text"
+                }`}
+              >
+                <span className={`font-mono text-[10px] tabular-nums ${on ? "text-accent-ink/70" : "text-faint"}`}>0{i + 1}</span>
+                {example.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* browser frame */}
+      {/* product window */}
       <div className="overflow-hidden rounded-[18px] border border-border bg-surface shadow-[var(--shadow)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow)]">
-        <div className="flex items-center gap-2 border-b border-border bg-surface-2 px-[18px] py-3">
-          <span className="size-[11px] rounded-full bg-[#F26D6D]" />
-          <span className="size-[11px] rounded-full bg-[#F2C36D]" />
-          <span className="size-[11px] rounded-full bg-[#5FCB7E]" />
-          <span className="ml-2.5 flex items-center gap-1.5 font-mono text-xs text-faint">
-            <Lock className="size-3" strokeWidth={1.75} />
-            querywise.app — acme_analytics (read-only)
+        {/* chrome */}
+        <div className="relative flex items-center border-b border-border bg-surface-2 px-4 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <span className="size-[10px] rounded-full bg-[#F26D6D]" />
+            <span className="size-[10px] rounded-full bg-[#F2C36D]" />
+            <span className="size-[10px] rounded-full bg-[#5FCB7E]" />
+          </div>
+          <span className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1 font-mono text-[11px] text-faint">
+            <Lock className="size-3 text-accent-strong" strokeWidth={1.75} />
+            querywise.app/chats
+          </span>
+          <span className="ml-auto hidden items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 font-mono text-[10px] text-accent-strong sm:flex">
+            <Database className="size-3" strokeWidth={1.75} />
+            acme_analytics · read-only
           </span>
         </div>
 
-        <div className="flex h-[640px] flex-col gap-4 overflow-hidden p-6 sm:p-7">
-          {/* user bubble */}
-          <div className="flex justify-end">
-            <div className="min-h-[46px] max-w-[80%] rounded-[14px] rounded-br-md border border-accent-line bg-accent-soft px-[18px] py-3 text-[15.5px] text-text">
-              {demo.typed}
-              {demo.isTyping ? <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 bg-accent" style={{ animation: "qw-blink 0.9s step-end infinite" }} /> : null}
-            </div>
+        <div className="flex h-[720px] flex-col p-4 sm:p-5">
+          {/* conversation */}
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+            {/* sent message */}
+            {sent ? (
+              <div className="flex justify-end" style={{ animation: "qw-pop 0.35s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+                <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[14.5px] font-medium text-accent-ink shadow-[0_6px_18px_-8px_var(--accent-line)]">
+                  {demo.typed}
+                </div>
+              </div>
+            ) : null}
+
+            {/* pipeline — connected stepper */}
+            {demo.stepIdx >= 0 ? (
+              <div className="flex flex-wrap items-center gap-y-2 pl-0.5" style={{ animation: "qw-fadeup 0.4s ease both" }}>
+                {STEP_LABELS.map((label, i) => {
+                  const done = demo.stepIdx > i;
+                  const active = demo.stepIdx === i;
+                  return (
+                    <React.Fragment key={label}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={`flex size-4 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${
+                            done ? "border-accent bg-accent text-accent-ink" : active ? "border-accent bg-accent-soft" : "border-border-2 bg-surface"
+                          }`}
+                        >
+                          {done ? (
+                            <Check className="size-2.5" strokeWidth={3.5} />
+                          ) : active ? (
+                            <span className="size-1.5 rounded-full bg-accent" style={{ animation: "qw-pulse 1s ease-in-out infinite" }} />
+                          ) : null}
+                        </span>
+                        <span className={`whitespace-nowrap font-mono text-[11px] tracking-[0.02em] transition-colors duration-300 ${done ? "text-accent-strong" : active ? "text-text" : "text-faint"}`}>
+                          {label}
+                        </span>
+                      </span>
+                      {i < STEP_LABELS.length - 1 ? (
+                        <span className={`mx-2 hidden h-px w-3 shrink-0 transition-colors duration-300 sm:block sm:w-5 ${done ? "bg-accent-line" : "bg-border-2"}`} />
+                      ) : (
+                        <span className="mr-3 sm:mr-0" />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {/* SQL — editor card with gutter, streams token by token */}
+            {demo.sqlShown > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-border bg-code-bg" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+                <div className="flex items-center justify-between border-b border-border px-4 py-2">
+                  <span className="flex items-center gap-2 font-mono text-[11px] text-faint">
+                    <span
+                      className={`size-1.5 rounded-full transition-colors duration-300 ${sqlDone ? "bg-accent" : "bg-warning"}`}
+                      style={!sqlDone ? { animation: "qw-pulse 1s ease-in-out infinite" } : undefined}
+                    />
+                    generated_query.sql
+                  </span>
+                  {sqlDone ? (
+                    <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 font-mono text-[10.5px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+                      ✓ read-only · passed
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[10.5px] text-faint">writing…</span>
+                  )}
+                </div>
+                <div className="flex overflow-x-auto px-4 py-3">
+                  <div className="mr-4 select-none text-right font-mono text-[12.5px] leading-[1.8] text-faint" aria-hidden>
+                    {Array.from({ length: totalLines }, (_, i) => (
+                      <div key={i} className={`transition-opacity duration-300 ${i < sqlLines.length ? "opacity-60" : "opacity-20"}`}>{i + 1}</div>
+                    ))}
+                  </div>
+                  <pre className="m-0 min-w-0 flex-1 whitespace-pre font-mono text-[12.5px] leading-[1.8]">
+                    {sqlLines.map((line, li) => (
+                      <div key={li}>
+                        {line.map((token, ti) => (
+                          <span key={ti} style={{ color: token.color }}>{token.text}</span>
+                        ))}
+                        {li === sqlLines.length - 1 && !sqlDone ? (
+                          <span className="ml-0.5 inline-block h-3.5 w-[6px] translate-y-0.5 bg-accent" style={{ animation: "qw-blink 0.9s step-end infinite" }} />
+                        ) : null}
+                        {line.length === 0 && !(li === sqlLines.length - 1 && !sqlDone) ? " " : null}
+                      </div>
+                    ))}
+                  </pre>
+                </div>
+              </div>
+            ) : null}
+
+            {/* chart — gridlines, baseline, highlighted peak */}
+            {demo.showChart ? (
+              <div className="rounded-xl border border-border bg-surface-2 p-5" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="truncate text-sm font-semibold">{ex.chartTitle}</span>
+                    <span className="shrink-0 whitespace-nowrap rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[10px] text-faint">{ex.chartMeta}</span>
+                  </div>
+                  <div className="hidden shrink-0 items-center gap-1 sm:flex" aria-hidden>
+                    <span className="rounded-md bg-accent px-2 py-1 font-mono text-[10px] font-semibold text-accent-ink">chart</span>
+                    <span className="rounded-md border border-border px-2 py-1 font-mono text-[10px] text-faint">table</span>
+                    <span className="rounded-md border border-border px-2 py-1 font-mono text-[10px] text-faint">sql</span>
+                  </div>
+                </div>
+                <div className="relative h-[150px]">
+                  {/* gridlines + baseline */}
+                  <div aria-hidden className="absolute inset-0 flex flex-col justify-between">
+                    <span className="h-px w-full bg-border/50" />
+                    <span className="h-px w-full bg-border/50" />
+                    <span className="h-px w-full bg-border/50" />
+                    <span className="h-px w-full bg-border-2/70" />
+                  </div>
+                  <div className="relative flex h-full items-end justify-center gap-2 px-1 sm:gap-3">
+                    {ex.labels.map((label, i) => {
+                      const isPeak = i === maxIdx;
+                      return (
+                        <div key={label} className="flex h-full min-w-0 max-w-[56px] flex-1 flex-col justify-end">
+                          {isPeak ? (
+                            <span
+                              className={`mb-1.5 self-center whitespace-nowrap rounded-md bg-accent px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-accent-ink shadow-[0_4px_10px_-4px_var(--accent-line)] transition-all duration-300 ${
+                                demo.grown ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+                              }`}
+                            >
+                              <CountUp target={ex.peakLabel} active={demo.grown} />
+                            </span>
+                          ) : null}
+                          <div
+                            className={`rounded-t-[5px] ${isPeak ? "bg-gradient-to-b from-accent-strong to-accent" : "bg-accent/25 hover:bg-accent/45"}`}
+                            style={{ height: demo.grown ? `${ex.values[i]}%` : "2%", transition: `height 0.7s cubic-bezier(0.22,1,0.36,1) ${i * 30}ms, background-color 0.2s ease` }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="mt-1.5 flex justify-center gap-2 px-1 sm:gap-3">
+                  {ex.labels.map((label) => (
+                    <div key={label} className="min-w-0 max-w-[56px] flex-1 truncate text-center font-mono text-[9.5px] text-faint">{label}</div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* pinned confirmation */}
+            {demo.showWidget ? (
+              <div className="flex items-center gap-3 rounded-xl border border-accent-line bg-accent-soft px-4 py-3" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink" style={{ animation: "qw-stamp 0.3s cubic-bezier(0.16,1,0.3,1) 0.1s both" }}>
+                  <Check className="size-3" strokeWidth={3} />
+                </span>
+                <span className="min-w-0 truncate text-[13.5px] text-text">
+                  Pinned to <b className="font-semibold">{ex.dash}</b> dashboard
+                </span>
+                <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[10.5px] text-accent-strong">
+                  <span className="size-1.5 rounded-full bg-accent" style={{ animation: "qw-pulse 1.8s ease-in-out infinite" }} />
+                  live · auto-refresh
+                </span>
+              </div>
+            ) : null}
           </div>
 
-          {/* pipeline */}
-          {demo.stepIdx >= 0 ? (
-            <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2" style={{ animation: "qw-fadeup 0.4s ease both" }}>
-              {STEP_LABELS.map((label, i) => {
-                const done = demo.stepIdx > i;
-                const active = demo.stepIdx === i;
-                return (
-                  <span
-                    key={label}
-                    className="inline-flex items-center gap-1.5 font-mono text-[11.5px] tracking-[0.03em] transition-colors duration-300"
-                    style={{ color: done ? "var(--accent)" : active ? "var(--text)" : "var(--faint)" }}
-                  >
-                    <span
-                      className="size-[7px] rounded-full transition-colors duration-300"
-                      style={{ background: done || active ? "var(--accent)" : "var(--border2)", animation: active ? "qw-pulse 1s ease-in-out infinite" : "none" }}
-                    />
-                    {label}
-                  </span>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {/* SQL card — streams token by token */}
-          {demo.sqlShown > 0 ? (
-            <div className="rounded-xl border border-border bg-code-bg px-5 py-4" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-faint">Generated SQL</span>
-                {sqlDone ? (
-                  <span className="rounded-full border border-accent-line px-2.5 py-0.5 font-mono text-[11px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
-                    ✓ read-only
-                  </span>
-                ) : (
-                  <span className="font-mono text-[11px] text-faint">writing…</span>
-                )}
-              </div>
-              <pre className="m-0 whitespace-pre-wrap font-mono text-[13px] leading-[1.75]">
-                {sqlTokens.slice(0, demo.sqlShown).map((token, i) => (
-                  <span key={i} style={{ color: token.color }}>{token.text}</span>
-                ))}
-                {!sqlDone ? <span className="ml-0.5 inline-block h-3.5 w-0.5 bg-accent align-middle" style={{ animation: "qw-blink 0.9s step-end infinite" }} /> : null}
-              </pre>
-            </div>
-          ) : null}
-
-          {/* chart card — staggered bar growth + counting peak label */}
-          {demo.showChart ? (
-            <div className="rounded-xl border border-border bg-surface-2 px-5 py-[18px]" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
-              <div className="mb-4 flex items-baseline justify-between">
-                <span className="text-sm font-semibold">{ex.chartTitle}</span>
-                <span className="font-mono text-[11px] text-faint">{ex.chartMeta}</span>
-              </div>
-              <div className="flex h-[150px] items-end gap-2">
-                {ex.labels.map((label, i) => (
-                  <div key={label} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1.5">
-                    {i === maxIdx ? (
-                      <span className={`-mb-0.5 text-center font-mono text-[10px] font-semibold tabular-nums text-accent-strong transition-opacity duration-300 ${demo.grown ? "opacity-100" : "opacity-0"}`}>
-                        <CountUp target={ex.peakLabel} active={demo.grown} />
-                      </span>
-                    ) : null}
-                    <div
-                      className="min-h-[3px] rounded-t-[5px] rounded-b-sm bg-gradient-to-b from-accent-strong to-accent"
-                      style={{ height: demo.grown ? `${ex.values[i]}%` : "3%", transition: `height 0.7s cubic-bezier(0.22,1,0.36,1) ${i * 28}ms` }}
-                    />
-                    <div className="overflow-hidden text-ellipsis whitespace-nowrap text-center font-mono text-[9.5px] text-faint">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {/* saved-to-dashboard confirmation */}
-          {demo.showWidget ? (
-            <div className="flex items-center gap-3 rounded-xl border border-accent-line bg-accent-soft px-[18px] py-3" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
-              <span className="flex size-[26px] shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink">
-                <Check className="size-3.5" strokeWidth={3} />
-              </span>
-              <span className="text-sm text-text">{ex.widget}</span>
-              <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-accent-strong">↻ auto-refresh on</span>
-            </div>
-          ) : null}
+          {/* composer — where the typing actually happens */}
+          <div
+            className={`mt-3.5 flex shrink-0 items-center gap-3 rounded-2xl border bg-surface px-4 py-3 transition-all duration-200 ${
+              composerActive ? "border-accent-line shadow-[0_0_0_3px_var(--accent-soft)]" : "border-border-2"
+            }`}
+          >
+            <span className="min-h-[21px] min-w-0 flex-1 truncate text-[14.5px] text-text">
+              {composerActive ? (
+                <>
+                  {demo.typed}
+                  <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-[3px] bg-accent" style={{ animation: "qw-blink 0.9s step-end infinite" }} />
+                </>
+              ) : (
+                <span className="text-faint">Ask anything about your data…</span>
+              )}
+            </span>
+            <kbd className="hidden rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint sm:block">⏎</kbd>
+            <span
+              aria-hidden
+              className={`flex size-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ${
+                composerActive ? "scale-100 bg-accent text-accent-ink shadow-[0_4px_12px_-4px_var(--accent-line)]" : "scale-95 bg-surface-2 text-faint"
+              }`}
+            >
+              <ArrowUp className="size-4" strokeWidth={2.25} />
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -666,45 +793,86 @@ function Comparison() {
 
 /* -------------------------------- Use cases ------------------------------- */
 
-const USE_CASES = [
-  { icon: TrendingUp, title: "Sales analytics", line: "Pipeline, quota, win rates — without waiting on ops.", q: "How did each region perform against quota this quarter?" },
-  { icon: Users, title: "Customer insights", line: "Cohorts, retention, and growth in plain English.", q: "Which customers are at risk of churning this month?" },
-  { icon: Package, title: "Inventory", line: "Stock levels and velocity, straight from the source.", q: "What's running low in the warehouse right now?" },
-  { icon: Landmark, title: "Finance", line: "Revenue, margins, and burn — no spreadsheet exports.", q: "Show gross margin by product line, month over month." },
-  { icon: Megaphone, title: "Marketing", line: "Campaign performance and attribution on demand.", q: "Which campaign drove the most signups per dollar?" },
-  { icon: Truck, title: "Operations", line: "Fulfillment, SLAs, and throughput at a glance.", q: "What's our average delivery time by city this week?" },
+const QUESTION_WALL = [
+  { icon: TrendingUp, team: "Sales", q: "How did each region perform against quota this quarter?" },
+  { icon: Users, team: "Customers", q: "Which customers are at risk of churning this month?" },
+  { icon: Landmark, team: "Finance", q: "Show gross margin by product line, month over month." },
+  { icon: Package, team: "Inventory", q: "What's running low in the warehouse right now?" },
+  { icon: Megaphone, team: "Marketing", q: "Which campaign drove the most signups per dollar?" },
+  { icon: Truck, team: "Operations", q: "What's our average delivery time by city this week?" },
+  { icon: TrendingUp, team: "Sales", q: "Which reps closed the most pipeline this month?" },
+  { icon: Users, team: "Customers", q: "What's 90-day retention by signup cohort?" },
+  { icon: Landmark, team: "Finance", q: "Where did spend grow fastest last quarter?" },
+  { icon: Package, team: "Inventory", q: "Which SKUs moved fastest last week?" },
+  { icon: Megaphone, team: "Marketing", q: "What's CAC by channel, trailing 90 days?" },
+  { icon: Truck, team: "Operations", q: "How many orders missed SLA this week?" },
 ];
 
-function UseCases() {
+type WallItem = (typeof QUESTION_WALL)[number];
+
+function QuestionPill({ icon: Icon, team, q }: WallItem) {
   return (
-    <section className="bg-bg px-7 py-28">
-      <div className="mx-auto max-w-[1180px]">
-        <div data-reveal className="max-w-2xl">
+    <span className="group flex shrink-0 cursor-default items-center gap-3 rounded-2xl border border-border bg-surface py-2.5 pl-3 pr-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-line hover:shadow-[0_10px_24px_-14px_var(--accent-line)]">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft transition-transform duration-200 group-hover:scale-110">
+        <Icon className="size-3.5 text-accent-strong" strokeWidth={1.75} />
+      </span>
+      <span className="flex flex-col gap-px">
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{team}</span>
+        <span className="whitespace-nowrap text-[13px] text-muted transition-colors duration-200 group-hover:text-text">“{q}”</span>
+      </span>
+    </span>
+  );
+}
+
+function MarqueeRow({ items, duration, reverse }: { items: WallItem[]; duration: number; reverse?: boolean }) {
+  const group = (ariaHidden: boolean) => (
+    <div aria-hidden={ariaHidden || undefined} className="flex shrink-0 items-center gap-3 pr-3">
+      {items.map((item, i) => (
+        <QuestionPill key={`${item.q}-${i}`} {...item} />
+      ))}
+    </div>
+  );
+  return (
+    <div className="flex overflow-hidden">
+      <div
+        className="qw-marquee-track flex shrink-0"
+        style={{ animation: `qw-marquee ${duration}s linear infinite`, animationDirection: reverse ? "reverse" : "normal" }}
+      >
+        {group(false)}
+        {group(true)}
+      </div>
+    </div>
+  );
+}
+
+function UseCases() {
+  const rowA = QUESTION_WALL.filter((_, i) => i % 2 === 0);
+  const rowB = QUESTION_WALL.filter((_, i) => i % 2 === 1);
+  return (
+    <section className="overflow-hidden bg-bg py-28">
+      <div className="mx-auto max-w-[1180px] px-7">
+        <div data-reveal className="mx-auto max-w-2xl text-center">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Use cases</p>
           <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
             One question away, whatever the team
           </h2>
-        </div>
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {USE_CASES.map(({ icon: Icon, title, line, q }, i) => (
-            <div
-              key={title}
-              data-reveal
-              className="group rounded-2xl border border-border bg-surface p-6 transition-all duration-200 hover:-translate-y-1 hover:border-accent-line"
-              style={{ transitionDelay: `${(i % 3) * 0.06}s` }}
-            >
-              <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-accent-soft">
-                <Icon className="size-[18px] text-accent-strong" strokeWidth={1.75} />
-              </div>
-              <h3 className="m-0 text-[17px] font-semibold">{title}</h3>
-              <p className="m-0 mt-1.5 text-sm leading-relaxed text-muted">{line}</p>
-              <p className="m-0 mt-4 rounded-lg border border-border bg-surface-2 px-3 py-2 font-mono text-[11.5px] text-faint transition-colors duration-200 group-hover:border-accent-line group-hover:text-muted">
-                “{q}”
-              </p>
-            </div>
-          ))}
+          <p className="mt-4 text-[16.5px] leading-relaxed text-muted [text-wrap:pretty]">
+            Real questions from real teams. Every one of them becomes a query, a chart, and a live dashboard widget — no ticket required.
+          </p>
         </div>
       </div>
+
+      <div data-reveal className="qw-marquee-group relative mt-14 flex flex-col gap-4">
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-bg to-transparent sm:w-40" />
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-bg to-transparent sm:w-40" />
+        <MarqueeRow items={rowA} duration={48} />
+        <MarqueeRow items={rowB} duration={56} reverse />
+      </div>
+
+      <p data-reveal className="mt-12 text-center font-mono text-xs text-faint">
+        …and anything else you can put into words.
+        <a href="#top" className="ml-2 text-accent-strong no-underline hover:underline">Ask your own ↑</a>
+      </p>
     </section>
   );
 }

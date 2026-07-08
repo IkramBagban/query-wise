@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  Brush,
   CartesianGrid,
   Legend,
   Line,
@@ -25,7 +26,7 @@ interface LineChartViewProps {
   valueFormat?: ColumnFormat;
 }
 
-const LINE_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
+const LINE_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
 export function LineChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER }: LineChartViewProps) {
   const [dragging, setDragging] = useState(false);
@@ -95,6 +96,16 @@ export function LineChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_N
             activeDot={dragging ? false : { r: 4 }}
           />
         ))}
+        {result.rows.length > 30 ? (
+          <Brush
+            dataKey={xKey}
+            height={26}
+            travellerWidth={8}
+            stroke="var(--accent)"
+            fill="var(--surface2)"
+            tickFormatter={formatAxisTick}
+          />
+        ) : null}
       </LineChart>
     </ResponsiveContainer>
   );

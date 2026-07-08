@@ -3,6 +3,7 @@
 import {
   Area,
   AreaChart,
+  Brush,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
@@ -26,15 +27,7 @@ interface AreaChartViewProps {
   stack?: BarStackMode;
 }
 
-const AREA_STROKES = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
-const AREA_FILLS = [
-  "rgba(46,213,46,0.28)",
-  "rgba(245,158,11,0.22)",
-  "rgba(239,68,68,0.2)",
-  "rgba(139,92,246,0.2)",
-  "rgba(20,184,166,0.2)",
-  "rgba(132,204,22,0.2)",
-];
+const AREA_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
 export function AreaChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, stack = "none" }: AreaChartViewProps) {
   const series = (yKeys && yKeys.length > 0 ? yKeys : [yKey]).filter(Boolean);
@@ -91,10 +84,22 @@ export function AreaChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_N
             type="monotone"
             dataKey={seriesKey}
             name={labelize(seriesKey)}
-            stroke={AREA_STROKES[index % AREA_STROKES.length]}
-            fill={AREA_FILLS[index % AREA_FILLS.length]}
+            stroke={AREA_COLORS[index % AREA_COLORS.length]}
+            strokeWidth={2}
+            fill={AREA_COLORS[index % AREA_COLORS.length]}
+            fillOpacity={0.18}
           />
         ))}
+        {data.length > 30 ? (
+          <Brush
+            dataKey={xKey}
+            height={26}
+            travellerWidth={8}
+            stroke="var(--accent)"
+            fill="var(--surface2)"
+            tickFormatter={formatAxisTick}
+          />
+        ) : null}
       </AreaChart>
     </ResponsiveContainer>
   );

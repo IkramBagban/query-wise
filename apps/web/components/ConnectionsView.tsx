@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Database,
   ExternalLink,
-  Layers,
   Plus,
   RefreshCw,
   Table2,
@@ -43,10 +42,6 @@ function statusVariant(value: string) {
   return value === "connected" || value === "ready" ? "success" : value === "error" ? "danger" : "warning";
 }
 
-function Status({ value }: { value: string }) {
-  return <Badge variant={statusVariant(value)}>{value.replaceAll("_", " ")}</Badge>;
-}
-
 function SchemaStatus({ value }: { value: string }) {
   const status = getIngestionStatusView(value);
   return <Badge variant={status.tone}>{status.label}</Badge>;
@@ -60,35 +55,18 @@ function PostgresMark({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  tone = "default",
-}: {
-  icon: typeof Database;
-  label: string;
-  value: string | number;
-  hint: string;
-  tone?: "default" | "warning";
-}) {
-  const dotClass = tone === "warning" ? "bg-warning" : "bg-success";
-  const iconWrap = tone === "warning" ? "bg-warning/15 text-warning" : "bg-accent-soft text-accent-strong";
+const TONE_DOT: Record<string, string> = { success: "bg-accent", warning: "bg-warning", danger: "bg-danger" };
+const TONE_TEXT: Record<string, string> = { success: "text-accent-strong", warning: "text-warning", danger: "text-danger" };
+
+function StatusInline({ tone, label, pulse }: { tone: string; label: string; pulse?: boolean }) {
   return (
-    <Card className="flex items-center gap-3 p-4" hoverable>
-      <span className={`inline-flex size-11 shrink-0 items-center justify-center rounded-xl ${iconWrap}`}>
-        <Icon className="size-5" />
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-xs text-faint">{label}</p>
-        <p className="font-syne text-2xl font-semibold leading-tight">{value}</p>
-        <p className="mt-0.5 inline-flex items-center gap-1.5 text-[11px] text-faint">
-          <span className={`size-1.5 rounded-full ${dotClass}`} />
-          {hint}
-        </p>
-      </div>
-    </Card>
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] ${TONE_TEXT[tone] ?? "text-faint"}`}>
+      <span
+        className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[tone] ?? "bg-border-2"}`}
+        style={pulse ? { animation: "qw-pulse 1.4s ease-in-out infinite" } : undefined}
+      />
+      {label}
+    </span>
   );
 }
 
@@ -410,8 +388,8 @@ function AddConnectionDialog({
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <dt className="text-faint">{label}</dt>
-      <dd className="max-w-[60%] break-words text-right font-medium">{value}</dd>
+      <dt className="shrink-0 text-faint">{label}</dt>
+      <dd className="max-w-[60%] break-words text-right font-mono text-[11px] text-text">{value}</dd>
     </div>
   );
 }
@@ -436,45 +414,80 @@ function ConnectionCard({
   const schemaStatus = getIngestionStatusView(connection.schemaSyncStatus);
   const needsAttention = connection.status === "error" || schemaStatus.tone === "danger";
   return (
-    <Card className={`overflow-hidden transition-all ${expanded ? "border-accent" : ""}`} hoverable={!expanded}>
-      <div className="flex items-center gap-3 p-4">
+    <div
+      className={`overflow-hidden rounded-2xl border bg-surface transition-all duration-200 ${
+        expanded ? "border-accent-line shadow-[0_0_0_3px_var(--accent-soft)]" : "border-border hover:border-border-2"
+      }`}
+    >
+      <div className="flex items-center gap-3.5 p-4">
         <PostgresMark />
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onToggle} aria-expanded={expanded}>
-          <span className="min-w-0 flex-1">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="truncate font-syne text-base font-semibold">{connection.name}</span>
-              <span className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-faint">PostgreSQL</span>
-            </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
-              <Status value={connection.status} />
-              <span className="inline-flex items-center gap-1.5"><Table2 className="size-3.5" /><SchemaStatus value={connection.schemaSyncStatus} /></span>
-              <span className="inline-flex items-center gap-1.5"><RefreshCw className="size-3.5" />Last synced {formatRelativeTime(connection.lastSchemaSyncAt)}</span>
-            </span>
+        <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={onToggle} aria-expanded={expanded}>
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="truncate font-syne text-[15px] font-semibold text-text">{connection.name}</span>
+            <span className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.08em] text-faint">postgres</span>
+          </span>
+          <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <StatusInline tone={statusVariant(connection.status)} label={connection.status.replaceAll("_", " ")} />
+            <StatusInline
+              tone={schemaStatus.tone}
+              label={`schema ${schemaStatus.label.toLowerCase()}`}
+              pulse={!schemaStatus.terminal}
+            />
+            <span className="whitespace-nowrap font-mono text-[10.5px] text-faint">synced {formatRelativeTime(connection.lastSchemaSyncAt)}</span>
           </span>
         </button>
-        <div className="hidden items-center gap-2 sm:flex">
+        <div className="hidden items-center gap-1.5 sm:flex">
           {needsAttention ? (
-            <Link href={`/connections/${connection.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-semibold text-danger hover:bg-danger/10">
+            <Link
+              href={`/connections/${connection.id}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-danger/30 bg-danger/5 px-3 text-xs font-semibold text-danger no-underline transition-colors hover:bg-danger/10"
+            >
+              <AlertTriangle className="size-3" />
               Fix
             </Link>
           ) : (
-            <Link href={`/connections/${connection.id}/schema`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-surface-2">
-              <Table2 className="size-3.5" />Open schema
+            <Link
+              href={`/connections/${connection.id}/schema`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-muted no-underline transition-colors hover:border-accent-line hover:text-text"
+            >
+              <Table2 className="size-3.5" />
+              Schema
             </Link>
           )}
-          <Button type="button" size="sm" variant="ghost" loading={refreshing} onClick={onRefresh}><RefreshCw />Refresh</Button>
-          <Button type="button" size="sm" variant="danger" loading={deleting} onClick={onDelete} aria-label={`Delete ${connection.name}`}>
-            <Trash2 />Delete
-          </Button>
+          <button
+            type="button"
+            title="Refresh schema"
+            aria-label={`Refresh ${connection.name}`}
+            disabled={refreshing}
+            onClick={onRefresh}
+            className="flex size-8 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-border-2 hover:text-text disabled:opacity-60"
+          >
+            {refreshing ? <Spinner size="sm" /> : <RefreshCw className="size-3.5" />}
+          </button>
+          <button
+            type="button"
+            title="Delete connection"
+            aria-label={`Delete ${connection.name}`}
+            disabled={deleting}
+            onClick={onDelete}
+            className="flex size-8 items-center justify-center rounded-lg border border-border text-faint transition-colors hover:border-danger/40 hover:bg-danger/5 hover:text-danger disabled:opacity-60"
+          >
+            {deleting ? <Spinner size="sm" /> : <Trash2 className="size-3.5" />}
+          </button>
         </div>
-        <button type="button" onClick={onToggle} aria-label={expanded ? "Collapse" : "Expand"} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text">
-          <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={expanded ? "Collapse" : "Expand"}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-surface-2 hover:text-text"
+        >
+          <ChevronDown className={`size-4 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
         </button>
       </div>
 
       {expanded ? (
         <div className="animate-fade-in border-t border-border bg-surface-2/60 p-4 sm:p-5">
-          <dl className="grid grid-cols-1 gap-x-10 gap-y-3 text-xs sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-x-10 gap-y-2.5 text-xs sm:grid-cols-2">
             <DetailRow label="Host" value={`${connection.hostDisplay}${connection.port ? `:${connection.port}` : ""}`} />
             <DetailRow label="Schema status" value={<SchemaStatus value={connection.schemaSyncStatus} />} />
             <DetailRow label="Readiness" value={schemaStatus.description} />
@@ -483,9 +496,13 @@ function ConnectionCard({
             <DetailRow label="Provider" value="PostgreSQL" />
             <DetailRow label="Capabilities" value={connection.capabilities.length ? connection.capabilities.length : "None reported"} />
           </dl>
+          <div className="mt-4 flex gap-2 border-t border-dashed border-border-2 pt-3 sm:hidden">
+            <Button type="button" size="sm" variant="ghost" loading={refreshing} onClick={onRefresh}><RefreshCw />Refresh</Button>
+            <Button type="button" size="sm" variant="danger" loading={deleting} onClick={onDelete}><Trash2 />Delete</Button>
+          </div>
         </div>
       ) : null}
-    </Card>
+    </div>
   );
 }
 
@@ -596,11 +613,14 @@ export function ConnectionsListView() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        <PageHeader
-          title="Connections"
-          description="Connect databases and manage schema syncs."
-          actions={<Button type="button" onClick={() => setDialogOpen(true)}><Plus />Add connection</Button>}
-        />
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Data sources</p>
+            <h1 className="mt-1.5 font-syne text-3xl font-semibold tracking-tight text-text">Connections</h1>
+            <p className="mt-1.5 text-sm text-faint">Read-only PostgreSQL sources — schema analyzed and synced automatically.</p>
+          </div>
+          <Button type="button" onClick={() => setDialogOpen(true)}><Plus className="size-4" />Add connection</Button>
+        </header>
 
         {!items.length ? (
           <div className="mt-8">
@@ -609,18 +629,31 @@ export function ConnectionsListView() {
         ) : (
           <>
             {notice ? <p className="mt-4 rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <StatCard icon={Database} label="Query-ready connections" value={stats.active} hint="Schema ready" />
-              <StatCard icon={AlertTriangle} label="Need attention" value={stats.attention} hint={stats.attention ? "Action required" : "All healthy"} tone={stats.attention ? "warning" : "default"} />
-              <StatCard icon={Layers} label="Total sources" value={stats.total} hint="Across all connections" />
+
+            {/* health strip */}
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[11px] text-muted">
+                <Database className="size-3 text-accent-strong" />
+                {stats.total} {stats.total === 1 ? "source" : "sources"}
+              </span>
+              <span className="flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-3 py-1.5 font-mono text-[11px] text-accent-strong">
+                <span className="size-1.5 rounded-full bg-accent" />
+                {stats.active} query-ready
+              </span>
+              {stats.attention > 0 ? (
+                <span className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 font-mono text-[11px] text-warning">
+                  <AlertTriangle className="size-3" />
+                  {stats.attention} {stats.attention === 1 ? "needs" : "need"} attention
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[11px] text-faint">
+                  <Check className="size-3 text-accent-strong" />
+                  all healthy
+                </span>
+              )}
             </div>
 
-            <div className="mt-8 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Your data sources</h2>
-              <span className="text-xs text-faint">{items.length} data source{items.length === 1 ? "" : "s"}</span>
-            </div>
-
-            <div className="mt-3 flex flex-col gap-3">
+            <div className="mt-5 flex flex-col gap-3">
               {items.map((connection) => (
                 <ConnectionCard
                   key={connection.id}
@@ -637,21 +670,26 @@ export function ConnectionsListView() {
               <button
                 type="button"
                 onClick={() => setDialogOpen(true)}
-                className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border-2 bg-surface/40 px-4 py-3.5 text-sm font-medium text-accent-strong transition hover:border-accent hover:bg-accent-soft"
+                className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border-2 px-4 py-4 text-sm font-medium text-faint transition-all duration-200 hover:border-accent-line hover:bg-accent-soft/40 hover:text-accent-strong"
               >
-                <Plus className="size-4" />Add another source
+                <Plus className="size-4" />
+                Add another source — paste a read-only string
               </button>
             </div>
 
-            <div className="mt-8 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-muted">Supported sources</span>
-                <span className="inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-xs"><Database className="size-4 text-accent-strong" />PostgreSQL</span>
+            <div className="mt-10 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">Supported</span>
+                <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 font-mono text-[10.5px] text-muted">
+                  <Database className="size-3 text-accent-strong" />
+                  PostgreSQL
+                </span>
+                <span className="rounded-full border border-dashed border-border-2 px-2.5 py-1 font-mono text-[10.5px] text-faint">more engines soon</span>
               </div>
-              <div className="inline-flex items-start gap-2 text-xs text-faint">
-                <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-accent-strong" />
-                <span className="max-w-md">QueryWise auto-analyzes tables, columns, relationships, and sample values on every sync.</span>
-              </div>
+              <span className="inline-flex items-start gap-2 font-mono text-[10.5px] text-faint">
+                <ExternalLink className="mt-0.5 size-3 shrink-0 text-accent-strong" />
+                tables · columns · relationships · sample values — analyzed on every sync
+              </span>
             </div>
           </>
         )}

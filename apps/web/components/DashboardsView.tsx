@@ -3,31 +3,92 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useId, useState } from "react";
-import { BarChart3, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  LayoutDashboard,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Share2,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { DashboardGrid, EditLayoutButton, WidgetCardSkeleton } from "@/components/DashboardGrid";
-import { CardGridSkeleton } from "@/components/LoadingSkeletons";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState } from "@/components/ResourceState";
 import { ShareDashboardModal } from "@/components/ShareDashboardModal";
 import { useApiResource } from "@/hooks";
 import { dashboardsApi } from "@/lib/api-client";
+
+/* --------------------------------- Helpers -------------------------------- */
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/** Deterministic decorative bar heights derived from the dashboard id. */
+function vizHeights(id: string, bars = 14): number[] {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  const heights: number[] = [];
+  for (let i = 0; i < bars; i += 1) {
+    h = (h * 1664525 + 1013904223) >>> 0;
+    heights.push(28 + (h % 64));
+  }
+  return heights;
+}
+
+function DashboardMiniViz({ id }: { id: string }) {
+  const heights = vizHeights(id);
+  const peak = heights.indexOf(Math.max(...heights));
+  return (
+    <div className="flex h-10 items-end gap-1" aria-hidden>
+      {heights.map((value, i) => (
+        <span
+          key={i}
+          className={`flex-1 rounded-t-[2px] transition-colors duration-200 ${
+            i === peak ? "bg-accent" : "bg-accent/15 group-hover:bg-accent/30"
+          }`}
+          style={{ height: `${value}%`, transitionDelay: `${i * 12}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------- Owner actions menu --------------------------- */
 
 function DashboardOwnerActions({
   dashboardId,
   dashboardName,
   onChanged,
   onDeleted,
+  bordered = false,
 }: {
   dashboardId: string;
   dashboardName: string;
   onChanged: () => Promise<unknown>;
   onDeleted: () => Promise<unknown> | void;
+  bordered?: boolean;
 }) {
   const titleId = useId();
   const [mode, setMode] = useState<"rename" | "delete" | null>(null);
@@ -74,14 +135,27 @@ function DashboardOwnerActions({
 
   return (
     <>
-      <Button type="button" variant="ghost" size="sm" aria-label={`Rename ${dashboardName}`} onClick={() => open("rename")}>
-        <Pencil className="h-3.5 w-3.5" />
-        Rename
-      </Button>
-      <Button type="button" variant="danger" size="sm" aria-label={`Delete ${dashboardName}`} onClick={() => open("delete")}>
-        <Trash2 className="h-3.5 w-3.5" />
-        Delete
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`Options for ${dashboardName}`}
+          className={`flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border text-faint transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+            bordered ? "border-border hover:border-border-2" : "border-transparent hover:border-border"
+          }`}
+        >
+          <MoreHorizontal className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => open("rename")}>
+            <Pencil className="size-3.5" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => open("delete")}>
+            <Trash2 className="size-3.5" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <Dialog open={mode !== null} onOpenChange={(openState) => { if (!openState && !busy) setMode(null); }} panelClassName="sm:max-w-md">
         <div role="dialog" aria-modal="true" aria-labelledby={titleId}>
           <h2 id={titleId} className="font-syne text-xl font-semibold">
@@ -115,27 +189,45 @@ function DashboardOwnerActions({
   );
 }
 
+/* -------------------------------- Skeletons ------------------------------- */
+
+function DashboardListSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="rounded-2xl border border-border bg-surface p-5">
+          <div className="flex items-start justify-between">
+            <Skeleton className="size-9 rounded-xl" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+          <Skeleton className="mt-4 h-5 w-2/3" />
+          <Skeleton className="mt-2 h-3 w-1/2" />
+          <Skeleton className="mt-5 h-10 w-full rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DashboardPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-3 w-36" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-28 rounded-md" />
-          <Skeleton className="h-9 w-20 rounded-md" />
+      <div>
+        <Skeleton className="h-3 w-24" />
+        <div className="mt-3 flex items-start justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-28 rounded-md" />
+            <Skeleton className="h-8 w-20 rounded-md" />
+          </div>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="md:col-span-1">
-          <WidgetCardSkeleton />
-        </div>
-        <div className="md:col-span-1">
-          <WidgetCardSkeleton />
-        </div>
+        <WidgetCardSkeleton />
+        <WidgetCardSkeleton />
         <div className="md:col-span-2">
           <WidgetCardSkeleton />
         </div>
@@ -144,20 +236,34 @@ function DashboardPageSkeleton() {
   );
 }
 
+/* ------------------------------- List view -------------------------------- */
+
 export function DashboardsListView() {
+  const router = useRouter();
   const resource = useApiResource((signal) => dashboardsApi.list(50, undefined, signal));
+  const titleId = useId();
+  const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const items = resource.data?.items ?? [];
+  const totalWidgets = items.reduce((sum, dashboard) => sum + (dashboard.widgetCount ?? 0), 0);
+
+  function openCreate() {
+    setName("");
+    setError(null);
+    setCreateOpen(true);
+  }
 
   async function create(event: FormEvent) {
     event.preventDefault();
     setCreating(true);
     setError(null);
     try {
-      await dashboardsApi.create(name);
-      setName("");
-      await resource.refresh();
+      const created = await dashboardsApi.create(name.trim());
+      setCreateOpen(false);
+      router.push(`/dashboards/${created.id}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to create dashboard");
     } finally {
@@ -166,53 +272,82 @@ export function DashboardsListView() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Collections"
-        title="Dashboards"
-        description="Durable snapshot dashboards you own or can view."
-      />
-      <Card className="p-4">
-        <form onSubmit={create} className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            required
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="New dashboard name"
-          />
-          <Button type="submit" loading={creating}>
-            <Plus className="h-4 w-4" />
-            Create
-          </Button>
-        </form>
-        {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
-      </Card>
+    <div className="space-y-8">
+      {/* header */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Collections</p>
+          <h1 className="mt-1.5 font-syne text-3xl font-semibold tracking-tight text-text">Dashboards</h1>
+          <p className="mt-1.5 text-sm text-faint">
+            {resource.data
+              ? <>{items.length} {items.length === 1 ? "dashboard" : "dashboards"} · {totalWidgets} {totalWidgets === 1 ? "widget" : "widgets"} · pinned from conversations</>
+              : "Pinned answers, arranged your way."}
+          </p>
+        </div>
+        <Button type="button" onClick={openCreate}>
+          <Plus className="size-4" />
+          New dashboard
+        </Button>
+      </header>
+
       {resource.loading && !resource.data ? (
-        <CardGridSkeleton />
-      ) : resource.error ? (
+        <DashboardListSkeleton />
+      ) : resource.error && !resource.data ? (
         <ErrorState error={resource.error} onRetry={() => void resource.refresh()} />
-      ) : !resource.data?.items.length ? (
+      ) : !items.length ? (
         <EmptyState
           title="No dashboards yet"
-          description="Create a dashboard, then save query result snapshots from conversations."
+          description="Create a dashboard, then pin query results from any conversation — they arrive here as live widgets."
+          action={
+            <Button type="button" onClick={openCreate}>
+              <Plus className="size-4" />
+              Create your first dashboard
+            </Button>
+          }
         />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {resource.data.items.map((dashboard) => (
-              <Card key={dashboard.id} hoverable className="p-4">
-                <Link href={`/dashboards/${dashboard.id}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                <div className="flex items-center justify-between">
-                  <BarChart3 className="h-5 w-5 text-accent-strong" />
-                  <span className="text-xs capitalize text-faint">{dashboard.access}</span>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((dashboard) => {
+            const owner = dashboard.access === "owner";
+            return (
+              <div
+                key={dashboard.id}
+                className="group relative rounded-2xl border border-border bg-surface p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-line hover:shadow-[0_16px_36px_-20px_var(--accent-line)]"
+              >
+                <Link
+                  href={`/dashboards/${dashboard.id}`}
+                  aria-label={`Open ${dashboard.name}`}
+                  className="absolute inset-0 z-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                />
+
+                <div className="pointer-events-none relative z-[1]">
+                  <div className="flex items-start justify-between">
+                    <span className="flex size-9 items-center justify-center rounded-xl bg-accent-soft">
+                      <LayoutDashboard className="size-4 text-accent-strong" strokeWidth={1.75} />
+                    </span>
+                    {/* space reserved for the kebab / badge */}
+                    {!owner ? (
+                      <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
+                        shared
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-1.5">
+                    <h2 className="min-w-0 truncate font-syne text-lg font-semibold text-text">{dashboard.name}</h2>
+                    <ArrowUpRight className="size-4 shrink-0 -translate-x-1 text-accent-strong opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" strokeWidth={2} />
+                  </div>
+                  <p className="mt-1 text-xs text-faint">
+                    {dashboard.widgetCount ?? 0} {(dashboard.widgetCount ?? 0) === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)}
+                  </p>
+
+                  <div className="mt-5">
+                    <DashboardMiniViz id={dashboard.id} />
+                  </div>
                 </div>
-                <h2 className="mt-4 font-syne text-lg font-semibold">{dashboard.name}</h2>
-                <p className="mt-1 text-xs text-faint">
-                  {dashboard.widgetCount ?? 0} widgets · updated{" "}
-                  {new Date(dashboard.updatedAt).toLocaleDateString()}
-                </p>
-                </Link>
-                {dashboard.access === "owner" ? (
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+
+                {owner ? (
+                  <div className="absolute right-3 top-3 z-10">
                     <DashboardOwnerActions
                       dashboardId={dashboard.id}
                       dashboardName={dashboard.name}
@@ -221,13 +356,51 @@ export function DashboardsListView() {
                     />
                   </div>
                 ) : null}
-              </Card>
-          ))}
+              </div>
+            );
+          })}
+
+          {/* ghost create card */}
+          <button
+            type="button"
+            onClick={openCreate}
+            className="flex min-h-[176px] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-2 text-faint transition-all duration-200 hover:border-accent-line hover:bg-accent-soft/40 hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <span className="flex size-9 items-center justify-center rounded-xl border border-border bg-surface">
+              <Plus className="size-4" />
+            </span>
+            <span className="text-sm font-medium">New dashboard</span>
+          </button>
         </div>
       )}
+
+      {/* create dialog */}
+      <Dialog open={createOpen} onOpenChange={(openState) => { if (!creating) setCreateOpen(openState); }} panelClassName="sm:max-w-md">
+        <div role="dialog" aria-modal="true" aria-labelledby={`${titleId}-create`}>
+          <h2 id={`${titleId}-create`} className="font-syne text-xl font-semibold">New dashboard</h2>
+          <p className="mt-1 text-sm text-muted">Name it after the team or the ritual — “Growth”, “Monday standup”.</p>
+          <form className="mt-4 space-y-4" onSubmit={create}>
+            <Input
+              autoFocus
+              required
+              maxLength={120}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Dashboard name"
+            />
+            {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" disabled={creating} onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="submit" loading={creating} disabled={!name.trim()}>Create dashboard</Button>
+            </div>
+          </form>
+        </div>
+      </Dialog>
     </div>
   );
 }
+
+/* ------------------------------- Detail view ------------------------------- */
 
 export function DashboardDetailView({
   dashboardId,
@@ -244,8 +417,10 @@ export function DashboardDetailView({
   const [error, setError] = useState<string | null>(null);
   const [hasActiveLinks, setHasActiveLinks] = useState(false);
 
-  if (resource.loading) return <DashboardPageSkeleton />;
-  if (resource.error || !resource.data) {
+  // Only blank the page before the first byte of data — refreshes keep the
+  // current view on screen (this is what caused the skeleton flicker).
+  if (resource.loading && !resource.data) return <DashboardPageSkeleton />;
+  if (!resource.data) {
     return (
       <ErrorState
         error={resource.error ?? new Error("Dashboard not found")}
@@ -256,6 +431,7 @@ export function DashboardDetailView({
 
   const dashboard = resource.data;
   const owner = dashboard.access === "owner";
+  const refreshing = resource.loading;
 
   async function mutateWidget(widgetId: string, action: () => Promise<unknown>) {
     setBusyWidget(widgetId);
@@ -272,20 +448,51 @@ export function DashboardDetailView({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow={isEditing ? "Dashboard editor" : "Dashboard"}
-        title={dashboard.name}
-        description={`${dashboard.widgets.length} snapshot widgets · ${dashboard.access} access`}
-        actions={
-          <>
+      <header>
+        <Link
+          href="/dashboards"
+          className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-faint no-underline transition-colors duration-150 hover:text-accent-strong"
+        >
+          <ArrowLeft className="size-3" strokeWidth={2} />
+          Dashboards
+        </Link>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-3 font-syne text-2xl font-semibold tracking-tight text-text sm:text-3xl">
+              <span className="truncate">{dashboard.name}</span>
+              {refreshing ? <Spinner size="sm" /> : null}
+            </h1>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
+              <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-accent-strong">
+                <span className="size-1.5 rounded-full bg-accent" style={{ animation: "qw-pulse 2s ease-in-out infinite" }} />
+                LIVE SNAPSHOTS
+              </span>
+              <span aria-hidden>·</span>
+              <span>{dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"}</span>
+              <span aria-hidden>·</span>
+              <span>updated {timeAgo(dashboard.updatedAt)}</span>
+              <span aria-hidden>·</span>
+              <span className="capitalize">{dashboard.access}</span>
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             {owner ? (
-              <EditLayoutButton
-                isEditing={isEditing}
-                onToggle={() => setIsEditing((v) => !v)}
-              />
+              <EditLayoutButton isEditing={isEditing} onToggle={() => setIsEditing((v) => !v)} />
+            ) : null}
+            {owner ? (
+              <div className="relative inline-flex">
+                <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
+                  <Share2 className="h-3.5 w-3.5" />
+                  Share
+                </Button>
+                {hasActiveLinks && (
+                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-success ring-1 ring-bg" />
+                )}
+              </div>
             ) : null}
             {owner ? (
               <DashboardOwnerActions
+                bordered
                 dashboardId={dashboardId}
                 dashboardName={dashboard.name}
                 onChanged={resource.refresh}
@@ -295,33 +502,26 @@ export function DashboardDetailView({
                 }}
               />
             ) : null}
-            {owner ? (
-              <div className="relative inline-flex">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShareOpen(true)}
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  Share
-                </Button>
-                {hasActiveLinks && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-success ring-1 ring-bg" />
-                )}
-              </div>
-            ) : null}
-          </>
-        }
-      />
+          </div>
+        </div>
+      </header>
+
       {error ? (
         <p className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
           {error}
         </p>
       ) : null}
+
       {!dashboard.widgets.length ? (
         <EmptyState
-          title="No widgets yet"
-          description="Save a query result from a conversation to populate this dashboard."
+          title="Nothing pinned yet"
+          description="Ask a question in a conversation, then pin the answer — it lands here as a live widget."
+          action={
+            <Button type="button" onClick={() => router.push("/chats")}>
+              Ask a question
+              <ArrowUpRight className="size-3.5" />
+            </Button>
+          }
         />
       ) : (
         <DashboardGrid
@@ -338,6 +538,7 @@ export function DashboardDetailView({
           onLayoutSaved={() => void resource.refresh()}
         />
       )}
+
       <ShareDashboardModal
         dashboardId={dashboardId}
         open={shareOpen}

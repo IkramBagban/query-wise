@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, LayoutGrid, RotateCcw, Trash2 } from "lucide-react";
+import { AlertCircle, Check, GripVertical, LayoutGrid, RotateCcw, Trash2 } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 
@@ -177,19 +177,19 @@ export function DashboardGrid({
   return (
     <div className="space-y-2">
       {isEditing && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm text-faint">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent-line bg-accent-soft px-4 py-2.5 text-[13px] text-muted">
           <div className="flex items-center gap-2">
             <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-accent-strong" />
-            <span>Drag widgets to rearrange · Resize from any edge or corner</span>
+            <span>Drag to rearrange · resize from any edge — changes save on their own</span>
           </div>
-          <div aria-live="polite" aria-atomic="true">
+          <div aria-live="polite" aria-atomic="true" className="font-mono text-[11px]">
             {saveState === "saving" ? (
               <span className="flex items-center gap-1.5 text-muted">
-                <Spinner size="sm" /> Saving layout…
+                <Spinner size="sm" /> saving…
               </span>
             ) : saveState === "saved" ? (
-              <span className="flex items-center gap-1.5 text-success">
-                <Check className="h-3.5 w-3.5" /> Layout saved
+              <span className="flex items-center gap-1.5 text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+                <Check className="h-3.5 w-3.5" /> layout saved
               </span>
             ) : null}
           </div>
@@ -224,14 +224,18 @@ export function DashboardGrid({
           bottom: 4px;
           width: 8px;
           height: 8px;
-          border-right: 2px solid var(--accent-2);
-          border-bottom: 2px solid var(--accent-2);
+          border-right: 2px solid var(--accent);
+          border-bottom: 2px solid var(--accent);
+          border-bottom-right-radius: 3px;
+          opacity: 0.7;
         }
         .react-grid-placeholder {
-          background: var(--accent-2);
-          opacity: 0.1;
-          border: 2px dashed var(--accent-2);
-          border-radius: 8px;
+          background: var(--accent-soft);
+          border: 1.5px dashed var(--accent-line);
+          border-radius: 12px;
+        }
+        .react-grid-item.react-draggable-dragging {
+          z-index: 20;
         }
       `}</style>
 
@@ -255,20 +259,38 @@ export function DashboardGrid({
             {layout.map((layoutItem) => {
               const widget = widgetMap.get(layoutItem.i);
               if (!widget) return null;
+              const rows = widget.snapshot?.returnedRowCount;
               return (
                 <div key={widget.id}>
-                  <Card className="flex h-full flex-col overflow-hidden">
+                  <Card
+                    className={cn(
+                      "group/widget flex h-full flex-col overflow-hidden rounded-xl transition-all duration-200",
+                      isEditing
+                        ? "border-accent-line shadow-[0_0_0_3px_var(--accent-soft)]"
+                        : "hover:border-border-2",
+                    )}
+                  >
                     <div
                       className={cn(
-                        "flex items-center justify-between gap-3 border-b border-border px-4 py-3",
+                        "flex shrink-0 items-center gap-2 border-b border-border bg-surface-2/50 px-3.5 py-2.5",
                         isEditing && "cursor-grab active:cursor-grabbing",
                       )}
                     >
-                      <h2 className="truncate font-medium">{widget.title}</h2>
+                      {isEditing ? (
+                        <GripVertical className="size-3.5 shrink-0 text-faint" strokeWidth={1.75} aria-hidden />
+                      ) : null}
+                      <h2 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text">{widget.title}</h2>
+                      {typeof rows === "number" ? (
+                        <span className="hidden shrink-0 whitespace-nowrap rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[10px] text-faint sm:block">
+                          {rows} {rows === 1 ? "row" : "rows"}
+                        </span>
+                      ) : null}
                       {isEditing && onRemoveWidget ? (
                         <Button
                           size="sm"
                           variant="danger"
+                          aria-label={`Remove ${widget.title}`}
+                          className="h-7 w-7 shrink-0 p-0"
                           loading={busyWidget === widget.id}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -276,7 +298,6 @@ export function DashboardGrid({
                           }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          Remove
                         </Button>
                       ) : null}
                     </div>

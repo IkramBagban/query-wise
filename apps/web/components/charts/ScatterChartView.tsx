@@ -24,7 +24,7 @@ interface ScatterChartViewProps {
   xFormat?: ColumnFormat;
 }
 
-const SCATTER_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
+const SCATTER_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
 export function ScatterChartView({ result, xKey, yKey, yKeys, valueFormat = PLAIN_NUMBER, xFormat = PLAIN_NUMBER }: ScatterChartViewProps) {
   const series = (yKeys && yKeys.length > 0 ? yKeys : [yKey]).filter(Boolean);

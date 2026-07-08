@@ -6,12 +6,15 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useUser } from "@clerk/nextjs";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
   Database,
   MessageSquarePlus,
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  RefreshCw,
+  Search,
   Share2,
   Star,
   Table2,
@@ -168,6 +171,60 @@ function setStoredConnectionId(connectionId: string) {
   window.sessionStorage.setItem(STORAGE_KEYS.connection, connectionId);
 }
 
+const SOURCE_TONE_DOT: Record<string, string> = { success: "bg-accent", warning: "bg-warning", danger: "bg-danger" };
+const SOURCE_TONE_TEXT: Record<string, string> = { success: "text-accent-strong", warning: "text-warning", danger: "text-danger" };
+
+function SourceRow({
+  name,
+  detail,
+  statusTone,
+  statusLabel,
+  selected,
+  pulse,
+  onClick,
+}: {
+  name: string;
+  detail: string;
+  statusTone: "success" | "warning" | "danger";
+  statusLabel: string;
+  selected: boolean;
+  pulse?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150 ${
+        selected ? "bg-accent-soft" : "hover:bg-surface-2"
+      }`}
+    >
+      <span
+        className={`flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+          selected ? "border-accent bg-accent text-accent-ink" : "border-border bg-surface-2 text-faint"
+        }`}
+      >
+        <Database className="size-3.5" strokeWidth={1.75} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-text">{name}</span>
+        <span className="block truncate font-mono text-[10px] text-faint">{detail}</span>
+      </span>
+      <span className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] ${SOURCE_TONE_TEXT[statusTone]}`}>
+        <span
+          className={`size-1.5 rounded-full ${SOURCE_TONE_DOT[statusTone]}`}
+          style={pulse ? { animation: "qw-pulse 1.4s ease-in-out infinite" } : undefined}
+        />
+        {statusLabel}
+      </span>
+      <span className="w-3.5 shrink-0">
+        {selected ? <Check className="size-3.5 text-accent-strong" strokeWidth={2.5} /> : null}
+      </span>
+    </button>
+  );
+}
+
 function DataSourceStatusPicker({
   value,
   onChange,
@@ -189,6 +246,7 @@ function DataSourceStatusPicker({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isDemo = value === "__demo__";
   const selectedIngestion = getIngestionStatusView(selectedConnection?.schemaSyncStatus);
@@ -212,9 +270,18 @@ function DataSourceStatusPicker({
 
   function choose(nextValue: string) {
     setOpen(false);
+    setQuery("");
     onChange(nextValue);
     setStoredConnectionId(nextValue);
   }
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = normalizedQuery
+    ? connections.filter((connection) =>
+        `${connection.name} ${connection.databaseName}`.toLowerCase().includes(normalizedQuery),
+      )
+    : connections;
+  const showDemo = !normalizedQuery || "demo server-managed ecommerce".includes(normalizedQuery);
 
   return (
     <div ref={rootRef} className="relative mx-auto flex w-full justify-center">
@@ -251,66 +318,92 @@ function DataSourceStatusPicker({
       </button>
 
       {open ? (
-        <div className="fixed left-1/2 top-1/2 z-50 max-h-[min(32rem,calc(100vh-6rem))] w-[min(27rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overflow-x-hidden rounded-xl border border-border-2 bg-surface-2 p-1 text-left shadow-2xl">
-          <button
-            type="button"
-            onClick={() => choose("__demo__")}
-            className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-xs transition ${isDemo ? "bg-accent/20 text-text" : "text-muted hover:bg-surface-2 hover:text-text"}`}
-          >
-            <span className="min-w-0">
-              <span className="block truncate font-medium">demo</span>
-              <span className="block text-[11px] text-faint">Server-managed ecommerce demo</span>
+        <div
+          className="absolute left-1/2 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl border border-border bg-surface text-left shadow-2xl"
+          style={{ animation: "qw-pop 0.18s cubic-bezier(0.2,0.7,0.3,1) both" }}
+        >
+          {/* header */}
+          <div className="flex items-center justify-between border-b border-border bg-surface-2/60 px-3.5 py-2.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
+              Data sources · {connections.length + 1}
             </span>
-            <span className="shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-[10px] text-success">Ready</span>
-          </button>
+            <button
+              type="button"
+              title="Refresh statuses"
+              aria-label="Refresh data sources"
+              onClick={onRetry}
+              className="flex size-6 items-center justify-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-text"
+            >
+              <RefreshCw className="size-3" />
+            </button>
+          </div>
 
-          <div className="my-1 border-t border-border" />
-
-          {connections.map((connection) => {
-            const ingestion = getIngestionStatusView(connection.schemaSyncStatus);
-            const selected = connection.id === value;
-            return (
-              <button
-                key={connection.id}
-                type="button"
-                onClick={() => choose(connection.id)}
-                className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-xs transition ${selected ? "bg-accent/20 text-text" : "text-muted hover:bg-surface-2 hover:text-text"}`}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{connection.name}</span>
-                  <span className="block truncate text-[11px] text-faint">{connection.databaseName}</span>
-                </span>
-                <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] text-faint">{ingestion.label}</span>
-              </button>
-            );
-          })}
-
-          {!connections.length ? (
-            <p className="px-3 py-2 text-xs text-faint">No saved connections yet.</p>
+          {/* search */}
+          {connections.length > 5 ? (
+            <div className="border-b border-border p-2">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 transition-colors focus-within:border-accent-line">
+                <Search className="size-3.5 shrink-0 text-faint" />
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search sources…"
+                  className="w-full bg-transparent text-xs text-text outline-none placeholder:text-faint"
+                />
+              </div>
+            </div>
           ) : null}
 
-          <div className="my-1 border-t border-border" />
-          <div className="grid grid-cols-2 gap-1">
+          {/* list */}
+          <div className="max-h-[19rem] overflow-y-auto p-1.5">
+            {showDemo ? (
+              <SourceRow
+                name="demo"
+                detail="server-managed ecommerce demo"
+                statusTone="success"
+                statusLabel="ready"
+                selected={isDemo}
+                onClick={() => choose("__demo__")}
+              />
+            ) : null}
+            {filtered.map((connection) => {
+              const ingestion = getIngestionStatusView(connection.schemaSyncStatus);
+              const tone = ingestion.ready ? "success" : ingestion.tone === "danger" ? "danger" : "warning";
+              return (
+                <SourceRow
+                  key={connection.id}
+                  name={connection.name}
+                  detail={connection.databaseName}
+                  statusTone={tone}
+                  statusLabel={ingestion.label.toLowerCase()}
+                  pulse={!ingestion.terminal}
+                  selected={connection.id === value}
+                  onClick={() => choose(connection.id)}
+                />
+              );
+            })}
+            {!filtered.length && !showDemo ? (
+              <p className="px-3 py-4 text-center font-mono text-[11px] text-faint">No sources match “{query.trim()}”</p>
+            ) : null}
+            {!connections.length && !normalizedQuery ? (
+              <p className="px-3 py-2 text-center font-mono text-[11px] text-faint">No saved connections yet — the demo is ready to go.</p>
+            ) : null}
+          </div>
+
+          {/* footer */}
+          <div className="border-t border-border p-1.5">
             <button
               type="button"
               onClick={() => {
                 setOpen(false);
                 router.push("/connections/new");
               }}
-              className="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium text-accent-strong transition hover:bg-accent-soft"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-accent-strong transition-colors hover:bg-accent-soft"
             >
-              <Plus className="size-3.5" />
-              Add source
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onRetry();
-              }}
-              className="rounded-md px-3 py-2 text-xs font-medium text-faint transition hover:bg-surface-2 hover:text-text"
-            >
-              Refresh
+              <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-accent-line">
+                <Plus className="size-3.5" />
+              </span>
+              Add source — paste a read-only string
             </button>
           </div>
         </div>
@@ -634,21 +727,26 @@ function HeroComposer({
         autoFocus
         placeholder="Ask anything about your data — e.g. top products by revenue this month"
       />
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-        {HERO_SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            disabled={disabled || submitting}
-            onClick={() => setQuestion(suggestion)}
-            className="rounded-full border border-border bg-surface/80 px-3.5 py-1.5 text-xs text-muted transition hover:border-accent-2/40 hover:bg-accent-soft hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {suggestion}
-          </button>
+      <div
+        className="mt-5 flex flex-wrap items-center justify-center gap-x-1 gap-y-1.5"
+        style={{ animation: "qw-rise 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both" }}
+      >
+        {HERO_SUGGESTIONS.map((suggestion, i) => (
+          <span key={suggestion} className="flex items-center gap-x-1">
+            {i > 0 ? <span aria-hidden className="px-1 text-faint/40">·</span> : null}
+            <button
+              type="button"
+              disabled={disabled || submitting}
+              onClick={() => setQuestion(suggestion)}
+              className="rounded-md px-1.5 py-1 font-mono text-[11.5px] text-faint transition-colors duration-150 hover:bg-accent-soft hover:text-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {suggestion}
+            </button>
+          </span>
         ))}
       </div>
       {error ? <p className="mt-3 text-center text-xs text-danger">{error}</p> : null}
-      <p className="mt-3 text-center text-[11px] text-faint">AI-generated results. Please verify accuracy before making decisions.</p>
+      <p className="mt-5 text-center font-mono text-[10px] text-faint/70">AI-generated results · verify before making decisions</p>
     </div>
   );
 }
@@ -736,12 +834,35 @@ export function EmptyWorkspaceView() {
 
   return (
     <div className="relative flex h-[calc(100vh-3.5rem)] min-h-[640px] flex-col items-center justify-center overflow-hidden bg-bg px-4 py-10 lg:h-screen">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--accent)/0.12),transparent_50%)]" />
+      {/* blueprint grid, masked toward the composer */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+          maskImage: "radial-gradient(ellipse 75% 60% at 50% 42%, black 12%, transparent 72%)",
+          WebkitMaskImage: "radial-gradient(ellipse 75% 60% at 50% 42%, black 12%, transparent 72%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-[6%] h-[320px] w-[640px] -translate-x-1/2 blur-[48px]"
+        style={{ background: "radial-gradient(closest-side, var(--accent-soft), transparent)", animation: "qw-float 9s ease-in-out infinite" }}
+      />
       <div className="relative z-10 w-full">
-        <div className="mx-auto mb-5 flex max-w-3xl flex-col items-center text-center">
-          <BrandMark className="size-14 rounded-2xl" />
-          <h1 className="mt-4 font-syne text-4xl font-semibold tracking-normal text-text sm:text-5xl">Ask your data</h1>
-          <p className="mt-2 text-base text-muted">Get instant insights from your connected databases.</p>
+        <div className="mx-auto mb-6 flex max-w-3xl flex-col items-center text-center">
+          <div className="relative" style={{ animation: "qw-rise 0.5s cubic-bezier(0.16,1,0.3,1) both" }}>
+            <BrandMark className="size-14 rounded-2xl" />
+            <span aria-hidden className="absolute -inset-2 -z-10 rounded-3xl bg-accent-soft blur-xl" />
+          </div>
+          <h1 className="mt-5 font-syne text-4xl font-semibold tracking-tight text-text sm:text-5xl" style={{ animation: "qw-rise 0.5s cubic-bezier(0.16,1,0.3,1) 0.06s both" }}>
+            Ask your <span className="text-gradient">data</span>
+          </h1>
+          <p className="mt-2.5 text-base text-muted" style={{ animation: "qw-rise 0.5s cubic-bezier(0.16,1,0.3,1) 0.12s both" }}>
+            Plain English in — SQL, charts, and answers out.
+          </p>
         </div>
 
         <div className="mb-4 min-h-10">

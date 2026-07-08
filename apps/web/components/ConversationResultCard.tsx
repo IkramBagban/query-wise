@@ -5,8 +5,9 @@ import {
   AreaChart,
   BarChart3,
   Bookmark,
-  ChevronDown,
+  Check,
   Code2,
+  Copy,
   Download,
   FileJson,
   FileSpreadsheet,
@@ -32,6 +33,34 @@ import { exportToCSV, exportToJSON, exportToXLSX, generateFilename } from "@/lib
 import { formatNumber } from "@/lib/utils";
 import type { ConversationMessageDto } from "@/lib/api-client";
 import type { ChartConfig, ChartType, QueryResultBlock } from "@query-wise/shared/types";
+
+/** First predominantly-numeric column (preferring the configured measure). */
+function summarizeNumericColumn(
+  columns: string[],
+  rows: Record<string, unknown>[],
+  preferred: Array<string | undefined>,
+) {
+  const candidates = [...(preferred.filter(Boolean) as string[]), ...columns.slice(1), ...columns.slice(0, 1)];
+  const seen = new Set<string>();
+  for (const key of candidates) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const values: number[] = [];
+    for (const row of rows) {
+      const raw = row[key];
+      const parsed = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+      if (Number.isFinite(parsed)) values.push(parsed);
+    }
+    if (values.length > 0 && values.length >= rows.length * 0.6) {
+      const sum = values.reduce((a, b) => a + b, 0);
+      return { key, sum, avg: sum / values.length, min: Math.min(...values), max: Math.max(...values) };
+    }
+  }
+  return null;
+}
+
+const compactNumber = (value: number) =>
+  new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 
 const CHART_TYPES: { label: string; value: ChartType; icon: typeof BarChart3 }[] = [
   { label: "Bar", value: "bar", icon: BarChart3 },
@@ -218,7 +247,8 @@ export function ConversationResultCard({
       : viewOptions?.defaultChartType ?? dialogChartTypes[0] ?? "bar";
   const [chartType, setChartType] = useState<ChartType>(initialType);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsView, setDetailsView] = useState<"chart" | "table">("chart");
+  const [detailsView, setDetailsView] = useState<"chart" | "table" | "sql">("chart");
+  const [sqlCopied, setSqlCopied] = useState(false);
   const { pushToast } = useToast();
 
   const config: ChartConfig = { ...baseConfig, type: chartType };
@@ -230,6 +260,19 @@ export function ConversationResultCard({
   const executionTimeMs = block?.executionTimeMs ?? run.executionTimeMs;
   const sqlText = block?.sql ?? run.generatedQuery?.text;
   const showPin = !block || block.index === 0;
+  const stats = summarizeNumericColumn(result.columns, result.rows, [
+    (baseConfig as { valueKey?: string }).valueKey,
+    (baseConfig as { yKey?: string }).yKey,
+  ]);
+  const truncated = Boolean(preview.truncated);
+
+  function copySql() {
+    if (!sqlText) return;
+    void navigator.clipboard.writeText(sqlText).then(() => {
+      setSqlCopied(true);
+      window.setTimeout(() => setSqlCopied(false), 1600);
+    });
+  }
 
   function exportResult(format: "csv" | "xlsx" | "json") {
     const filename = generateFilename(config.title ?? "query-result", format);
@@ -272,44 +315,197 @@ export function ConversationResultCard({
         }
       />
 
-      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen} panelClassName="max-h-[92vh] max-w-[96vw] overflow-y-auto p-4 sm:max-w-6xl sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-strong">Chart details {block ? `(Block ${block.index})` : ""}</p>
-            <h2 className="mt-1 font-syne text-2xl font-semibold">{config.title ?? block?.purpose ?? "Query result"}</h2>
-            <p className="mt-1 text-xs text-faint">{formatNumber(rowCount)} rows{executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}</p>
-          </div>
-          <button type="button" aria-label="Close chart details" onClick={() => setDetailsOpen(false)} className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text shadow-sm transition hover:bg-surface-2"><X className="size-5" /></button>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
-          <div className="flex flex-wrap gap-1.5" aria-label="Chart type">
-            {dialogTypeButtons.map(({ label, value, icon: Icon }) => (
-              <button key={value} type="button" title={label} aria-label={`${label} chart`} onClick={() => setChartType(value)} className={`inline-flex size-9 items-center justify-center rounded-lg border transition ${chartType === value ? "border-accent bg-accent-soft text-accent-strong" : "border-border text-faint hover:bg-surface-2 hover:text-text"}`}><Icon className="size-4" /></button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-lg border border-border p-0.5">
-              <button type="button" title="Chart view" aria-label="Show chart" onClick={() => setDetailsView("chart")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "chart" ? "bg-accent-soft text-accent-strong" : "text-faint hover:text-text"}`}><BarChart3 className="size-4" /></button>
-              <button type="button" title="Table view" aria-label="Show raw data table" onClick={() => setDetailsView("table")} className={`inline-flex size-8 items-center justify-center rounded-md transition ${detailsView === "table" ? "bg-accent-soft text-accent-strong" : "text-faint hover:text-text"}`}><Table2 className="size-4" /></button>
+      <Dialog
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        panelClassName="h-[92vh] w-full max-w-[96vw] overflow-hidden rounded-2xl p-0 sm:max-w-[1200px] sm:p-0"
+      >
+        <div className="flex h-full flex-col">
+          {/* inspector header */}
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-surface-2/70 px-5 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent-strong">
+                Result inspector{block ? ` · block ${block.index}` : ""}
+              </p>
+              <h2 className="mt-0.5 truncate font-syne text-lg font-semibold sm:text-xl">
+                {config.title ?? block?.purpose ?? "Query result"}
+              </h2>
             </div>
-            <ExportMenu onExport={exportResult} />
-            {showPin && <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="label" />}
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="whitespace-nowrap rounded-full border border-border bg-surface px-2.5 py-1 font-mono text-[10.5px] text-faint">
+                {formatNumber(rowCount)} rows
+              </span>
+              {executionTimeMs != null ? (
+                <span className="hidden whitespace-nowrap rounded-full border border-border bg-surface px-2.5 py-1 font-mono text-[10.5px] text-faint sm:block">
+                  {executionTimeMs} ms
+                </span>
+              ) : null}
+              <span className="hidden whitespace-nowrap rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 font-mono text-[10.5px] text-accent-strong md:block">
+                ✓ read-only
+              </span>
+              <button
+                type="button"
+                aria-label="Close inspector"
+                onClick={() => setDetailsOpen(false)}
+                className="ml-1.5 inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted transition hover:bg-surface-2 hover:text-text"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-5 h-90 rounded-xl border border-border bg-surface-2/40 p-3">
-          {detailsView === "chart" ? <V2Chart preview={preview} config={config} /> : <TableView result={result} />}
-        </div>
-        <details className="mt-5 overflow-hidden rounded-xl border border-border bg-surface-2 shadow-sm">
-          <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-semibold">
-            <span className="inline-flex items-center gap-2"><Code2 className="size-4 text-accent" />Generated SQL</span>
-            <ChevronDown className="size-4 text-faint" />
-          </summary>
-          <div className="border-t border-border p-3">
-            {sqlText ? <CodeBlock sql={sqlText} /> : <p className="text-sm text-muted">No SQL was generated for this response.</p>}
+          {/* canvas + control rail */}
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            {/* canvas */}
+            <div className="relative flex min-h-[340px] flex-1 flex-col overflow-hidden p-4 sm:p-5">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 opacity-60"
+                style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+              />
+              <div className="relative min-h-0 flex-1 overflow-auto rounded-xl border border-border bg-surface p-4 shadow-sm">
+                {detailsView === "sql" && sqlText ? (
+                  <button
+                    type="button"
+                    onClick={copySql}
+                    className={`absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[10.5px] transition-all duration-150 ${
+                      sqlCopied
+                        ? "border-accent-line bg-accent-soft text-accent-strong"
+                        : "border-border bg-surface text-muted hover:border-accent-line hover:text-text"
+                    }`}
+                  >
+                    {sqlCopied ? <Check className="size-3" strokeWidth={2.5} /> : <Copy className="size-3" />}
+                    {sqlCopied ? "copied" : "copy"}
+                  </button>
+                ) : null}
+                {detailsView === "chart" ? (
+                  <V2Chart preview={preview} config={config} />
+                ) : detailsView === "table" ? (
+                  <TableView result={result} />
+                ) : sqlText ? (
+                  <CodeBlock sql={sqlText} />
+                ) : (
+                  <p className="text-sm text-muted">No SQL was generated for this response.</p>
+                )}
+              </div>
+
+              {/* quick stats over the measure column */}
+              {detailsView !== "sql" && stats ? (
+                <div className="relative mt-3 flex shrink-0 flex-wrap items-center gap-1.5">
+                  <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
+                    {stats.key.replaceAll("_", " ")}
+                  </span>
+                  {([
+                    ["Σ", stats.sum],
+                    ["avg", stats.avg],
+                    ["min", stats.min],
+                    ["max", stats.max],
+                  ] as const).map(([label, value]) => (
+                    <span
+                      key={label}
+                      className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 font-mono text-[10.5px] text-muted"
+                    >
+                      <span className="text-faint">{label}</span>
+                      <span className="tabular-nums text-text">{compactNumber(value)}</span>
+                    </span>
+                  ))}
+                  {truncated ? (
+                    <span className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 font-mono text-[10.5px] text-warning">
+                      preview truncated
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {/* control rail */}
+            <aside className="flex w-full shrink-0 flex-col gap-6 overflow-y-auto border-t border-border bg-surface-2/50 p-5 lg:w-[280px] lg:border-l lg:border-t-0">
+              <section>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">View</p>
+                <div className="mt-2 grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface p-1" role="tablist" aria-label="Result view">
+                  {([
+                    { id: "chart" as const, icon: BarChart3, label: "Chart" },
+                    { id: "table" as const, icon: Table2, label: "Table" },
+                    { id: "sql" as const, icon: Code2, label: "SQL" },
+                  ]).map(({ id, icon: Icon, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={detailsView === id}
+                      onClick={() => setDetailsView(id)}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold transition-all duration-150 ${
+                        detailsView === id ? "bg-accent text-accent-ink shadow-sm" : "text-muted hover:text-text"
+                      }`}
+                    >
+                      <Icon className="size-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {detailsView === "chart" ? (
+                <section>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">Chart type</p>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5" aria-label="Chart type">
+                    {dialogTypeButtons.map(({ label, value, icon: Icon }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={chartType === value}
+                        onClick={() => setChartType(value)}
+                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-medium transition-all duration-150 ${
+                          chartType === value
+                            ? "border-accent-line bg-accent-soft text-accent-strong"
+                            : "border-border bg-surface text-muted hover:border-border-2 hover:text-text"
+                        }`}
+                      >
+                        <Icon className="size-3.5 shrink-0" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <section>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">Export</p>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {([
+                    { format: "csv" as const, icon: FileSpreadsheet, label: "CSV" },
+                    { format: "xlsx" as const, icon: FileSpreadsheet, label: "Excel workbook" },
+                    { format: "json" as const, icon: FileJson, label: "JSON" },
+                  ]).map(({ format, icon: Icon, label }) => (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() => exportResult(format)}
+                      className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-all duration-150 hover:border-accent-line hover:text-text"
+                    >
+                      <Icon className="size-3.5 shrink-0 text-accent-strong" />
+                      {label}
+                      <Download className="ml-auto size-3 text-faint" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {showPin ? (
+                <section>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">Dashboard</p>
+                  <div className="mt-2">
+                    <DashboardMenu dashboardOptions={dashboardOptions} onCreateDashboard={onCreateDashboard} onSave={save} button="label" />
+                  </div>
+                </section>
+              ) : null}
+
+              <p className="mt-auto font-mono text-[10px] leading-relaxed text-faint">
+                Generated SQL is validated read-only before a single row is touched.
+              </p>
+            </aside>
           </div>
-        </details>
+        </div>
       </Dialog>
     </>
   );

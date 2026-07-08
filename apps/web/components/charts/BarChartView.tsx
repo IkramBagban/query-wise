@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Brush,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
@@ -29,7 +30,7 @@ interface BarChartViewProps {
   horizontal?: boolean;
 }
 
-const SERIES_COLORS = ["#2ed52e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#84cc16"];
+const SERIES_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
 export function BarChartView({
   result,
@@ -118,6 +119,16 @@ export function BarChartView({
             radius={stackId ? undefined : useHorizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
           />
         ))}
+        {!useHorizontal && data.length > 30 ? (
+          <Brush
+            dataKey={xKey}
+            height={26}
+            travellerWidth={8}
+            stroke="var(--accent)"
+            fill="var(--surface2)"
+            tickFormatter={formatAxisTick}
+          />
+        ) : null}
       </BarChart>
     </ResponsiveContainer>
   );
