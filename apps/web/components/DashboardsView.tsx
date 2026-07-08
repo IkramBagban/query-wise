@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useId, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
+  Check,
   LayoutDashboard,
   MoreHorizontal,
   Pencil,
   Plus,
   Share2,
+  Snowflake,
   Trash2,
+  Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,10 +29,12 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { DashboardGrid, EditLayoutButton, WidgetCardSkeleton } from "@/components/DashboardGrid";
+import { ModeBadge } from "@/components/dashboard/primitives";
 import { EmptyState, ErrorState } from "@/components/ResourceState";
 import { ShareDashboardModal } from "@/components/ShareDashboardModal";
 import { useApiResource } from "@/hooks";
 import { dashboardsApi } from "@/lib/api-client";
+import type { WidgetMode } from "@query-wise/shared/types";
 
 /* --------------------------------- Helpers -------------------------------- */
 
@@ -244,6 +249,7 @@ export function DashboardsListView() {
   const titleId = useId();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
+  const [createMode, setCreateMode] = useState<WidgetMode>("live");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -252,6 +258,7 @@ export function DashboardsListView() {
 
   function openCreate() {
     setName("");
+    setCreateMode("live");
     setError(null);
     setCreateOpen(true);
   }
@@ -261,7 +268,7 @@ export function DashboardsListView() {
     setCreating(true);
     setError(null);
     try {
-      const created = await dashboardsApi.create(name.trim());
+      const created = await dashboardsApi.create(name.trim(), createMode);
       setCreateOpen(false);
       router.push(`/dashboards/${created.id}`);
     } catch (reason) {
@@ -297,7 +304,7 @@ export function DashboardsListView() {
       ) : !items.length ? (
         <EmptyState
           title="No dashboards yet"
-          description="Create a dashboard, then pin query results from any conversation — they arrive here as live widgets."
+          description="Create a dashboard, then pin query results from any conversation — live boards refresh on open, snapshots stay frozen."
           action={
             <Button type="button" onClick={openCreate}>
               <Plus className="size-4" />
@@ -325,9 +332,9 @@ export function DashboardsListView() {
                     <span className="flex size-9 items-center justify-center rounded-xl bg-accent-soft">
                       <LayoutDashboard className="size-4 text-accent-strong" strokeWidth={1.75} />
                     </span>
-                    {/* space reserved for the kebab / badge */}
+                    {/* space reserved for the kebab (owner) — shared badge for viewers */}
                     {!owner ? (
-                      <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
+                      <span className="mr-9 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
                         shared
                       </span>
                     ) : null}
@@ -337,9 +344,12 @@ export function DashboardsListView() {
                     <h2 className="min-w-0 truncate font-syne text-lg font-semibold text-text">{dashboard.name}</h2>
                     <ArrowUpRight className="size-4 shrink-0 -translate-x-1 text-accent-strong opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" strokeWidth={2} />
                   </div>
-                  <p className="mt-1 text-xs text-faint">
-                    {dashboard.widgetCount ?? 0} {(dashboard.widgetCount ?? 0) === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)}
-                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
+                    <ModeBadge mode={dashboard.mode} />
+                    <span>
+                      {dashboard.widgetCount ?? 0} {(dashboard.widgetCount ?? 0) === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)}
+                    </span>
+                  </div>
 
                   <div className="mt-5">
                     <DashboardMiniViz id={dashboard.id} />
@@ -388,6 +398,43 @@ export function DashboardsListView() {
               onChange={(event) => setName(event.target.value)}
               placeholder="Dashboard name"
             />
+
+            <fieldset className="space-y-2">
+              <legend className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-faint">Dashboard type</legend>
+              <div className="grid grid-cols-2 gap-2.5">
+                {([
+                  { key: "live", icon: Zap, title: "Live", blurb: "Widgets re-run on open & refresh. Always current." },
+                  { key: "snapshot", icon: Snowflake, title: "Snapshot", blurb: "Frozen at pin time. A number you can trust to hold." },
+                ] as const).map((option) => {
+                  const active = createMode === option.key;
+                  const Icon = option.icon;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setCreateMode(option.key)}
+                      className={`group/opt relative overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                        active
+                          ? "border-accent-line bg-accent-soft shadow-[0_0_0_3px_var(--accent-soft)]"
+                          : "border-border hover:border-border-2 hover:bg-surface-2/60"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between">
+                        <span className={`flex size-8 items-center justify-center rounded-lg transition-colors ${active ? "bg-accent text-accent-ink" : "bg-surface-2 text-faint"}`}>
+                          <Icon className="size-4" strokeWidth={2} />
+                        </span>
+                        {active ? <Check className="size-4 text-accent-strong" strokeWidth={2.5} /> : null}
+                      </span>
+                      <span className="mt-2.5 block font-syne text-sm font-semibold text-text">{option.title}</span>
+                      <span className="mt-0.5 block text-[11.5px] leading-snug text-faint">{option.blurb}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-faint">You can switch this anytime from the dashboard header.</p>
+            </fieldset>
+
             {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" disabled={creating} onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -397,6 +444,88 @@ export function DashboardsListView() {
         </div>
       </Dialog>
     </div>
+  );
+}
+
+/* ---------------------------- Inline editable title ------------------------ */
+
+/**
+ * Double-click the title to rename it in place (Enter/blur saves, Esc cancels).
+ * No pencil, no dialog — the title itself is the control.
+ */
+function EditableTitle({
+  name,
+  canEdit,
+  onSave,
+}: {
+  name: string;
+  canEdit: boolean;
+  onSave: (next: string) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(name);
+  }, [name, editing]);
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  async function commit() {
+    const next = draft.trim();
+    setEditing(false);
+    if (!next || next === name) {
+      setDraft(name);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(next);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        maxLength={120}
+        aria-label="Dashboard name"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void commit();
+          } else if (event.key === "Escape") {
+            setDraft(name);
+            setEditing(false);
+          }
+        }}
+        className="min-w-0 max-w-full rounded-lg border border-accent-line bg-surface px-2 py-0.5 font-syne text-[22px] font-semibold tracking-tight text-text outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-[26px]"
+      />
+    );
+  }
+
+  return (
+    <h1
+      onDoubleClick={canEdit ? () => setEditing(true) : undefined}
+      title={canEdit ? "Double-click to rename" : undefined}
+      className={`group/title flex min-w-0 items-center gap-2.5 font-syne text-[22px] font-semibold tracking-tight text-text sm:text-[26px] ${canEdit ? "cursor-text" : ""}`}
+    >
+      <span className={`truncate border-b-2 border-transparent pb-0.5 transition-colors duration-200 ${canEdit ? "group-hover/title:border-accent-line" : ""}`}>
+        {name}
+      </span>
+      {saving ? <Spinner size="sm" /> : null}
+    </h1>
   );
 }
 
@@ -416,6 +545,8 @@ export function DashboardDetailView({
   const [busyWidget, setBusyWidget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasActiveLinks, setHasActiveLinks] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Only blank the page before the first byte of data — refreshes keep the
   // current view on screen (this is what caused the skeleton flicker).
@@ -446,6 +577,29 @@ export function DashboardDetailView({
     }
   }
 
+  async function renameDashboard(next: string) {
+    setError(null);
+    try {
+      await dashboardsApi.update(dashboardId, next);
+      await resource.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to rename dashboard");
+    }
+  }
+
+  async function deleteDashboard() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await dashboardsApi.remove(dashboardId);
+      router.replace("/dashboards");
+      router.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to delete dashboard");
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -456,29 +610,26 @@ export function DashboardDetailView({
           <ArrowLeft className="size-3" strokeWidth={2} />
           Dashboards
         </Link>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-3 font-syne text-2xl font-semibold tracking-tight text-text sm:text-3xl">
-              <span className="truncate">{dashboard.name}</span>
-              {refreshing ? <Spinner size="sm" /> : null}
-            </h1>
-            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
-              <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-accent-strong">
-                <span className="size-1.5 rounded-full bg-accent" style={{ animation: "qw-pulse 2s ease-in-out infinite" }} />
-                LIVE SNAPSHOTS
-              </span>
-              <span aria-hidden>·</span>
-              <span>{dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"}</span>
-              <span aria-hidden>·</span>
-              <span>updated {timeAgo(dashboard.updatedAt)}</span>
-              <span aria-hidden>·</span>
-              <span className="capitalize">{dashboard.access}</span>
-            </p>
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${dashboard.mode === "live" ? "bg-accent-soft text-accent-strong" : "bg-surface-2 text-faint"}`}>
+              <LayoutDashboard className="size-5" strokeWidth={1.75} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
+                <ModeBadge mode={dashboard.mode} />
+                {refreshing ? <Spinner size="sm" /> : null}
+              </div>
+              <p className="mt-0.5 text-[13px] text-faint">
+                {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)} · {dashboard.access}
+              </p>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {owner ? (
-              <EditLayoutButton isEditing={isEditing} onToggle={() => setIsEditing((v) => !v)} />
-            ) : null}
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {owner ? <EditLayoutButton isEditing={isEditing} onToggle={() => setIsEditing((v) => !v)} /> : null}
             {owner ? (
               <div className="relative inline-flex">
                 <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
@@ -491,16 +642,20 @@ export function DashboardDetailView({
               </div>
             ) : null}
             {owner ? (
-              <DashboardOwnerActions
-                bordered
-                dashboardId={dashboardId}
-                dashboardName={dashboard.name}
-                onChanged={resource.refresh}
-                onDeleted={() => {
-                  router.replace("/dashboards");
-                  router.refresh();
-                }}
-              />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Dashboard options"
+                  className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-faint transition-colors duration-150 hover:border-border-2 hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                    <Trash2 className="size-3.5" />
+                    Delete dashboard
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </div>
         </div>
@@ -515,7 +670,7 @@ export function DashboardDetailView({
       {!dashboard.widgets.length ? (
         <EmptyState
           title="Nothing pinned yet"
-          description="Ask a question in a conversation, then pin the answer — it lands here as a live widget."
+          description="Ask a question in a conversation, then pin the answer — it lands here as a widget."
           action={
             <Button type="button" onClick={() => router.push("/chats")}>
               Ask a question
@@ -531,6 +686,7 @@ export function DashboardDetailView({
           isEditing={isEditing && owner}
           busyWidget={busyWidget}
           canRefresh={owner}
+          mode={dashboard.mode}
           defaultDateRange={dashboard.defaultDateRange}
           refreshIntervalSeconds={dashboard.refreshIntervalSeconds}
           onRemoveWidget={(widgetId) =>
@@ -548,6 +704,17 @@ export function DashboardDetailView({
         onOpenChange={setShareOpen}
         onActiveLinksChange={setHasActiveLinks}
       />
+
+      <Dialog open={deleteOpen} onOpenChange={(openState) => { if (!deleting) setDeleteOpen(openState); }} panelClassName="sm:max-w-md">
+        <div role="dialog" aria-modal="true">
+          <h2 className="font-syne text-xl font-semibold">Delete dashboard</h2>
+          <p className="mt-2 text-sm text-muted">Delete “{dashboard.name}” and all of its widgets? This cannot be undone.</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button type="button" variant="ghost" disabled={deleting} onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button type="button" variant="danger" loading={deleting} onClick={() => void deleteDashboard()}>Delete dashboard</Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

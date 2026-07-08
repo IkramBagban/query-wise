@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { Snowflake } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
   DATE_RANGE_PRESETS,
   DATE_RANGE_PRESET_LABELS,
 } from "@/lib/dashboards/date-range";
-import type { DashboardDateRange, DateRangePreset } from "@query-wise/shared/types";
+import type { DashboardDateRange, DateRangePreset, WidgetMode } from "@query-wise/shared/types";
 
 /* ------------------------------ Freshness label --------------------------- */
 
@@ -94,6 +95,100 @@ export function CountUpNumber({ value, className }: { value: number; className?:
     >
       {numberFormat.format(Math.round(display))}
     </span>
+  );
+}
+
+/* ------------------------------ Mode badge -------------------------------- */
+
+/**
+ * A read-only status pill shown wherever a dashboard is listed. Live breathes (a
+ * concentric ping); Snapshot reads as crisply frozen. `prefers-reduced-motion`
+ * stills the ping via Tailwind's motion-safe guard.
+ */
+export function ModeBadge({ mode, className }: { mode: WidgetMode; className?: string }) {
+  if (mode === "live") {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent-strong",
+          className,
+        )}
+      >
+        <span className="relative flex size-1.5">
+          <span className="absolute inline-flex size-full rounded-full bg-accent opacity-60 motion-safe:animate-ping" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
+        </span>
+        Live
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-faint",
+        className,
+      )}
+    >
+      <Snowflake className="size-2.5" strokeWidth={2.25} />
+      Snapshot
+    </span>
+  );
+}
+
+/* ------------------------------ Mode toggle ------------------------------- */
+
+/**
+ * SPEC-06 §2 (whole-dashboard mode): a Live / Snapshot segmented toggle with the
+ * SPEC-04 sliding pill. Live re-runs every widget; Snapshot freezes the board.
+ */
+export function ModeToggle({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: WidgetMode;
+  onChange: (next: WidgetMode) => void;
+  disabled?: boolean;
+}) {
+  const reduce = useReducedMotion();
+  const options: Array<{ key: WidgetMode; label: string }> = [
+    { key: "live", label: "Live" },
+    { key: "snapshot", label: "Snapshot" },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Dashboard mode"
+      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5"
+    >
+      {options.map((option) => {
+        const isActive = option.key === value;
+        return (
+          <button
+            key={option.key}
+            role="tab"
+            aria-selected={isActive}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(option.key)}
+            className={cn(
+              "relative rounded-md px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.04em] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
+              isActive ? "text-accent-ink" : "text-muted hover:text-text",
+            )}
+          >
+            {isActive ? (
+              <motion.span
+                layoutId="dashboard-mode-pill"
+                aria-hidden
+                className="absolute inset-0 -z-10 rounded-md bg-accent"
+                transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 32 }}
+              />
+            ) : null}
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

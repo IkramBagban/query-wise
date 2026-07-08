@@ -12,9 +12,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { dashboardsApi } from "@/lib/api-client";
 import type { DashboardDto } from "@/lib/api-client";
-import type { BoundedResultPreview, DashboardDateRange } from "@query-wise/shared/types";
+import type { BoundedResultPreview, DashboardDateRange, WidgetMode } from "@query-wise/shared/types";
 import { isBoundedResultPreview } from "@/components/V2Chart";
-import { DateRangePicker } from "@/components/dashboard/primitives";
+import { DateRangePicker, ModeToggle } from "@/components/dashboard/primitives";
 import { LiveWidgetCard, type LiveWidgetView } from "@/components/dashboard/LiveWidgetCard";
 // Click-to-drill / "Ask about this" (SPEC-06 §7) removed per product decision.
 // import { DrillDrawer, type DrillTarget } from "@/components/dashboard/DrillDrawer";
@@ -32,6 +32,7 @@ export interface DashboardGridProps {
   busyWidget?: string | null;
   onRemoveWidget?: (widgetId: string) => void;
   canRefresh?: boolean;
+  mode?: WidgetMode;
   defaultDateRange?: DashboardDateRange | null;
   refreshIntervalSeconds?: number | null;
 }
@@ -96,6 +97,7 @@ export function DashboardGrid({
   busyWidget = null,
   onRemoveWidget,
   canRefresh = false,
+  mode: modeProp = "live",
   defaultDateRange = null,
   refreshIntervalSeconds = null,
 }: DashboardGridProps) {
@@ -115,12 +117,15 @@ export function DashboardGrid({
 
   const [states, setStates] = useState<Record<string, WidgetState>>(() => initialStates(widgets));
   const [range, setRange] = useState<DashboardDateRange | null>(defaultDateRange);
+  const [mode, setMode] = useState<WidgetMode>(modeProp);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const statesRef = useRef(states);
   statesRef.current = states;
 
+  const isLive = mode === "live";
   const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
-  const liveWidgets = useMemo(() => widgets.filter((w) => w.mode === "live"), [widgets]);
+  // Whole-dashboard mode: every widget is live iff the dashboard is live.
+  const liveWidgets = useMemo(() => (isLive ? widgets : []), [isLive, widgets]);
   const hasFilterBound = useMemo(() => widgets.some((w) => Boolean(w.filterBinding)), [widgets]);
 
   const setWidgetState = useCallback((id: string, patch: Partial<WidgetState>) => {
@@ -130,7 +135,7 @@ export function DashboardGrid({
   const refreshOne = useCallback(
     async (widgetId: string, nextRange: DashboardDateRange | null) => {
       const widget = widgetMap.get(widgetId);
-      if (!widget || widget.mode !== "live") return;
+      if (!widget) return;
       setWidgetState(widgetId, { refreshing: true });
       try {
         const result = await dashboardsApi.refreshWidget(dashboardId, widgetId, {
@@ -195,26 +200,43 @@ export function DashboardGrid({
     }
   }, [canRefresh, liveWidgets, range, refreshWave, refreshingAll]);
 
-  // §4.2: on load, refresh live widgets that are stale beyond the window.
+  // §4.2: on load, refresh a live dashboard's widgets that are stale beyond the
+  // window. (Snapshot dashboards never auto-refresh.)
   const didLoadRefresh = useRef(false);
   useEffect(() => {
-    if (didLoadRefresh.current || !canRefresh) return;
+    if (didLoadRefresh.current || !canRefresh || !isLive) return;
     didLoadRefresh.current = true;
     const windowMs = refreshIntervalSeconds ? refreshIntervalSeconds * 1000 : STALENESS_MS;
     const stale = liveWidgets
       .filter((w) => isStale(statesRef.current[w.id]?.lastRefreshedAt ?? null, windowMs))
       .map((w) => w.id);
     if (stale.length) void refreshWave(stale, range);
-  }, [canRefresh, liveWidgets, range, refreshIntervalSeconds, refreshWave]);
+  }, [canRefresh, isLive, liveWidgets, range, refreshIntervalSeconds, refreshWave]);
 
-  // §5: changing the global range refreshes bound live widgets in a wave, and
-  // pulses snapshot/unbound widgets' borders to signal "intentionally unchanged."
+  // §2: whole-dashboard mode toggle. Switching to live refreshes every widget in a
+  // wave; switching to snapshot simply freezes (no execution).
+  const changeMode = useCallback(
+    (next: WidgetMode) => {
+      if (next === mode) return;
+      setMode(next);
+      void dashboardsApi.updateSettings(dashboardId, { mode: next }).catch(() => undefined);
+      if (next === "live") {
+        didLoadRefresh.current = true; // this handler owns the refresh
+        setRefreshingAll(true);
+        void refreshWave(widgets.map((w) => w.id), range).finally(() => setRefreshingAll(false));
+      }
+    },
+    [mode, dashboardId, refreshWave, widgets, range],
+  );
+
+  // §5: changing the global range refreshes bound widgets in a wave, and pulses
+  // unbound widgets' borders to signal "intentionally unchanged."
   const changeRange = useCallback(
     (nextRange: DashboardDateRange | null) => {
       setRange(nextRange);
       void dashboardsApi.updateSettings(dashboardId, { defaultDateRange: nextRange }).catch(() => undefined);
-      const bound = widgets.filter((w) => w.mode === "live" && Boolean(w.filterBinding)).map((w) => w.id);
-      const unaffected = widgets.filter((w) => !(w.mode === "live" && Boolean(w.filterBinding))).map((w) => w.id);
+      const bound = widgets.filter((w) => Boolean(w.filterBinding)).map((w) => w.id);
+      const unaffected = widgets.filter((w) => !w.filterBinding).map((w) => w.id);
       setStates((prev) => {
         const next = { ...prev };
         for (const id of unaffected) if (next[id]) next[id] = { ...next[id], pulseKey: next[id].pulseKey + 1 };
@@ -225,9 +247,9 @@ export function DashboardGrid({
     [dashboardId, refreshWave, widgets],
   );
 
-  // §4.2: optional auto-refresh, paused when the tab is hidden.
+  // §4.2: optional auto-refresh, paused when the tab is hidden (live dashboards only).
   useEffect(() => {
-    if (!canRefresh || !refreshIntervalSeconds) return;
+    if (!canRefresh || !refreshIntervalSeconds || !isLive) return;
     let timer: ReturnType<typeof setInterval> | null = null;
     const start = () => {
       if (timer) return;
@@ -246,7 +268,7 @@ export function DashboardGrid({
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [canRefresh, refreshIntervalSeconds, refreshAll]);
+  }, [canRefresh, isLive, refreshIntervalSeconds, refreshAll]);
 
   /* --------------------------- layout persistence ------------------------ */
 
@@ -340,18 +362,20 @@ export function DashboardGrid({
 
   return (
     <div className="space-y-2">
-      {/* SPEC-06 §5/§6: live controls — date range + Refresh all + freshness. */}
-      {canRefresh && liveWidgets.length ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            {hasFilterBound ? (
-              <DateRangePicker value={range} onChange={changeRange} disabled={anyRefreshing} />
-            ) : null}
-          </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void refreshAll()} disabled={anyRefreshing}>
-            <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
-            {anyRefreshing ? "Refreshing…" : "Refresh all"}
-          </Button>
+      {/* SPEC-06 §2/§5/§6: dashboard-level mode toggle + (when live) the date range
+          and Refresh all — a tight, left-aligned control row (no empty container). */}
+      {canRefresh ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <ModeToggle value={mode} onChange={changeMode} disabled={anyRefreshing} />
+          {isLive && hasFilterBound ? (
+            <DateRangePicker value={range} onChange={changeRange} disabled={anyRefreshing} />
+          ) : null}
+          {isLive ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => void refreshAll()} disabled={anyRefreshing}>
+              <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
+              {anyRefreshing ? "Refreshing…" : "Refresh all"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -424,7 +448,7 @@ export function DashboardGrid({
               const view: LiveWidgetView = {
                 id: widget.id,
                 title: widget.title,
-                mode: widget.mode,
+                mode,
                 chartConfig: widget.chartConfig,
                 preview: isBoundedResultPreview(state.preview)
                   ? state.preview

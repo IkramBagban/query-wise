@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, GripVertical, Lock, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, GripVertical, RefreshCw, Trash2 } from "lucide-react";
 
 import { V2Chart, isBoundedResultPreview } from "@/components/V2Chart";
 import { Button } from "@/components/ui/button";
@@ -72,12 +72,6 @@ export function LiveWidgetCard({
       >
         {isEditing ? <GripVertical className="size-3.5 shrink-0 text-faint" strokeWidth={1.75} aria-hidden /> : null}
         <h2 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text">{view.title}</h2>
-
-        {isSnapshot ? (
-          <span className="hidden shrink-0 items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[10px] text-faint sm:inline-flex">
-            <Lock className="size-2.5" strokeWidth={2} /> Snapshot
-          </span>
-        ) : null}
 
         {typeof rows === "number" ? (
           <span className="hidden shrink-0 whitespace-nowrap rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-[10px] text-faint sm:block">
