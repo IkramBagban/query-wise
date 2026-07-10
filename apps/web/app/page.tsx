@@ -882,25 +882,25 @@ function UseCases() {
 type PlanFeature = { text: string; included: boolean };
 
 const FREE_FEATURES: PlanFeature[] = [
-  { text: "25 AI questions / month", included: true },
-  { text: "1 PostgreSQL connection", included: true },
-  { text: "Demo database included", included: true },
+  { text: "25 AI questions / month, 5 per day", included: true },
+  { text: "1 PostgreSQL connection, plus demo", included: true },
   { text: "Auto-charts & 1 dashboard", included: true },
-  { text: "Fast models (platform keys)", included: true },
-  { text: "Read-only safety, always on", included: true },
-  { text: "Public dashboard sharing", included: false },
+  { text: "1 public share link, no password", included: true },
+  { text: "Daily schema re-sync", included: true },
+  { text: "Fast models, read-only safety", included: true },
+  { text: "Password-protected shares", included: false },
   { text: "Premium models & priority runs", included: false },
 ];
 
 const PRO_FEATURES: PlanFeature[] = [
-  { text: "500 AI questions / month", included: true },
+  { text: "500 AI questions / month, 50 per day", included: true },
   { text: "5 PostgreSQL connections", included: true },
-  { text: "Unlimited dashboards", included: true },
-  { text: "Secure public sharing", included: true },
+  { text: "Up to 100 dashboards", included: true },
+  { text: "20 public share links, password OK", included: true },
   { text: "Premium + fast model routing", included: true },
+  { text: "20 schema re-syncs per day", included: true },
   { text: "Higher concurrency & priority", included: true },
-  { text: "Schema re-sync on demand", included: true },
-  { text: "Email support", included: true },
+  { text: "Email support, best-effort", included: true },
 ];
 
 function PlanFeatureRow({ text, included }: PlanFeature) {
@@ -926,7 +926,7 @@ function Pricing() {
             Start free. Scale when you need to.
           </h2>
           <p className="mt-4 text-[16.5px] leading-relaxed text-muted">
-            Free is enough to prove QueryWise on real data. Pro unlocks volume, multi-DB workspaces, and sharing when you&apos;re ready — payments coming soon.
+            Free is enough to prove QueryWise on real data. Pro unlocks volume, multi-DB workspaces, and password-protected sharing when you&apos;re ready. Payments are coming soon.
           </p>
         </div>
 
@@ -944,7 +944,7 @@ function Pricing() {
               <p className="mb-1.5 text-sm text-faint">/ month</p>
             </div>
             <p className="m-0 mt-2 text-[14.5px] leading-relaxed text-muted">
-              Try the full product path — connect, ask, chart — without a credit card.
+              Try the full product path: connect, ask, and chart, without a credit card.
             </p>
             <ul className="m-0 mt-7 flex list-none flex-col gap-3 p-0">
               {FREE_FEATURES.map((f) => (
@@ -977,7 +977,7 @@ function Pricing() {
               <p className="mb-1.5 text-sm text-faint">/ month</p>
             </div>
             <p className="relative m-0 mt-2 text-[14.5px] leading-relaxed text-muted">
-              For daily analysis — more questions, more databases, dashboards you can share live.
+              For daily analysis: more questions, more databases, and dashboards you can share live.
             </p>
             <ul className="relative m-0 mt-7 flex list-none flex-col gap-3 p-0">
               {PRO_FEATURES.map((f) => (
@@ -1014,7 +1014,7 @@ const FAQS = [
   ["Can it modify or delete my data?", "No. Enforcement is layered: a read-only role, single-statement validation, bounded results, and query timeouts. QueryWise physically cannot write."],
   ["Do I need to know SQL?", "No — you ask in plain English. But the generated SQL is always shown and explained, so analysts can verify every answer and learn from it."],
   ["What happens when the AI gets it wrong?", "You see the SQL and the row counts, so wrong answers are visible rather than silent. Rephrase or correct in a follow-up — the conversation keeps context."],
-  ["What's free vs Pro?", "Free is for trying QueryWise: a monthly question cap, one connection, and core charts/dashboards. Pro (coming soon) raises question limits, adds multi-DB workspaces, public sharing, and priority model routing. Payments are not live yet."],
+  ["What's free vs Pro?", "Free is for trying QueryWise: 25 questions a month (5 a day), one connection, one dashboard, and one open public share link (no password). Pro (coming soon) raises the question limits, adds multi-DB workspaces, password-protected sharing, and priority model routing. Payments are not live yet."],
 ] as const;
 
 function Faq() {
