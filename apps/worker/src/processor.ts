@@ -6,6 +6,7 @@ import { AppError } from "@query-wise/shared/dal/core";
 import { createResourceId } from "@query-wise/shared/domain";
 import { getDataSourceAdapter, requireCapability } from "@query-wise/shared/data-sources";
 import { getConnectionSecretForIngestion } from "@query-wise/shared/connections";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { describeEntities, createEmbeddingRecords } from "./enrichment";
 import { computeEntityFingerprint, computeSchemaFingerprint, summarizeMetadata } from "./fingerprint";
@@ -430,7 +431,7 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
           schemaFingerprint,
           descriptions: nextDescriptions,
         });
-      });
+      }, { userId: record.ownerUserId, connectionId: data.connectionId });
     } catch (error) {
       devLogError("schema-ingestion.descriptions.stage-failed", "Description stage failed; continuing with existing/fallback descriptions.", error, { connectionId: data.connectionId });
     }
@@ -462,6 +463,7 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
         entities: ranked,
         descriptions,
         alreadyEmbeddedEntityIds,
+        ownerUserId: record.ownerUserId,
       });
       embeddedEntityIds = [...new Set([...alreadyEmbeddedEntityIds, ...embeddings.map((embedding) => embedding.entityId)])];
       embeddingPersistence = await withAppDbTransaction(async (tx) => persistSchemaEmbeddings(tx, embeddings));
@@ -499,6 +501,21 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
       embeddingPersistence,
       durationMs: elapsedMs(startedAt),
     });
+    // Metrics (best-effort): success event + lifetime schema-sync counter.
+    void recordMetricEvent({
+      userId: record.ownerUserId,
+      eventType: "schema.sync_succeeded",
+      resourceType: "connection",
+      resourceId: data.connectionId,
+      payload: { entityCount: metadata.entities.length, intent: data.intent },
+    });
+    await getAppDb().userUsageTotals
+      .upsert({
+        where: { userId: record.ownerUserId },
+        create: { userId: record.ownerUserId, schemaSyncsSucceeded: 1 },
+        update: { schemaSyncsSucceeded: { increment: 1 } },
+      })
+      .catch(() => undefined);
     return { connectionId: data.connectionId, schemaFingerprint, entityCount: metadata.entities.length, embeddingPersistence };
   } catch (error) {
     const errorCode = error instanceof AppError ? error.code : "INTERNAL_ERROR";
@@ -512,6 +529,13 @@ export async function processSchemaIngestionJob(data: SchemaIngestionJobData): P
     } else {
       await getAppDb().databaseConnection.update({ where: { id: data.connectionId }, data: { schemaSyncStatus: "error" } });
     }
+    void recordMetricEvent({
+      userId: record?.ownerUserId,
+      eventType: "schema.sync_failed",
+      resourceType: "connection",
+      resourceId: data.connectionId,
+      payload: { errorCode },
+    });
     throw error;
   }
 }
