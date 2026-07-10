@@ -3,7 +3,8 @@
  * Admin does not re-implement; this verifies the contract still holds.
  */
 import assert from "node:assert/strict";
-import { resolveEffectiveLimits } from "@query-wise/shared/plans";
+// Import catalog only — avoid pulling app-db via plans/index side effects.
+import { resolveEffectiveLimits } from "../../../packages/shared/src/plans/catalog";
 
 let passed = 0;
 function test(name: string, fn: () => void): void {
