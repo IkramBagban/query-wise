@@ -2,6 +2,31 @@
 
 This document captures the important backend/data-logic decisions so you can explain them in interviews and quickly reason about future changes.
 
+## Admin panel Phase 1 — fail-closed auth (`apps/admin`, 2026-07-10)
+
+**What changed:** Scaffolded a separate Next.js app at `apps/admin` (SPEC-08 Phase 1 only). It shares Clerk + `@query-wise/shared` with the product but deploys independently. Phase 1 ships the **auth gate, nav shell, and empty placeholder pages** — no data reads or mutations (SPEC-07 tables are not required yet).
+
+**Access control (fail closed):**
+- Allowlist from `ADMIN_CLERK_USER_IDS` (comma-separated Clerk user ids only — never emails).
+- `getAdminAllowlist()` / `requireAdmin()` in `apps/admin/lib/admin-auth.ts`.
+- **Empty or unset allowlist → every request rejected in every environment**, including `NODE_ENV=development`. There is no dev bypass; local work sets the env to the developer's own Clerk id.
+- Middleware rewrites unconfigured traffic to `/not-configured` and non-allowlisted sessions to `/forbidden` (no nav shell, no panel content).
+- `(admin)` layout re-runs `requireAdmin()` as defense in depth (server actions/queries will do the same in later phases).
+- Env surface is intentionally tiny: `DATABASE_URL`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `ADMIN_CLERK_USER_IDS`. No LLM keys, encryption keys, or demo DB URL (least privilege / blast-radius limit).
+
+**Why separate app:** Open-source safe — barrier is env + private deployment URL, never code secrecy. Product and admin can scale/deploy independently; admin never holds secrets it does not need.
+
+**Tradeoffs / risks:**
+- Single-tier allowlist (no viewer vs operator RBAC) — acceptable while the allowlist is small.
+- Middleware still uses the `middleware.ts` convention (same as `apps/web`); Next 16 warns about rename to `proxy` — follow monorepo consistency until both apps migrate.
+- Placeholder pages render only after auth; data pages wait for SPEC-07 tables (Phase 2+).
+
+**How to test:**
+- `pnpm --filter @query-wise/admin test` — §11.1 allowlist parsing + `requireAdmin` matrix (unset/empty/dev, no session, not in list, in list).
+- `pnpm --filter @query-wise/admin build` — must succeed.
+- Manual: start with `ADMIN_CLERK_USER_IDS` unset → every route shows not-configured; set allowlist + sign in as a non-listed user → 403; listed user → nav shell + placeholders.
+- Dev: `pnpm dev:admin` (port 4200).
+
 ## Monorepo Restructuring (2026-06-29)
 
 **What changed:** Converted from a single Next.js project to a pnpm workspaces monorepo.
