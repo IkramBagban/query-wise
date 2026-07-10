@@ -46,7 +46,28 @@ hostnames MUST NOT cross the wire.
 | `SHARE_PASSWORD_INVALID` | 401 | no | generic invalid unlock response |
 | `SHARE_EXPIRED` | 410 | no | valid public share token has expired |
 | `SHARE_REVOKED_OR_NOT_FOUND` | 404 | no | absent, revoked, disabled, or deleted share |
+| `QUOTA_EXCEEDED_DAILY` | 429 | yes | daily question cap reached (resets next UTC midnight) |
+| `QUOTA_EXCEEDED_MONTHLY` | 429 | yes | monthly question cap reached (resets 1st UTC) |
+| `QUOTA_EXCEEDED_SCHEMA_REFRESH` | 429 | yes | daily manual schema re-sync cap reached |
+| `PLAN_LIMIT_CONNECTIONS` | 403 | no | non-demo connection cap reached for the plan |
+| `PLAN_LIMIT_DASHBOARDS` | 403 | no | dashboard cap reached for the plan |
+| `PLAN_LIMIT_SHARES` | 403 | no | active public share-link cap reached for the plan |
+| `PLAN_FEATURE_PASSWORD_SHARES` | 403 | no | password-protected shares require Pro |
+| `PLAN_FEATURE_MODEL` | 403 | no | model tier not allowed on the plan (reserved) |
+| `ACCOUNT_DISABLED` | 403 | no | account disabled by an operator; plan-enforced mutations blocked, reads allowed |
 | `INTERNAL_ERROR` | 500 | yes | unexpected server failure |
+
+`ACCOUNT_DISABLED` is set when `UserPlan.status = disabled` (SPEC-08 §6.4). The
+admin panel suspend action is the primary path; product enforcement rejects
+question accept, connection/dashboard/share create, and schema refresh with this
+code while allowing reads and existing public shares. Reactivate restores
+`status = active`.
+
+Quota codes (`QUOTA_EXCEEDED_*`) include `retryAfterSeconds` (seconds until the
+window resets in UTC) when computable. Plan-limit and feature codes are not
+retryable — the caller must free a slot, upgrade, or contact support. Windows are
+UTC: day resets at `00:00Z`, month on the 1st at `00:00Z`.
+
 
 Cross-owner private access MUST map to `RESOURCE_NOT_FOUND`, never `403`.
 Public share password-required responses include `requiresPassword: true`.

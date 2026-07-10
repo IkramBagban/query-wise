@@ -2,29 +2,47 @@
 
 This document captures the important backend/data-logic decisions so you can explain them in interviews and quickly reason about future changes.
 
-## Admin panel Phase 1 — fail-closed auth (`apps/admin`, 2026-07-10)
+## Admin panel Phases 1–5 (`apps/admin`, SPEC-08, 2026-07-10)
 
-**What changed:** Scaffolded a separate Next.js app at `apps/admin` (SPEC-08 Phase 1 only). It shares Clerk + `@query-wise/shared` with the product but deploys independently. Phase 1 ships the **auth gate, nav shell, and empty placeholder pages** — no data reads or mutations (SPEC-07 tables are not required yet).
+**What changed:** Full operator panel in a separate Next.js app. Phase 1 auth gate; Phases 2–5 read surfaces, four audited actions, cost/events/system, content-gated run debug.
 
-**Access control (fail closed):**
-- Allowlist from `ADMIN_CLERK_USER_IDS` (comma-separated Clerk user ids only — never emails).
-- `getAdminAllowlist()` / `requireAdmin()` in `apps/admin/lib/admin-auth.ts`.
-- **Empty or unset allowlist → every request rejected in every environment**, including `NODE_ENV=development`. There is no dev bypass; local work sets the env to the developer's own Clerk id.
-- Middleware rewrites unconfigured traffic to `/not-configured` and non-allowlisted sessions to `/forbidden` (no nav shell, no panel content).
-- `(admin)` layout re-runs `requireAdmin()` as defense in depth (server actions/queries will do the same in later phases).
-- Env surface is intentionally tiny: `DATABASE_URL`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `ADMIN_CLERK_USER_IDS`. No LLM keys, encryption keys, or demo DB URL (least privilege / blast-radius limit).
+### Access control (fail closed)
+- Allowlist `ADMIN_CLERK_USER_IDS` (Clerk ids only). Empty/unset → reject **everyone in every environment** (no dev bypass).
+- Middleware + layout + every query/action entry point re-run `requireAdmin()`.
+- Env: `QUERYWISE_APP_DATABASE_URL` (or alias `DATABASE_URL`), Clerk keys, `ADMIN_CLERK_USER_IDS`. **No** LLM keys, encryption key, or demo DB URL.
 
-**Why separate app:** Open-source safe — barrier is env + private deployment URL, never code secrecy. Product and admin can scale/deploy independently; admin never holds secrets it does not need.
+### Read surfaces (Phase 2 / 4)
+- **Overview** — KPIs from `UserUsagePeriod` period tables first; LLM provider/model month groupBy; top consumers; plan distribution; 24h quota/schema events.
+- **Users list** — paginated (≤50), sort by tokens/questions/created/activity; Clerk identity cache (15m TTL); filters plan/status/overrides; search by email (Clerk) or raw id.
+- **User detail** — plan + overrides + history, usage meters via `resolveEffectiveLimits`, 30d trend, LLM breakdowns, metadata-only runs, resources without credentials/tokens/titles, admin audit trail.
+- **Cost** — ≤90d `LlmUsageRecord` slice; CSV export (tokens only, no invented $). Indexes `v2_llm_usage_task_created_idx` / `v2_llm_usage_provider_model_idx` already landed with SPEC-07 migration (no duplicate migration).
+- **Events** — cursor-paginated `MetricEvent` stream.
+- **System** — job status counts, schema sync metrics, query error distribution (read-only).
 
-**Tradeoffs / risks:**
-- Single-tier allowlist (no viewer vs operator RBAC) — acceptable while the allowlist is small.
-- Middleware still uses the `middleware.ts` convention (same as `apps/web`); Next 16 warns about rename to `proxy` — follow monorepo consistency until both apps migrate.
-- Placeholder pages render only after auth; data pages wait for SPEC-07 tables (Phase 2+).
+### Actions (Phase 3)
+Four server actions in `lib/actions/admin-actions.ts`, each `requireAdmin()` + transaction + `AuditLog` (+ `PlanChangeLog` / `user.plan_changed` where plan-shaped):
+1. Grant Pro / revoke Free (`source=manual`, `proGrantedAt` on grant).
+2. Quota overrides (nullable columns; clamped 0–10_000); product already resolves `override ?? catalog`.
+3. Reset day/month `UserUsagePeriod` counters only — **never** `UserUsageTotals` or history.
+4. Suspend/reactivate → `UserPlan.status`; product already enforces `ACCOUNT_DISABLED` on mutations.
 
-**How to test:**
-- `pnpm --filter @query-wise/admin test` — §11.1 allowlist parsing + `requireAdmin` matrix (unset/empty/dev, no session, not in list, in list).
-- `pnpm --filter @query-wise/admin build` — must succeed.
-- Manual: start with `ADMIN_CLERK_USER_IDS` unset → every route shows not-configured; set allowlist + sign in as a non-listed user → 403; listed user → nav shell + placeholders.
+### Privacy (Phase 5)
+- Metadata everywhere. Question text + SQL only in `/users/[id]/runs/[runId]` behind interstitial + `admin.debug_view.opened` audit.
+- `redactResultData` / `assertNoResultPayload` guarantee no `resultPreview`/`resultBlocks` in the DTO; UI shows `«result data hidden — N rows, M blocks»`.
+- Never render connection secrets, share tokens/URLs, password hashes.
+
+### Why
+Replaces SPEC-07 Phase 5 manual SQL with audited buttons; open-source safe (env + deployment barrier).
+
+### Tradeoffs / risks
+- Users sorted by tokens may load all matching `UserPlan` rows then score in-process (fine for early user counts; add SQL rank if the table grows large).
+- Cost explorer pulls up to 50k raw LLM rows in range for distinct-user + series — bounded by 90d; rollup later if needed.
+- `ACCOUNT_DISABLED` + override columns live in product (SPEC-07); admin only mutates the same fields.
+
+### How to test
+- `pnpm --filter @query-wise/admin test` — allowlist, effective limits, result redaction.
+- `pnpm --filter @query-wise/admin build` — must pass.
+- Manual: empty allowlist lockout; grant Pro → product `GET /api/me/plan` shows Pro; set `questionsPerDayOverride=50` on Free → product meters show 50; suspend → mutations 403 `ACCOUNT_DISABLED`; open debug view → audit row + no result rows in HTML.
 - Dev: `pnpm dev:admin` (port 4200).
 
 ## Monorepo Restructuring (2026-06-29)

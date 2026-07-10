@@ -19,7 +19,7 @@ export function AdminShell({
   return (
     <div className="flex min-h-screen flex-col bg-bg">
       <header className="sticky top-0 z-10 border-b border-border bg-surface/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-3">
+        <div className="mx-auto flex max-w-7xl items-center gap-8 px-6 py-3">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-semibold tracking-tight text-text">
               QueryWise
@@ -47,7 +47,7 @@ export function AdminShell({
           </p>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
         {children}
       </main>
     </div>

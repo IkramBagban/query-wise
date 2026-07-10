@@ -1,10 +1,106 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { Card, DataTable, EmptyState, Kpi } from "@/components/ui";
+import { formatInt, formatUtcDate } from "@/lib/format";
+import { getSystemHealth } from "@/lib/queries/system";
 
-export default function SystemPage() {
+export default async function SystemPage() {
+  const data = await getSystemHealth();
+  const age = data.jobs.oldestQueuedAgeSeconds;
+
   return (
-    <PlaceholderPage
-      title="System health"
-      description="Jobs, schema syncs, and error distributions (SPEC-08 §5.7). Phase 4."
-    />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">System health</h1>
+        <p className="mt-1 text-sm text-muted">
+          Read-only ops view. Job retries stay with the worker.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {data.jobs.byStatus.map((s) => (
+          <Kpi
+            key={s.status}
+            label={`Jobs · ${s.status}`}
+            value={formatInt(s.count)}
+          />
+        ))}
+        <Kpi
+          label="Oldest queued age"
+          value={age == null ? "—" : `${formatInt(age)}s`}
+        />
+        <Kpi
+          label="Schema sync failed (7d)"
+          value={formatInt(data.schemaSyncs7d.failed)}
+          hint={`queued ${data.schemaSyncs7d.queued} · ok ${data.schemaSyncs7d.succeeded}`}
+        />
+        <Kpi
+          label="In-flight runs (7d touch)"
+          value={formatInt(data.recoveryActivity7d)}
+          hint="Non-terminal runs updated in window"
+        />
+      </div>
+
+      <Card title="Recent dead jobs">
+        {data.jobs.recentFailures.length === 0 ? (
+          <EmptyState>No dead jobs.</EmptyState>
+        ) : (
+          <DataTable
+            headers={["Type", "Error", "Attempts", "Updated"]}
+          >
+            {data.jobs.recentFailures.map((j) => (
+              <tr key={j.id}>
+                <td className="px-3 py-1.5">{j.type}</td>
+                <td className="px-3 py-1.5 font-mono text-xs text-danger">
+                  {j.lastErrorCode ?? "—"}
+                </td>
+                <td className="px-3 py-1.5 tabular-nums">{j.attempts}</td>
+                <td className="px-3 py-1.5 text-xs text-muted">
+                  {formatUtcDate(j.updatedAt)}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
+      </Card>
+
+      <Card title="Failed schema snapshots (7d, error codes only)">
+        {data.schemaSyncs7d.latestFailedSnapshots.length === 0 ? (
+          <EmptyState>None.</EmptyState>
+        ) : (
+          <DataTable headers={["Snapshot", "Connection", "Error", "Updated"]}>
+            {data.schemaSyncs7d.latestFailedSnapshots.map((s) => (
+              <tr key={s.id}>
+                <td className="px-3 py-1.5 font-mono text-[11px]">
+                  {s.id.slice(0, 8)}…
+                </td>
+                <td className="px-3 py-1.5 font-mono text-[11px]">
+                  {s.connectionId.slice(0, 8)}…
+                </td>
+                <td className="px-3 py-1.5 font-mono text-xs text-danger">
+                  {s.errorCode ?? "—"}
+                </td>
+                <td className="px-3 py-1.5 text-xs text-muted">
+                  {formatUtcDate(s.updatedAt)}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
+      </Card>
+
+      <Card title="QueryRun error-code distribution (7d)">
+        {data.queryRunErrors7d.length === 0 ? (
+          <EmptyState>No errors.</EmptyState>
+        ) : (
+          <DataTable headers={["Error code", "Count"]}>
+            {data.queryRunErrors7d.map((e) => (
+              <tr key={e.errorCode}>
+                <td className="px-3 py-1.5 font-mono text-xs">{e.errorCode}</td>
+                <td className="px-3 py-1.5 tabular-nums">{e.count}</td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
+      </Card>
+    </div>
   );
 }

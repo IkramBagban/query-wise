@@ -6,11 +6,12 @@
     "dev": "next dev -p 4200",
     "build": "next build",
     "start": "next start",
-    "test": "tsx test/admin-auth.test.ts",
+    "test": "tsx test/admin-auth.test.ts && tsx test/effective-limits.test.ts && tsx test/run-debug-redaction.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.1",
+    "@prisma/client": "6.19.0",
     "@query-wise/shared": "workspace:*",
     "next": "16.2.1",
     "react": "19.2.4",
