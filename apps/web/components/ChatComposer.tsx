@@ -58,7 +58,7 @@ export function ComposerBox({
         }}
         onKeyDown={onKeyDown}
         disabled={disabled}
-        maxLength={500}
+        maxLength={2000}
         rows={hero ? 2 : 1}
         autoFocus={autoFocus}
         placeholder={placeholder}
@@ -72,8 +72,8 @@ export function ComposerBox({
           <kbd className="rounded border border-border bg-surface-2 px-1 py-0.5 font-sans text-[10px]">Shift+Enter</kbd> for new line
         </p>
         <div className="ml-auto flex items-center gap-3">
-          {question.length >= 400 ? (
-            <span className="text-[11px] tabular-nums text-faint">{question.length}/500</span>
+          {question.length >= 1800 ? (
+            <span className="text-[11px] tabular-nums text-faint">{question.length}/2000</span>
           ) : null}
           <Button
             type="button"

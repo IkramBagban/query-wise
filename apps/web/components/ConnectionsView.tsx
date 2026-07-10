@@ -330,7 +330,7 @@ function AddConnectionDialog({
             value="postgresql"
             onChange={() => {}}
             disabled
-            options={[{ value: "postgresql", label: "PostgreSQL — Connect using a PostgreSQL connection string" }]}
+            options={[{ value: "postgresql", label: "PostgreSQL" }]}
           />
           <p className="text-xs text-faint">More database providers will be available later.</p>
         </div>
