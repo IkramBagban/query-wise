@@ -33,6 +33,8 @@ import {
 import { validationError } from "./http";
 import { claimPendingEmailGrants } from "@/lib/sharing/grants";
 import { analyzeFilterBinding, getConnectionDateColumns } from "./filter-binding";
+import { assertAccountActive, assertDashboardQuota, getPlanForUser } from "@/lib/plans";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
 
 const DASHBOARD_LIST_ENDPOINT = "dashboards";
 const MAX_WIDGETS = 50;
@@ -217,6 +219,10 @@ export async function createDashboard(input: unknown): Promise<DashboardDto> {
   const parsed = DashboardCreateSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
   const { userId } = await requireUser();
+  // Plan gate: fail closed for disabled accounts and enforce the dashboard cap.
+  const plan = await getPlanForUser(userId);
+  assertAccountActive(plan);
+  await assertDashboardQuota(userId, plan);
   const dashboard = await getAppDb().dashboard.create({
     data: {
       id: createResourceId(),
@@ -224,6 +230,12 @@ export async function createDashboard(input: unknown): Promise<DashboardDto> {
       name: parsed.data.name,
       mode: parsed.data.mode ?? "live",
     } as any,
+  });
+  void recordMetricEvent({
+    userId,
+    eventType: "dashboard.created",
+    resourceType: "dashboard",
+    resourceId: dashboard.id,
   });
   return dashboardDto(dashboard, userId);
 }
@@ -246,10 +258,16 @@ export async function renameDashboard(dashboardId: string, input: unknown) {
 }
 
 export async function deleteDashboard(dashboardId: string): Promise<void> {
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
   await getAppDb().dashboard.update({
     where: { id: dashboardId },
     data: { deletedAt: new Date() },
+  });
+  void recordMetricEvent({
+    userId: dashboard.ownerUserId,
+    eventType: "dashboard.deleted",
+    resourceType: "dashboard",
+    resourceId: dashboardId,
   });
 }
 

@@ -13,6 +13,9 @@ import { enqueueSchemaIngestion } from "@query-wise/shared/ingestion";
 import { executeIdempotently, idempotencyFingerprint } from "@/lib/idempotency";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { writeAuditLog } from "@/lib/audit";
+import { getUserPlan, reserveSchemaRefresh } from "@query-wise/shared/plans";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
+import { assertAccountActive } from "@/lib/plans";
 
 const DEFAULT_OPTIONS = {
   enableSampling: false, maxNamespaces: 100, maxEntities: 2_000, maxColumnsPerEntity: 500,
@@ -27,11 +30,39 @@ export async function refreshConnectionSchema(connectionId: ResourceId, idempote
     idempotencyKey,
     requestFingerprint: idempotencyFingerprint([connectionId, record.credentialVersion]),
     execute: async () => {
+      // Plan gate before queueing the durable job: fail closed for disabled
+      // accounts and reserve one manual re-sync against the daily cap. Runs inside
+      // the idempotency guard so a retry with the same key does not re-reserve.
+      const plan = await getUserPlan(record.ownerUserId);
+      assertAccountActive(plan);
+      try {
+        await reserveSchemaRefresh(getAppDb(), {
+          userId: record.ownerUserId,
+          schemaRefreshesPerDay: plan.limits.schemaRefreshesPerDay,
+        });
+      } catch (error) {
+        if (error instanceof AppError && error.code === "QUOTA_EXCEEDED_SCHEMA_REFRESH") {
+          void recordMetricEvent({
+            userId: record.ownerUserId,
+            eventType: "schema.refresh_blocked",
+            resourceType: "connection",
+            resourceId: connectionId,
+          });
+        }
+        throw error;
+      }
       await enqueueSchemaIngestion({
         connectionId,
         ownerUserId: record.ownerUserId,
         intent: "manual-refresh",
         requestIdempotencyKey: idempotencyKey,
+      });
+      void recordMetricEvent({
+        userId: record.ownerUserId,
+        eventType: "schema.sync_queued",
+        resourceType: "connection",
+        resourceId: connectionId,
+        payload: { intent: "manual-refresh" },
       });
       await writeAuditLog({
         actorUserId: record.ownerUserId,

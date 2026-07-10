@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AppError } from "@query-wise/shared/dal/core";
 import type { ApiErrorCode, ApiErrorResponse } from "@query-wise/shared/types";
+import { quotaRetryAfterSeconds } from "@query-wise/shared/plans";
 import { devLogError } from "@query-wise/shared/observability";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
@@ -27,6 +28,15 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   SHARE_EXPIRED: 410,
   SHARE_REVOKED_OR_NOT_FOUND: 404,
   INTERNAL_ERROR: 500,
+  QUOTA_EXCEEDED_DAILY: 429,
+  QUOTA_EXCEEDED_MONTHLY: 429,
+  QUOTA_EXCEEDED_SCHEMA_REFRESH: 429,
+  PLAN_LIMIT_CONNECTIONS: 403,
+  PLAN_LIMIT_DASHBOARDS: 403,
+  PLAN_LIMIT_SHARES: 403,
+  PLAN_FEATURE_PASSWORD_SHARES: 403,
+  PLAN_FEATURE_MODEL: 403,
+  ACCOUNT_DISABLED: 403,
 };
 
 export const privateNoStoreHeaders = { "Cache-Control": "private, no-store" };
@@ -41,6 +51,7 @@ export function apiError(error: unknown): Response {
     requestId,
     errorCode: appError.code,
   });
+  const retryAfterSeconds = quotaRetryAfterSeconds(appError.code);
   const body: ApiErrorResponse = {
     contractVersion: "querywise.v2",
     error: {
@@ -48,6 +59,7 @@ export function apiError(error: unknown): Response {
       message: appError.message,
       retryable: appError.retryable,
       requestId,
+      ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
     },
   };
   return Response.json(body, {

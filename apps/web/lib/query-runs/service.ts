@@ -6,9 +6,18 @@ import { requireUser } from "@/lib/auth";
 import { appendMessage, DEFAULT_CONVERSATION_TITLE } from "@/lib/conversations";
 import { AppError, requireFound } from "@query-wise/shared/dal/core";
 import type { QueryResultBlock, QueryRunDto, QueryRunStatus } from "@query-wise/shared/types";
+import { getUserPlan, recordQuestionTerminal, reserveQuestionQuota } from "@query-wise/shared/plans";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
 import { TERMINAL_QUERY_RUN_STATUSES, type QuerySubmission } from "./types";
 import { abortActiveQueryRun } from "@/lib/query/cancellation";
 import { writeAuditLog } from "@/lib/audit";
+
+/** Codes that indicate an accept was refused by plan enforcement (for metrics). */
+const QUOTA_BLOCK_CODES = new Set<string>([
+  "QUOTA_EXCEEDED_DAILY",
+  "QUOTA_EXCEEDED_MONTHLY",
+  "ACCOUNT_DISABLED",
+]);
 
 const STALE_QUERY_RUN_MS = 5 * 60_000;
 const DEFAULT_RECOVERY_BATCH_SIZE = 25;
@@ -67,7 +76,9 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
 }> {
   const { userId } = await requireUser();
   const requestFingerprint = fingerprint(input);
-  return withAppDbTransaction(async (tx) => {
+  let result: { run: QueryRun; created: boolean };
+  try {
+    result = await withAppDbTransaction(async (tx) => {
     // Serialize concurrent retries before the unique-key lookup. This transaction-
     // scoped PostgreSQL lock is released automatically on commit or rollback.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${input.conversationId}:${input.idempotencyKey}`}))`;
@@ -92,6 +103,20 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
     const conversation = requireFound(await tx.conversation.findFirst({
       where: { id: input.conversationId, ownerUserId: userId, deletedAt: null },
     }));
+    // Entitlement gate: resolve the plan (lazily creating a Free row) and reserve
+    // one question against the daily+monthly caps BEFORE any expensive work. This
+    // runs after the idempotency short-circuit so retries of an existing run never
+    // re-count. A disabled account is fail-closed. Throwing rolls back the whole
+    // accept transaction, so no message/run is created when quota is exhausted.
+    const plan = await getUserPlan(userId, tx);
+    if (plan.status === "disabled") {
+      throw new AppError("ACCOUNT_DISABLED", "This account is disabled. Contact support.");
+    }
+    await reserveQuestionQuota(tx, {
+      userId,
+      questionsPerDay: plan.limits.questionsPerDay,
+      questionsPerMonth: plan.limits.questionsPerMonth,
+    });
     const triggeringMessage = await appendMessage(tx, {
       conversationId: conversation.id,
       role: "user",
@@ -131,7 +156,32 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
       metadata: { conversationId: run.conversationId, providerId: run.providerId },
     }, tx);
     return { run, created: true };
-  });
+    });
+  } catch (error) {
+    // A quota/disabled rejection is a product signal worth tracking; the run was
+    // never created (the transaction rolled back), so key the event to the ask.
+    if (error instanceof AppError && QUOTA_BLOCK_CODES.has(error.code)) {
+      void recordMetricEvent({
+        userId,
+        eventType: "question.quota_blocked",
+        resourceType: "conversation",
+        resourceId: input.conversationId,
+        payload: { code: error.code },
+      });
+    }
+    throw error;
+  }
+  if (result.created) {
+    void recordMetricEvent({
+      userId,
+      eventType: "question.accepted",
+      resourceType: "query-run",
+      resourceId: result.run.id,
+      queryRunId: result.run.id,
+      payload: { conversationId: result.run.conversationId },
+    });
+  }
+  return result;
 }
 
 export async function getOwnedQueryRun(queryRunId: string): Promise<QueryRun> {
@@ -290,7 +340,7 @@ export async function completeQueryRun(input: {
 }): Promise<QueryRun> {
   const current = await getOwnedQueryRun(input.queryRunId);
   if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
-  return withAppDbTransaction(async (tx) => {
+  const completed = await withAppDbTransaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`query-run:${current.id}`}))`;
     const fresh = requireFound(await tx.queryRun.findFirst({
       where: { id: current.id, ownerUserId: current.ownerUserId },
@@ -336,13 +386,26 @@ export async function completeQueryRun(input: {
     }, tx);
     return run;
   });
+  // Terminal metrics (best-effort): succeeded question counters + event. Placed at
+  // this single completion choke point so all success paths are counted once.
+  if (completed.status === "succeeded") {
+    void recordQuestionTerminal(completed.ownerUserId, "succeeded");
+    void recordMetricEvent({
+      userId: completed.ownerUserId,
+      eventType: "question.succeeded",
+      resourceType: "query-run",
+      resourceId: completed.id,
+      queryRunId: completed.id,
+    });
+  }
+  return completed;
 }
 
 export async function failQueryRun(queryRunId: string, code: string, message: string, partialMetadata?: Prisma.InputJsonValue): Promise<QueryRun> {
   const current = await getOwnedQueryRun(queryRunId);
   if (TERMINAL_QUERY_RUN_STATUSES.has(current.status)) return current;
   const safeMessage = message.slice(0, 1000);
-  return withAppDbTransaction(async (tx) => {
+  const failed = await withAppDbTransaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`query-run:${current.id}`}))`;
     const fresh = requireFound(await tx.queryRun.findFirst({
       where: { id: current.id, ownerUserId: current.ownerUserId },
@@ -384,6 +447,18 @@ export async function failQueryRun(queryRunId: string, code: string, message: st
     }, tx);
     return run;
   });
+  if (failed.status === "failed") {
+    void recordQuestionTerminal(failed.ownerUserId, "failed");
+    void recordMetricEvent({
+      userId: failed.ownerUserId,
+      eventType: "question.failed",
+      resourceType: "query-run",
+      resourceId: failed.id,
+      queryRunId: failed.id,
+      payload: { errorCode: code },
+    });
+  }
+  return failed;
 }
 
 export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
@@ -412,6 +487,15 @@ export async function cancelQueryRun(queryRunId: string): Promise<QueryRun> {
     }, tx);
     return run;
   });
+  if (cancelled.status === "cancelled") {
+    void recordMetricEvent({
+      userId: cancelled.ownerUserId,
+      eventType: "question.cancelled",
+      resourceType: "query-run",
+      resourceId: cancelled.id,
+      queryRunId: cancelled.id,
+    });
+  }
   abortActiveQueryRun(queryRunId);
   return cancelled;
 }

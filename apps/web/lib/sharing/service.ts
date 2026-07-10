@@ -37,6 +37,13 @@ import {
   publicDashboardCacheKey,
 } from "./public-dashboard-cache";
 import { writeAuditLog } from "@/lib/audit";
+import {
+  assertAccountActive,
+  assertPasswordShareAllowed,
+  assertShareQuota,
+  getPlanForUser,
+} from "@/lib/plans";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
 
 const PUBLIC_WIDGET_CONCURRENCY = 4;
 const PUBLIC_DASHBOARD_EXECUTION_BUDGET_MS = 30_000;
@@ -222,6 +229,21 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
     };
   }
 
+  // Plan gate for public share links: fail closed for disabled accounts, enforce
+  // the active-share-link cap, and gate password protection behind Pro.
+  const sharePlan = await getPlanForUser(dashboard.ownerUserId);
+  assertAccountActive(sharePlan);
+  if (parsed.data.password && !sharePlan.limits.allowPasswordShares) {
+    void recordMetricEvent({
+      userId: dashboard.ownerUserId,
+      eventType: "share.password_rejected_by_plan",
+      resourceType: "dashboard",
+      resourceId: dashboardId,
+    });
+  }
+  assertPasswordShareAllowed(sharePlan, Boolean(parsed.data.password));
+  await assertShareQuota(dashboard.ownerUserId, sharePlan);
+
   const expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
   if (expiresAt && expiresAt <= new Date()) {
     throw validationError();
@@ -256,6 +278,13 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
       },
     }, tx);
     return created;
+  });
+  void recordMetricEvent({
+    userId: dashboard.ownerUserId,
+    eventType: "share.created",
+    resourceType: "dashboard-share-link",
+    resourceId: link.id,
+    payload: { dashboardId, passwordProtected: Boolean(link.passwordHash), expires: Boolean(expiresAt) },
   });
   return {
     type: "link" as const,
@@ -298,6 +327,13 @@ export async function revokeShare(dashboardId: string, shareId: string): Promise
       metadata: { dashboardId },
     }, tx);
   });
+  void recordMetricEvent({
+    userId: dashboard.ownerUserId,
+    eventType: "share.revoked",
+    resourceType: "dashboard-share-link",
+    resourceId: shareId,
+    payload: { dashboardId },
+  });
 }
 
 export async function updateShareLink(
@@ -308,6 +344,14 @@ export async function updateShareLink(
   const parsed = UpdateLinkSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
   const dashboard = await requireDashboardAccess(dashboardId, "edit");
+  // Setting a password on an existing link is a Pro feature; block it for Free so
+  // the create-time gate cannot be bypassed via update. Disabled accounts too.
+  const updatePlan = await getPlanForUser(dashboard.ownerUserId);
+  assertAccountActive(updatePlan);
+  assertPasswordShareAllowed(
+    updatePlan,
+    typeof parsed.data.password === "string" && parsed.data.password.length > 0,
+  );
   const expiresAt =
     parsed.data.expiresAt === undefined
       ? undefined

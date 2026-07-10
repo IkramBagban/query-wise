@@ -1,6 +1,7 @@
 import "server-only";
 import { stepCountIs, streamText, type JSONValue, type ModelMessage, type ToolSet } from "ai";
 import { devLog } from "@query-wise/shared/observability";
+import { recordLlmUsage } from "@query-wise/shared/metrics";
 import { resolveChartConfig } from "@/lib/charts";
 import type { ChatMessage } from "@/types";
 import {
@@ -273,6 +274,8 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   const tools = buildTools(params, state);
 
   let streamedText = false;
+  // Stable ordinal for idempotent per-call usage records within this run.
+  let llmCallOrdinal = 0;
 
   // One streamed attempt. `recovery` re-runs with a shrunken context after a
   // true mid-run context overflow (SPEC-01 §1). `correction` appends a
@@ -453,16 +456,38 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       }
     }
 
-    // Cache-hit metrics when the provider reports them (SPEC-01 §5).
+    // Persist token usage (and log cache hits) when the provider reports them.
+    // Best-effort: never fail the run over telemetry.
     try {
-      const usage = await result.usage;
-      const cachedInputTokens = (usage as { cachedInputTokens?: number } | undefined)?.cachedInputTokens;
+      const usage = await result.usage as {
+        inputTokens?: number;
+        outputTokens?: number;
+        cachedInputTokens?: number;
+        reasoningTokens?: number;
+      } | undefined;
+      const cachedInputTokens = usage?.cachedInputTokens;
       if (typeof cachedInputTokens === "number") {
         devLog("info", "agent.cache.usage", "Prompt cache usage.", {
           recovery,
           model: candidateModel,
           cachedInputTokens,
-          inputTokens: (usage as { inputTokens?: number }).inputTokens,
+          inputTokens: usage?.inputTokens,
+        });
+      }
+      if (params.usageContext) {
+        await recordLlmUsage({
+          userId: params.usageContext.userId,
+          queryRunId: params.usageContext.queryRunId,
+          connectionId: params.usageContext.connectionId,
+          task: "agent",
+          provider: candidateProvider,
+          model: candidateModel,
+          inputTokens: usage?.inputTokens,
+          outputTokens: usage?.outputTokens,
+          cachedInputTokens: usage?.cachedInputTokens,
+          reasoningTokens: usage?.reasoningTokens ?? null,
+          success: true,
+          callOrdinal: llmCallOrdinal++,
         });
       }
     } catch {
@@ -499,7 +524,7 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   // key of that model before advancing to the next model in the chain. Capped at
   // MAX_LLM_ATTEMPTS; rate-limited keys are cooled down so we stop hammering them.
   const preferred: LlmCandidate = { provider: params.provider, model: params.model };
-  const plan = planAttempts(resolveTaskChain("agent", preferred)).slice(0, MAX_LLM_ATTEMPTS);
+  const plan = planAttempts(resolveTaskChain("agent", preferred, params.modelTier)).slice(0, MAX_LLM_ATTEMPTS);
   if (plan.length === 0) {
     throw failure(new Error("No API keys configured for the agent model chain."));
   }
