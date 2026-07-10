@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/useToast";
 import { useApiResource } from "@/hooks";
 import { dashboardsApi, type ShareLinkListItem } from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/utils";
+import { usePlanUsage } from "@/lib/plans/use-plan-usage";
 
 const EXPIRY_OPTIONS = [
   { label: "Never", value: "none" },
@@ -169,6 +170,9 @@ interface CreateShareFormProps {
 
 function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormProps) {
   const { pushToast } = useToast();
+  const { data: planUsage } = usePlanUsage();
+  // Password-protected shares are a Pro feature; the server enforces this too.
+  const allowPasswordShares = planUsage?.limits.allowPasswordShares ?? false;
   const [passwordOption, setPasswordOption] = useState<"none" | "required">("none");
   const [password, setPassword] = useState("");
   const [expiry, setExpiry] = useState("none");
@@ -224,20 +228,29 @@ function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormPr
               />
               None
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <label
+              className={`flex items-center gap-2 text-sm ${allowPasswordShares ? "cursor-pointer" : "cursor-not-allowed text-faint"}`}
+              title={allowPasswordShares ? undefined : "Password-protected shares are available on Pro (coming soon)."}
+            >
               <input
                 type="radio"
                 name="password-option"
                 value="required"
                 checked={passwordOption === "required"}
+                disabled={!allowPasswordShares}
                 onChange={() => setPasswordOption("required")}
                 className="h-4 w-4 accent-accent-2"
               />
               <Lock className="h-3.5 w-3.5 text-faint" />
               Password required
+              {!allowPasswordShares ? (
+                <span className="rounded-full border border-accent-line bg-accent-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-accent-strong">
+                  Pro
+                </span>
+              ) : null}
             </label>
           </div>
-          {passwordOption === "required" && (
+          {passwordOption === "required" && allowPasswordShares && (
             <div className="mt-3">
               <Input
                 type="password"

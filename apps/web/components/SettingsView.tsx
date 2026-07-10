@@ -6,21 +6,25 @@ import { ExternalLink, KeyRound, ShieldCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
 import { UserControl } from "@/components/auth/UserControl";
+import { PlanUsageCard } from "@/components/PlanUsageCard";
 
 export function SettingsView() {
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Preferences" title="Settings" description="Manage account access and LLM controls." />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-5">
-          <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
-            <KeyRound className="h-5 w-5 text-accent-strong" />
-            LLM configuration
-          </h2>
-          <p className="mt-2 text-sm text-faint">
-            The AI model is configured server-side. No API key setup is required.
-          </p>
-        </Card>
+        <div className="space-y-4">
+          <PlanUsageCard />
+          <Card className="p-5">
+            <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
+              <KeyRound className="h-5 w-5 text-accent-strong" />
+              LLM configuration
+            </h2>
+            <p className="mt-2 text-sm text-faint">
+              The AI model is configured server-side. No API key setup is required.
+            </p>
+          </Card>
+        </div>
         <div className="space-y-4">
           <Card className="p-5">
             <h2 className="font-syne text-lg font-semibold">Account</h2>
