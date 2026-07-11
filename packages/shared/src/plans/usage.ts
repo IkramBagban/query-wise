@@ -180,8 +180,8 @@ export async function readUsageSnapshot(userId: string, now: Date = new Date()):
     questionsToday: day?.questionsAccepted ?? 0,
     questionsThisMonth: month?.questionsAccepted ?? 0,
     schemaRefreshesToday: day?.schemaRefreshes ?? 0,
-    llmInputTokensThisMonth: Number(month?.llmInputTokens ?? 0n),
-    llmOutputTokensThisMonth: Number(month?.llmOutputTokens ?? 0n),
+    llmInputTokensThisMonth: Number(month?.llmInputTokens ?? BigInt(0)),
+    llmOutputTokensThisMonth: Number(month?.llmOutputTokens ?? BigInt(0)),
     chartsGeneratedThisMonth: month?.chartsGenerated ?? 0,
   };
 }
