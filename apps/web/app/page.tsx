@@ -887,9 +887,9 @@ const FREE_FEATURES: PlanFeature[] = [
   { text: "Auto-charts & 1 dashboard", included: true },
   { text: "1 public share link, no password", included: true },
   { text: "Daily schema re-sync", included: true },
-  { text: "Fast models, read-only safety", included: true },
+  { text: "Read-only safety, always on", included: true },
   { text: "Password-protected shares", included: false },
-  { text: "Premium models & priority runs", included: false },
+  { text: "Extended agent runs & priority", included: false },
 ];
 
 const PRO_FEATURES: PlanFeature[] = [
@@ -897,7 +897,7 @@ const PRO_FEATURES: PlanFeature[] = [
   { text: "5 PostgreSQL connections", included: true },
   { text: "Up to 100 dashboards", included: true },
   { text: "20 public share links, password OK", included: true },
-  { text: "Premium + fast model routing", included: true },
+  { text: "Extended agent runs for complex questions", included: true },
   { text: "20 schema re-syncs per day", included: true },
   { text: "Higher concurrency & priority", included: true },
   { text: "Email support, best-effort", included: true },
@@ -1014,7 +1014,7 @@ const FAQS = [
   ["Can it modify or delete my data?", "No. Enforcement is layered: a read-only role, single-statement validation, bounded results, and query timeouts. QueryWise physically cannot write."],
   ["Do I need to know SQL?", "No — you ask in plain English. But the generated SQL is always shown and explained, so analysts can verify every answer and learn from it."],
   ["What happens when the AI gets it wrong?", "You see the SQL and the row counts, so wrong answers are visible rather than silent. Rephrase or correct in a follow-up — the conversation keeps context."],
-  ["What's free vs Pro?", "Free is for trying QueryWise: 25 questions a month (5 a day), one connection, one dashboard, and one open public share link (no password). Pro (coming soon) raises the question limits, adds multi-DB workspaces, password-protected sharing, and priority model routing. Payments are not live yet."],
+  ["What's free vs Pro?", "Free is for trying QueryWise: 25 questions a month (5 a day), one connection, one dashboard, and one open public share link (no password). Pro (coming soon) raises the question limits, adds multi-DB workspaces, password-protected sharing, and extended agent runs for complex questions. Payments are not live yet."],
 ] as const;
 
 function Faq() {

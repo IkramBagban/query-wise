@@ -24,7 +24,6 @@ export interface PlanUsageDto {
     maxActiveShareLinks: number;
     allowPasswordShares: boolean;
     schemaRefreshesPerDay: number;
-    modelTier: "fast" | "premium";
   };
   usage: {
     questionsToday: number;
@@ -88,7 +87,6 @@ export async function buildPlanUsageDto(plan: ResolvedUserPlan): Promise<PlanUsa
       maxActiveShareLinks: limits.maxActiveShareLinks,
       allowPasswordShares: limits.allowPasswordShares,
       schemaRefreshesPerDay: limits.schemaRefreshesPerDay,
-      modelTier: limits.modelTier,
     },
     usage: {
       questionsToday: snapshot.questionsToday,

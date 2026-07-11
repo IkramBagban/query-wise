@@ -42,14 +42,12 @@ function runTests() {
   assert.strictEqual(PLAN_CATALOG.free.maxActiveShareLinks, 1);
   assert.strictEqual(PLAN_CATALOG.free.allowPasswordShares, false);
   assert.strictEqual(PLAN_CATALOG.free.schemaRefreshesPerDay, 1);
-  assert.strictEqual(PLAN_CATALOG.free.modelTier, "fast");
   assert.strictEqual(PLAN_CATALOG.pro.questionsPerDay, 50);
   assert.strictEqual(PLAN_CATALOG.pro.questionsPerMonth, 500);
   assert.strictEqual(PLAN_CATALOG.pro.maxConnectionsNonDemo, 5);
   assert.strictEqual(PLAN_CATALOG.pro.maxDashboards, 100);
   assert.strictEqual(PLAN_CATALOG.pro.maxActiveShareLinks, 20);
   assert.strictEqual(PLAN_CATALOG.pro.allowPasswordShares, true);
-  assert.strictEqual(PLAN_CATALOG.pro.modelTier, "premium");
   assert.strictEqual(getPlanDefinition("pro").displayName, "Pro");
 
   // ── Effective limits: override ?? catalog ──────────────────────────

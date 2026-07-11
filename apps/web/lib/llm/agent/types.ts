@@ -181,11 +181,6 @@ export interface RunAnalystAgentParams extends AnalystAgentEmitters {
   /** Distilled prior-turn memory injected into context (SPEC-02 §4). */
   memory?: AgentMemoryContext;
   /**
-   * Plan model tier. "fast" routes the agent onto a lite/Groq-led chain (Free
-   * plan); "premium"/undefined keep the default premium-led chain (Pro).
-   */
-  modelTier?: "fast" | "premium";
-  /**
    * Usage-recording context threaded to persist per-call LLM token usage. When
    * present, each model call writes an LlmUsageRecord keyed to this run/user.
    */

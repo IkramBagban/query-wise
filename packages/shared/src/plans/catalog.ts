@@ -5,8 +5,11 @@
  */
 
 export type PlanId = "free" | "pro";
-export type ModelTier = "fast" | "premium";
 export type AgentBudgetProfileName = "standard" | "extended";
+
+// Product decision (2026-07-11): no plan-based model tiering — every plan uses
+// the same model routing chains. If tiering ever returns, add a `modelTier`
+// field back here and resolve it in the model router's chain selection.
 
 export interface PlanDefinition {
   id: PlanId;
@@ -20,7 +23,6 @@ export interface PlanDefinition {
   allowPasswordShares: boolean;
   schemaRefreshesPerDay: number;
   maxAgentBudgetProfile: AgentBudgetProfileName;
-  modelTier: ModelTier;
   maxDashboardsHard: number;
 }
 
@@ -37,7 +39,6 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     allowPasswordShares: false,
     schemaRefreshesPerDay: 1,
     maxAgentBudgetProfile: "standard",
-    modelTier: "fast",
     maxDashboardsHard: 1,
   },
   pro: {
@@ -52,7 +53,6 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     allowPasswordShares: true,
     schemaRefreshesPerDay: 20,
     maxAgentBudgetProfile: "extended",
-    modelTier: "premium",
     maxDashboardsHard: 100,
   },
 } as const;
@@ -83,7 +83,6 @@ export interface EffectiveLimits {
   maxActiveShareLinks: number;
   allowPasswordShares: boolean;
   schemaRefreshesPerDay: number;
-  modelTier: ModelTier;
   maxAgentBudgetProfile: AgentBudgetProfileName;
 }
 
@@ -93,8 +92,8 @@ function pick(override: number | null | undefined, fallback: number): number {
 
 /**
  * Resolve enforced limits from the catalog plus any per-user overrides. The
- * share-link cap, password-share gate, and model tier have no override column,
- * so they always come from the catalog.
+ * share-link cap and password-share gate have no override column, so they
+ * always come from the catalog.
  */
 export function resolveEffectiveLimits(
   planId: PlanId,
@@ -109,7 +108,6 @@ export function resolveEffectiveLimits(
     maxActiveShareLinks: plan.maxActiveShareLinks,
     allowPasswordShares: plan.allowPasswordShares,
     schemaRefreshesPerDay: pick(overrides.schemaRefreshesPerDayOverride, plan.schemaRefreshesPerDay),
-    modelTier: plan.modelTier,
     maxAgentBudgetProfile: plan.maxAgentBudgetProfile,
   };
 }

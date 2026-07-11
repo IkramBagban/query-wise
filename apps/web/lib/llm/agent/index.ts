@@ -524,7 +524,7 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
   // key of that model before advancing to the next model in the chain. Capped at
   // MAX_LLM_ATTEMPTS; rate-limited keys are cooled down so we stop hammering them.
   const preferred: LlmCandidate = { provider: params.provider, model: params.model };
-  const plan = planAttempts(resolveTaskChain("agent", preferred, params.modelTier)).slice(0, MAX_LLM_ATTEMPTS);
+  const plan = planAttempts(resolveTaskChain("agent", preferred)).slice(0, MAX_LLM_ATTEMPTS);
   if (plan.length === 0) {
     throw failure(new Error("No API keys configured for the agent model chain."));
   }

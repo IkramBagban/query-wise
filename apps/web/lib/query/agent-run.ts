@@ -197,7 +197,6 @@ export async function runAgentQueryRun(input: {
     model: llmConfig.model,
     apiKeys: llmConfig.apiKeys,
     budget: forcedBudget,
-    modelTier: plan.limits.modelTier,
     usageContext: {
       userId: run.ownerUserId,
       queryRunId: run.id,

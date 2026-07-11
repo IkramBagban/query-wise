@@ -66,18 +66,9 @@ const DEFAULT_CHAINS: Record<LlmTask, LlmCandidate[]> = {
   ],
 };
 
-/** Plan-aware model tier. "fast" restricts the agent to a lite/Groq-led chain. */
-export type PlanModelTier = "fast" | "premium";
-
-/**
- * Free-tier agent chain: no premium Flash lead. Starts on the high-headroom Lite
- * and falls cross-provider to Groq. Keeps platform premium models Pro-only while
- * still giving Free users a capable agent.
- */
-const FAST_AGENT_CHAIN: LlmCandidate[] = [
-  { provider: "google", model: "gemini-3.1-flash-lite" },
-  { provider: "groq", model: "llama-3.3-70b-versatile" },
-];
+// Product decision (2026-07-11): no plan-based model tiering — every plan routes
+// through the same task chains. If tiering returns, reintroduce it as a separate
+// env-configured chain (e.g. LLM_AGENT_CHAIN_FAST) resolved from the plan.
 
 const CHAIN_ENV_VAR: Record<LlmTask, string> = {
   agent: "LLM_AGENT_CHAIN",
@@ -128,14 +119,8 @@ function dedupe(candidates: LlmCandidate[]): LlmCandidate[] {
 export function resolveTaskChain(
   task: LlmTask,
   preferred?: LlmCandidate | null,
-  planTier?: PlanModelTier,
 ): LlmCandidate[] {
   const override = parseChain(process.env[CHAIN_ENV_VAR[task]]);
-  // Free-tier agent routing: when no ops override is set, force the fast chain and
-  // ignore the (possibly premium) preferred model so premium routing stays Pro-only.
-  if (task === "agent" && planTier === "fast" && override.length === 0) {
-    return dedupe(FAST_AGENT_CHAIN);
-  }
   const base = override.length > 0 ? override : DEFAULT_CHAINS[task];
   return dedupe([...(preferred ? [preferred] : []), ...base]);
 }
