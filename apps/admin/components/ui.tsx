@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import { ReactNode } from "react";
+import { Card as ShadcnCard, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge as ShadcnBadge } from "@/components/ui/badge";
 
 export function Card({
   title,
@@ -10,16 +13,14 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section
-      className={`rounded-xl border border-border bg-surface p-4 ${className}`}
-    >
-      {title ? (
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text">
-          {title}
-        </h2>
-      ) : null}
-      {children}
-    </section>
+    <ShadcnCard className={className}>
+      {title && (
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        </CardHeader>
+      )}
+      <CardContent>{children}</CardContent>
+    </ShadcnCard>
   );
 }
 
@@ -33,13 +34,21 @@ export function Kpi({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <p className="text-[11px] uppercase tracking-wider text-faint">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-text">
-        {value}
-      </p>
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
-    </div>
+    <ShadcnCard>
+      <CardHeader className="pb-2">
+        <CardDescription className="text-xs font-semibold uppercase tracking-wider">
+          {label}
+        </CardDescription>
+        <CardTitle className="text-3xl tabular-nums tracking-tight">
+          {value}
+        </CardTitle>
+      </CardHeader>
+      {hint && (
+        <CardContent>
+          <p className="text-xs text-muted-foreground font-medium">{hint}</p>
+        </CardContent>
+      )}
+    </ShadcnCard>
   );
 }
 
@@ -50,18 +59,16 @@ export function Badge({
   children: ReactNode;
   tone?: "neutral" | "accent" | "warn" | "danger";
 }) {
-  const tones = {
-    neutral: "bg-surface2 text-muted",
-    accent: "bg-accent/15 text-accent",
-    warn: "bg-amber-500/15 text-amber-300",
-    danger: "bg-danger/15 text-danger",
-  };
+  const variants = {
+    neutral: "secondary",
+    accent: "default",
+    warn: "destructive",
+    danger: "destructive",
+  } as const;
   return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ${tones[tone]}`}
-    >
+    <ShadcnBadge variant={variants[tone] || "secondary"} className={tone === "warn" ? "bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 border-amber-500/20" : ""}>
       {children}
-    </span>
+    </ShadcnBadge>
   );
 }
 
@@ -73,34 +80,34 @@ export function DataTable({
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-        <thead className="bg-surface2 text-[11px] uppercase tracking-wider text-faint">
-          <tr>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
             {headers.map((h) => (
-              <th key={h} className="px-3 py-2 font-medium">
+              <TableHead key={h} className="text-xs uppercase tracking-wider">
                 {h}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">{children}</tbody>
-      </table>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
     </div>
   );
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-border2 px-4 py-8 text-center text-sm text-faint">
-      {children}
-    </p>
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center animate-in fade-in-50">
+      <p className="text-sm text-muted-foreground">{children}</p>
+    </div>
   );
 }
 
 export function Mono({ children }: { children: ReactNode }) {
   return (
-    <code className="rounded bg-surface2 px-1 py-0.5 font-mono text-[11px] text-muted">
+    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground">
       {children}
     </code>
   );
@@ -117,14 +124,14 @@ export function BarRow({
 }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div className="mb-2">
-      <div className="mb-0.5 flex justify-between gap-2 text-xs">
-        <span className="truncate text-muted">{label}</span>
-        <span className="tabular-nums text-faint">{value.toLocaleString()}</span>
+    <div className="mb-4 last:mb-0">
+      <div className="mb-1.5 flex justify-between gap-2 text-xs font-medium">
+        <span className="truncate text-muted-foreground">{label}</span>
+        <span className="tabular-nums text-foreground">{value.toLocaleString()}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded bg-surface2">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
         <div
-          className="h-full rounded bg-accent"
+          className="h-full bg-primary transition-all duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -60,160 +60,180 @@ export default async function UsersPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-        <p className="mt-1 text-sm text-muted">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col gap-1 border-b border-border/50 pb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Users</h1>
+        <p className="text-sm text-muted-foreground">
           One row per plan record. Default sort: tokens this month (cost hunting).
         </p>
       </div>
 
-      <form className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-        <label className="text-xs text-muted">
-          Search
+      <form
+        className="mb-8 grid gap-4 rounded-xl border bg-card p-6 text-card-foreground shadow-sm md:grid-cols-2 lg:grid-cols-5 animate-slide-up"
+        style={{ animationDelay: "50ms", animationFillMode: "both" }}
+      >
+        <div className="grid gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Search
+          </label>
           <input
             name="q"
             defaultValue={q ?? ""}
             placeholder="email or clerk id"
-            className="mt-0.5 block w-56 rounded border border-border bg-bg px-2 py-1.5 text-sm text-text"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           />
-        </label>
-        <label className="text-xs text-muted">
-          Plan
+        </div>
+        <div className="grid gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Plan
+          </label>
           <select
             name="plan"
             defaultValue={plan}
-            className="mt-0.5 block rounded border border-border bg-bg px-2 py-1.5 text-sm"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <option value="all">All</option>
+            <option value="all">All Plans</option>
             <option value="free">Free</option>
             <option value="pro">Pro</option>
           </select>
-        </label>
-        <label className="text-xs text-muted">
-          Status
+        </div>
+        <div className="grid gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Status
+          </label>
           <select
             name="status"
             defaultValue={status}
-            className="mt-0.5 block rounded border border-border bg-bg px-2 py-1.5 text-sm"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <option value="all">All</option>
+            <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
           </select>
-        </label>
-        <label className="text-xs text-muted">
-          Overrides
+        </div>
+        <div className="grid gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Overrides
+          </label>
           <select
             name="overrides"
             defaultValue={hasOverrides}
-            className="mt-0.5 block rounded border border-border bg-bg px-2 py-1.5 text-sm"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <option value="all">All</option>
-            <option value="yes">Has overrides</option>
-            <option value="no">No overrides</option>
+            <option value="all">All Configs</option>
+            <option value="yes">Has Overrides</option>
+            <option value="no">Default Only</option>
           </select>
-        </label>
-        <label className="text-xs text-muted">
-          Sort
+        </div>
+        <div className="grid gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Sort
+          </label>
           <select
             name="sort"
             defaultValue={sort}
-            className="mt-0.5 block rounded border border-border bg-bg px-2 py-1.5 text-sm"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <option value="tokens_month">Tokens this month</option>
             <option value="questions_month">Questions this month</option>
             <option value="created">Created</option>
             <option value="last_activity">Last activity</option>
           </select>
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Apply
-        </button>
+        </div>
+        <div className="md:col-span-2 lg:col-span-5 flex justify-end">
+          <button
+            type="submit"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-8 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          >
+            Apply Filters
+          </button>
+        </div>
       </form>
 
-      {result.rows.length === 0 ? (
-        <EmptyState>No users match.</EmptyState>
-      ) : (
-        <DataTable
-          headers={[
-            "Identity",
-            "Plan",
-            "Status",
-            "Questions d/m",
-            "Tokens m",
-            "Conn",
-            "Dash",
-            "Shares",
-            "Last activity",
-            "Created",
-          ]}
-        >
-          {result.rows.map((row) => (
-            <tr key={row.userId} className="hover:bg-surface2/50">
-              <td className="px-3 py-2">
-                <Link
-                  href={`/users/${encodeURIComponent(row.userId)}`}
-                  className="font-medium text-accent hover:underline"
-                >
-                  {row.displayLabel}
-                </Link>
-                <div className="font-mono text-[10px] text-faint">
-                  {row.identity?.email && row.identity.email !== row.displayLabel
-                    ? row.identity.email
-                    : row.userId}
-                </div>
-              </td>
-              <td className="px-3 py-2">
-                <Badge tone={row.planId === "pro" ? "accent" : "neutral"}>
-                  {row.planId}
-                  {row.hasOverrides ? " ⚙" : ""}
-                </Badge>
-              </td>
-              <td className="px-3 py-2">
-                <Badge tone={row.status === "disabled" ? "danger" : "neutral"}>
-                  {row.status}
-                </Badge>
-              </td>
-              <td className="px-3 py-2 tabular-nums text-muted">
-                {row.questionsToday}/{row.limitDay} · {row.questionsMonth}/
-                {row.limitMonth}
-              </td>
-              <td className="px-3 py-2 tabular-nums">
-                {formatCompact(row.tokensMonth)}
-              </td>
-              <td className="px-3 py-2 tabular-nums">{row.connectionsNonDemo}</td>
-              <td className="px-3 py-2 tabular-nums">{row.dashboards}</td>
-              <td className="px-3 py-2 tabular-nums">{row.activeShares}</td>
-              <td className="px-3 py-2 text-xs text-muted">
-                {formatUtcDate(row.lastActivityAt)}
-              </td>
-              <td className="px-3 py-2 text-xs text-muted">
-                {formatUtcDate(row.createdAt)}
-              </td>
-            </tr>
-          ))}
-        </DataTable>
-      )}
+      <div
+        className="animate-slide-up"
+        style={{ animationDelay: "150ms", animationFillMode: "both" }}
+      >
+        {result.rows.length === 0 ? (
+          <EmptyState>No users match.</EmptyState>
+        ) : (
+          <DataTable
+            headers={[
+              "Identity",
+              "Plan",
+              "Status",
+              "Questions d/m",
+              "Tokens m",
+              "Conn",
+              "Dash",
+              "Shares",
+              "Last activity",
+              "Created",
+            ]}
+          >
+            {result.rows.map((row) => (
+              <tr key={row.userId} className="hover:bg-muted/50">
+                <td className="px-3 py-2">
+                  <Link
+                    href={`/users/${encodeURIComponent(row.userId)}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {row.displayLabel}
+                  </Link>
+                  <div className="font-mono text-[10px] text-muted-foreground">
+                    {row.identity?.email && row.identity.email !== row.displayLabel
+                      ? row.identity.email
+                      : row.userId}
+                  </div>
+                </td>
+                <td className="px-3 py-2">
+                  <Badge tone={row.planId === "pro" ? "accent" : "neutral"}>
+                    {row.planId}
+                    {row.hasOverrides ? " ⚙" : ""}
+                  </Badge>
+                </td>
+                <td className="px-3 py-2">
+                  <Badge tone={row.status === "disabled" ? "danger" : "neutral"}>
+                    {row.status}
+                  </Badge>
+                </td>
+                <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                  {row.questionsToday}/{row.limitDay} · {row.questionsMonth}/
+                  {row.limitMonth}
+                </td>
+                <td className="px-3 py-2 tabular-nums">
+                  {formatCompact(row.tokensMonth)}
+                </td>
+                <td className="px-3 py-2 tabular-nums">{row.connectionsNonDemo}</td>
+                <td className="px-3 py-2 tabular-nums">{row.dashboards}</td>
+                <td className="px-3 py-2 tabular-nums">{row.activeShares}</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">
+                  {formatUtcDate(row.lastActivityAt)}
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">
+                  {formatUtcDate(row.createdAt)}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
 
-      <div className="flex items-center justify-between text-sm text-muted">
-        <span>
-          {formatInt(result.total)} users · page {result.page}/{totalPages}
-        </span>
-        <div className="flex gap-2">
-          {page > 1 ? (
-            <Link href={href({ page: page - 1 })} className="text-accent">
-              Previous
-            </Link>
-          ) : null}
-          {page < totalPages ? (
-            <Link href={href({ page: page + 1 })} className="text-accent">
-              Next
-            </Link>
-          ) : null}
+        <div className="mt-8 flex items-center justify-between text-sm text-muted-foreground font-medium bg-muted/30 px-6 py-4 rounded-2xl border border-border/50">
+          <span>
+            {formatInt(result.total)} users · page {result.page}/{totalPages}
+          </span>
+          <div className="flex gap-3">
+            {page > 1 ? (
+              <Link href={href({ page: page - 1 })} className="inline-flex items-center rounded-xl border border-border bg-card/50 px-5 py-2 text-sm font-bold text-foreground shadow-sm backdrop-blur-sm transition-all hover:bg-muted hover:text-primary hover:border-accent/30 focus:outline-none focus:ring-4 focus:ring-accent/10 active:scale-95">
+                Previous
+              </Link>
+            ) : null}
+            {page < totalPages ? (
+              <Link href={href({ page: page + 1 })} className="inline-flex items-center rounded-xl border border-border bg-card/50 px-5 py-2 text-sm font-bold text-foreground shadow-sm backdrop-blur-sm transition-all hover:bg-muted hover:text-primary hover:border-accent/30 focus:outline-none focus:ring-4 focus:ring-accent/10 active:scale-95">
+                Next
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
