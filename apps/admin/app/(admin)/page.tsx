@@ -13,15 +13,15 @@ export default async function OverviewPage() {
   const qMax = Math.max(1, ...data.questionsPerDay.map((d) => d.questionsAccepted));
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-        <p className="mt-1 text-sm text-muted">
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex flex-col gap-1 border-b border-border/50 pb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Overview</h1>
+        <p className="text-sm text-muted-foreground">
           Platform health and cost (UTC windows). Period tables first.
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-slide-up" style={{ animationDelay: "50ms", animationFillMode: "both" }}>
         <Kpi
           label="Questions today / month"
           value={`${formatInt(kpis.questionsToday)} / ${formatInt(kpis.questionsMonth)}`}
@@ -58,7 +58,7 @@ export default async function OverviewPage() {
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2 animate-slide-up" style={{ animationDelay: "150ms", animationFillMode: "both" }}>
         <Card title="Tokens by provider/model (this month)">
           {data.tokensByProviderModel.length === 0 ? (
             <EmptyState>No LLM usage this month.</EmptyState>
@@ -86,11 +86,11 @@ export default async function OverviewPage() {
                 >
                   <Link
                     href={`/users/${encodeURIComponent(u.userId)}`}
-                    className="truncate font-mono text-xs text-accent hover:underline"
+                    className="truncate font-mono text-xs text-primary hover:underline"
                   >
                     {u.userId}
                   </Link>
-                  <span className="tabular-nums text-muted">
+                  <span className="tabular-nums text-muted-foreground">
                     {formatCompact(u.inputTokens + u.outputTokens)} tok ·{" "}
                     {u.questionsAccepted} q
                   </span>
@@ -108,7 +108,7 @@ export default async function OverviewPage() {
                 <div
                   key={d.dayKey}
                   title={`${d.dayKey}: ${d.questionsAccepted}`}
-                  className="flex-1 rounded-t bg-accent/80"
+                  className="flex-1 rounded-t-sm bg-primary/60 transition-colors hover:bg-primary"
                   style={{ height: `${h}%` }}
                 />
               );
@@ -123,19 +123,19 @@ export default async function OverviewPage() {
             <ul className="space-y-2 text-sm">
               {data.recentEvents.map((e) => (
                 <li key={e.id} className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span className="font-mono text-[11px] text-faint">
+                  <span className="font-mono text-[11px] text-muted-foreground">
                     {formatUtcDate(e.createdAt)}
                   </span>
                   <Link
                     href={`/events?type=${encodeURIComponent(e.eventType)}`}
-                    className="text-accent hover:underline"
+                    className="text-primary hover:underline"
                   >
                     {e.eventType}
                   </Link>
                   {e.userId ? (
                     <Link
                       href={`/users/${encodeURIComponent(e.userId)}`}
-                      className="truncate font-mono text-[11px] text-muted hover:underline"
+                      className="truncate font-mono text-[11px] text-muted-foreground hover:underline"
                     >
                       {e.userId}
                     </Link>

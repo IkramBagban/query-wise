@@ -72,7 +72,7 @@ export function DebugGate({
 
   if (!ready || pending && !confirmed) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-8 text-center text-sm text-muted">
+      <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
         Preparing debug view…
       </div>
     );
@@ -80,14 +80,14 @@ export function DebugGate({
 
   if (!confirmed) {
     return (
-      <div className="mx-auto max-w-lg rounded-xl border border-amber-500/40 bg-surface p-8 text-center">
+      <div className="mx-auto max-w-lg rounded-xl border border-amber-500/40 bg-card p-8 text-center">
         <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-amber-300/80">
           Content gate
         </p>
-        <h1 className="mb-3 text-lg font-semibold text-text">
+        <h1 className="mb-3 text-lg font-semibold text-foreground">
           You are about to view user content
         </h1>
-        <p className="mb-6 text-sm leading-relaxed text-muted">
+        <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
           This access is logged. Question text and generated SQL will be visible.
           Result rows and credentials are never shown.
         </p>

@@ -77,7 +77,7 @@ export function ActionsPanel({
   return (
     <div className="space-y-6">
       {message ? (
-        <p className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent">
+        <p className="rounded-md border border-accent/30 bg-primary/10 px-3 py-2 text-sm text-primary">
           {message}
         </p>
       ) : null}
@@ -88,13 +88,13 @@ export function ActionsPanel({
       ) : null}
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-text">Grant / revoke plan</h3>
-        <p className="text-xs text-muted">
+        <h3 className="text-sm font-semibold text-foreground">Grant / revoke plan</h3>
+        <p className="text-xs text-muted-foreground">
           Current: <strong>{planId}</strong>. Revoking to Free keeps existing
           resources (grandfathering) but blocks new creates above Free caps.
         </p>
         <input
-          className="w-full rounded border border-border bg-bg px-2 py-1.5 text-sm"
+          className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
           placeholder="Ops notes (optional)"
           value={planNotes}
           onChange={(e) => setPlanNotes(e.target.value)}
@@ -103,7 +103,7 @@ export function ActionsPanel({
           <button
             type="button"
             disabled={pending || planId === "pro"}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
             onClick={() =>
               run(() =>
                 setUserPlanAction({
@@ -143,10 +143,10 @@ export function ActionsPanel({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-text">Quota overrides</h3>
-        <p className="text-xs text-muted">
+        <h3 className="text-sm font-semibold text-foreground">Quota overrides</h3>
+        <p className="text-xs text-muted-foreground">
           Empty = catalog default. Values clamped 0–10,000. Product resolves{" "}
-          <code className="text-faint">override ?? catalog</code>.
+          <code className="text-muted-foreground">override ?? catalog</code>.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {(
@@ -158,10 +158,10 @@ export function ActionsPanel({
               ["Schema refreshes / day", schemaOvr, setSchemaOvr],
             ] as const
           ).map(([label, val, set]) => (
-            <label key={label} className="block text-xs text-muted">
+            <label key={label} className="block text-xs text-muted-foreground">
               {label}
               <input
-                className="mt-0.5 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text"
+                className="mt-0.5 w-full rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                 value={val}
                 onChange={(e) => set(e.target.value)}
                 inputMode="numeric"
@@ -172,7 +172,7 @@ export function ActionsPanel({
         <button
           type="button"
           disabled={pending}
-          className="rounded bg-surface2 px-3 py-1.5 text-sm"
+          className="rounded bg-muted px-3 py-1.5 text-sm"
           onClick={() =>
             run(() =>
               setQuotaOverridesAction({
@@ -191,8 +191,8 @@ export function ActionsPanel({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-text">Reset usage counters</h3>
-        <p className="text-xs text-muted">
+        <h3 className="text-sm font-semibold text-foreground">Reset usage counters</h3>
+        <p className="text-xs text-muted-foreground">
           Today: {questionsToday} questions, {schemaRefreshesToday} schema
           refreshes · This month: {questionsMonth} questions. Lifetime totals
           and event history are never touched.
@@ -241,22 +241,22 @@ export function ActionsPanel({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-text">
+        <h3 className="text-sm font-semibold text-foreground">
           {status === "disabled" ? "Reactivate account" : "Suspend account"}
         </h3>
-        <p className="text-xs text-muted">
-          Suspended accounts get <code className="text-faint">ACCOUNT_DISABLED</code>{" "}
+        <p className="text-xs text-muted-foreground">
+          Suspended accounts get <code className="text-muted-foreground">ACCOUNT_DISABLED</code>{" "}
           on mutations; reads still work.
         </p>
         <textarea
-          className="w-full rounded border border-border bg-bg px-2 py-1.5 text-sm"
+          className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
           rows={2}
           placeholder="Reason (required)"
           value={suspendReason}
           onChange={(e) => setSuspendReason(e.target.value)}
         />
         <input
-          className="w-full rounded border border-border bg-bg px-2 py-1.5 font-mono text-sm"
+          className="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-sm"
           placeholder="Type Clerk user id to confirm"
           value={confirmId}
           onChange={(e) => setConfirmId(e.target.value)}
@@ -266,7 +266,7 @@ export function ActionsPanel({
           disabled={pending}
           className={
             status === "disabled"
-              ? "rounded bg-accent px-3 py-1.5 text-sm font-medium text-white"
+              ? "rounded bg-primary px-3 py-1.5 text-sm font-medium text-white"
               : "rounded bg-danger/90 px-3 py-1.5 text-sm font-medium text-white"
           }
           onClick={() =>
