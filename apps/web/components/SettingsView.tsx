@@ -1,12 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, KeyRound, ShieldCheck } from "lucide-react";
+import { ExternalLink, KeyRound, ShieldCheck, UserCircle2 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
-import { UserControl } from "@/components/auth/UserControl";
-import { PlanUsageCard } from "@/components/PlanUsageCard";
 
 export function SettingsView() {
   return (
@@ -14,7 +12,25 @@ export function SettingsView() {
       <PageHeader eyebrow="Preferences" title="Settings" description="Manage account access and LLM controls." />
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
-          <PlanUsageCard />
+          <Card className="p-5">
+            <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
+              <UserCircle2 className="h-5 w-5 text-accent-strong" />
+              Account center
+            </h2>
+            <p className="mt-2 text-sm text-faint">
+              Open your profile, plan, and account settings from one place.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Link href="/profile" className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-sm font-medium transition hover:border-accent-line hover:bg-surface-2">
+                <span>Profile</span>
+                <ExternalLink className="size-4 text-faint" />
+              </Link>
+              <Link href="/plan" className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-sm font-medium transition hover:border-accent-line hover:bg-surface-2">
+                <span>Plan &amp; usage</span>
+                <ExternalLink className="size-4 text-faint" />
+              </Link>
+            </div>
+          </Card>
           <Card className="p-5">
             <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
               <KeyRound className="h-5 w-5 text-accent-strong" />
@@ -26,10 +42,6 @@ export function SettingsView() {
           </Card>
         </div>
         <div className="space-y-4">
-          <Card className="p-5">
-            <h2 className="font-syne text-lg font-semibold">Account</h2>
-            <div className="mt-4"><UserControl /></div>
-          </Card>
           <Card className="p-5">
             <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
               <ShieldCheck className="h-5 w-5 text-accent-strong" />

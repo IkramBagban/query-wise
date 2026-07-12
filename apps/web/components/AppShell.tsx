@@ -15,7 +15,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Settings,
   Trash2,
   X,
 } from "lucide-react";
@@ -29,8 +28,8 @@ import {
 
 import { BrandMark } from "@/components/brand/BrandMark";
 import { ChatSearchDialog } from "@/components/ChatSearchDialog";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { UserControl } from "@/components/auth/UserControl";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarRowsSkeleton } from "@/components/LoadingSkeletons";
@@ -341,7 +340,6 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
           <IconNavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <IconNavButton label="Search chats" icon={Search} onClick={openSearch} />
           <IconNavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
-          {/* <IconNavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} /> */}
         </div>
 
         <div className="my-3 h-px w-8 bg-border" />
@@ -364,7 +362,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
         {/* Theme + user at bottom */}
         <div className="flex flex-col items-center gap-2 pb-1">
           <ThemeToggle iconOnly />
-          <UserControl iconOnly />
+          <AccountMenu iconOnly />
         </div>
       </aside>
     );
@@ -393,7 +391,6 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
           <NavLink href="/workspace/new" label="Home" icon={Home} onClick={onNavigate} />
           <NavButton label="Search chats" icon={Search} onClick={openSearch} />
           <NavLink href="/connections" label="Connections" icon={Database} onClick={onNavigate} />
-          {/* <NavLink href="/settings" label="Settings" icon={Settings} onClick={onNavigate} /> */}
         </nav>
       </div>
 
@@ -436,7 +433,7 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
         <SidebarChatHistory onNavigate={onNavigate} />
       </div>
       <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm">
-        <div className="min-w-0 flex-1"><UserControl /></div>
+        <div className="min-w-0 flex-1"><AccountMenu /></div>
         <ThemeToggle />
       </div>
     </aside>
