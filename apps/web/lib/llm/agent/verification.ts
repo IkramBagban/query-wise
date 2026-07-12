@@ -2,6 +2,8 @@ import { z } from "zod";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { generateStructuredObject } from "../structured";
 import type { Provider } from "../client";
+import { computeColumnStats, renderColumnStatsLine } from "./column-stats";
+import { MODEL_ROW_SLICE } from "./types";
 import type { AgentResultBlock, AgentRunState, AnalystAgentEmitters } from "./types";
 
 /**
@@ -58,15 +60,26 @@ function fanoutSuspectBlocks(blocks: AgentResultBlock[]): number[] {
     .map((block) => block.index);
 }
 
-/** Compact per-block evidence for the verifier: purpose, SQL, columns, first 5 rows. */
+/**
+ * Compact per-block evidence for the verifier (SPEC-10 §2.5).
+ *
+ * WHY 50 rows + a stats line: the incident's recheck used `rows.slice(0, 5)` =
+ * May–Sep (all ~$1M), so "revenue is consistent around $1M" PASSED — the Nov/Dec
+ * spike lived at rows 7–8, outside the window. The verifier must never see less
+ * than the claim it checks. We now show the full 50-row model slice AND a stats
+ * line computed over ALL rows, so any claim about consistency/trend/spikes/ranges
+ * can be checked against min/max/mean, not just the visible rows.
+ */
 function renderBlockEvidence(block: AgentResultBlock): string {
   const columns = block.result.columns.map((column) => column.name).join(", ");
-  const rows = JSON.stringify(block.result.rows.slice(0, 5));
+  const rows = JSON.stringify(block.result.rows.slice(0, MODEL_ROW_SLICE));
+  const statsLine = renderColumnStatsLine(computeColumnStats(block.result));
   return [
     `Block ${block.index} — ${block.purpose}`,
     `SQL: ${block.sql}`,
     `columns: ${columns}`,
     `rowCount: ${block.result.returnedRowCount}${block.result.truncated ? " (truncated)" : ""}`,
+    ...(statsLine ? [`stats (over ALL rows): ${statsLine}`] : []),
     `first rows: ${rows}`,
   ].join("\n");
 }
@@ -91,21 +104,34 @@ const VERIFIER_SYSTEM = [
   "You verify a data analyst's drafted answer against the query results it is based on.",
   "Check: does the answer address every part of the question? Do the stated numbers match the data?",
   "Is the time window correct? Could any SUM/AVG over a join be double-counting (fan-out)?",
+  "The stats line is computed over the full result — any claim about consistency, trend, spikes, or ranges MUST be checked against min/max/mean, not only the visible rows.",
+  "Check that the answer covers every block, in block-index order, and that ambiguous terms (e.g. 'top selling') state their interpretation (by units vs by revenue).",
   "Be strict but do not invent problems. Return ok=true with an empty issues array when the answer is sound.",
   "Only report concrete, actionable issues.",
 ].join("\n");
 
-function caveatFor(issues: VerificationResult["issues"]): string {
-  const details = issues.map((issue) => issue.detail.trim().replace(/\.$/, "")).filter(Boolean);
-  if (details.length === 0) return "";
-  return `\n\nNote: ${details.join("; ")}.`;
-}
-
-function correctionMessageFor(issues: VerificationResult["issues"]): string {
+/**
+ * Build the correction message (SPEC-02 §3, hardened in SPEC-10 §2.4).
+ *
+ * WHY inline evidence: in the incident the correction pass digested away the very
+ * rows it had to re-read. The correction turn no longer compacts (see index.ts),
+ * but we ALSO inline the flagged blocks' full model-slice rows + stats line here,
+ * so even a model that skips re-querying sees the real numbers (including the
+ * spike) while fixing the answer.
+ */
+function correctionMessageFor(issues: VerificationResult["issues"], blocks: AgentResultBlock[]): string {
   const lines = issues.map((issue) => `- (block ${issue.blockIndex}, ${issue.kind}) ${issue.detail}`);
+  const flagged = [...new Set(issues.map((issue) => issue.blockIndex))]
+    .map((index) => blocks.find((block) => block.index === index))
+    .filter((block): block is AgentResultBlock => Boolean(block));
+  const evidence = flagged.map(renderBlockEvidence).join("\n\n");
   return [
     "Verification found potential problems with the answer:",
     ...lines,
+    ...(evidence
+      ? ["", "Relevant data (stats span ALL rows — trust them over eyeballing):", evidence]
+      : []),
+    "",
     "Fix the query or the answer. Re-run SQL if needed, then rewrite the final answer. Do not repeat these instructions.",
   ].join("\n");
 }
@@ -170,7 +196,7 @@ export async function runSelfVerification(params: {
   const hasBudget = state.sqlAttempts < state.budget.maxSqlAttempts;
   if (hasBudget) {
     try {
-      const corrected = await params.runCorrection(correctionMessageFor(initial.issues), 2);
+      const corrected = await params.runCorrection(correctionMessageFor(initial.issues, state.blocks), 2);
       const answer = corrected.trim() || params.answer;
       const recheck = await verify(answer);
       if (!recheck || recheck.ok || recheck.issues.length === 0) {
@@ -182,25 +208,29 @@ export async function runSelfVerification(params: {
         });
         return answer;
       }
-      // Correction ran but issues remain — carry a caveat on the corrected answer.
+      // Correction ran but issues remain — record them in the transcript for
+      // debugging, but do NOT staple raw verifier notes onto the user's answer.
+      // The dev verifier model is noisy/hallucination-prone (e.g. flagging a value
+      // that is present), so surfacing its notes verbatim hurts more than it helps.
       state.transcript.push({
         tool: "verify",
         input: { corrected: true },
         outcome: "error",
         summary: `residual issues: ${recheck.issues.map((issue) => issue.kind).join(", ")}`,
       });
-      return answer + caveatFor(recheck.issues);
+      return answer;
     } catch (error) {
       devLogError("agent.verify.correction-failed", "Verification correction pass failed; appending caveat.", error, {});
     }
   }
 
-  // No budget (or correction threw): append a caveat rather than block the run.
+  // No budget (or correction threw): record the issues in the transcript but leave
+  // the user's answer clean (no raw verifier notes appended).
   state.transcript.push({
     tool: "verify",
     input: { corrected: false },
     outcome: "error",
     summary: `unresolved: ${initial.issues.map((issue) => issue.kind).join(", ")}`,
   });
-  return params.answer + caveatFor(initial.issues);
+  return params.answer;
 }
