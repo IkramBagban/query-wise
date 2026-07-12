@@ -440,6 +440,7 @@ async function executePublicWidget(
     title: widget.title,
     chartConfig,
     layout,
+    viewTransform: widget.viewTransform as unknown as PublicDashboardDto["dashboard"]["widgets"][number]["viewTransform"],
   };
   const query = ProviderQuerySchema.safeParse(widget.queryDefinition);
   if (!widget.queryRunId || !query.success) {
@@ -606,6 +607,7 @@ async function executePublicWidgets(
           title: widgets[index].title,
           chartConfig: chartConfig.data,
           layout: layout.data,
+          viewTransform: widgets[index].viewTransform as unknown as PublicDashboardDto["dashboard"]["widgets"][number]["viewTransform"],
           result: null,
           error: {
             code: "WIDGET_QUERY_EXECUTION_FAILED",

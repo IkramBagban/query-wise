@@ -11,8 +11,24 @@ export default function Page() {
           title="Profile"
           description="Update your personal details, security settings, and sign-in methods."
         />
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-          <UserProfile path="/profile" routing="path" />
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <UserProfile 
+            path="/profile" 
+            routing="path" 
+            appearance={{
+              elements: {
+                rootBox: "w-full",
+                card: "shadow-none bg-transparent w-full rounded-none border-0",
+                navbar: "border-r border-border hidden sm:block",
+                navbarMobileMenuButton: "text-foreground",
+                navbarButton: "text-muted-foreground hover:bg-muted hover:text-foreground",
+                headerTitle: "font-syne text-foreground",
+                headerSubtitle: "text-muted-foreground",
+                profileSectionTitleText: "text-foreground font-syne",
+                profileSectionPrimaryButton: "text-primary hover:bg-muted",
+              }
+            }}
+          />
         </div>
       </div>
     </div>

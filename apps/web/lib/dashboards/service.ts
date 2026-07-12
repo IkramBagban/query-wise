@@ -79,6 +79,7 @@ function ownerWidget(widget: DashboardWidget): DashboardOwnerDto["widgets"][numb
     snapshot: widget.snapshot as unknown as DashboardOwnerDto["widgets"][number]["snapshot"],
     queryDefinition:
       widget.queryDefinition as unknown as DashboardOwnerDto["widgets"][number]["queryDefinition"],
+    viewTransform: widget.viewTransform as unknown as DashboardOwnerDto["widgets"][number]["viewTransform"],
     connectionId: widget.connectionId,
     lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
     lastRefreshError: widget.lastRefreshError,
@@ -96,6 +97,7 @@ function viewerWidget(widget: DashboardWidget): DashboardViewerDto["widgets"][nu
     chartConfig: widget.chartConfig as unknown as DashboardViewerDto["widgets"][number]["chartConfig"],
     layout: widget.layout as unknown as DashboardViewerDto["widgets"][number]["layout"],
     snapshot: widget.snapshot as unknown as DashboardViewerDto["widgets"][number]["snapshot"],
+    viewTransform: widget.viewTransform as unknown as DashboardViewerDto["widgets"][number]["viewTransform"],
     lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
     lastRefreshError: widget.lastRefreshError,
     filterBinding: toFilterBinding(widget.filterBinding),
@@ -327,7 +329,8 @@ export async function createWidget(dashboardId: string, input: unknown) {
         connectionId,
         filterBinding: filterBinding ? jsonInput(filterBinding) : Prisma.JsonNull,
         queryDefinition: queryDefinition ? jsonInput(queryDefinition) : Prisma.JsonNull,
-      },
+        viewTransform: parsed.data.viewTransform ? jsonInput(parsed.data.viewTransform) : Prisma.JsonNull,
+      } as Prisma.DashboardWidgetUncheckedCreateInput,
     });
     await tx.dashboard.update({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
     return ownerWidget(widget);

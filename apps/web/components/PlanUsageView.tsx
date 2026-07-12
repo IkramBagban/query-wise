@@ -25,7 +25,7 @@ function getResetSummary() {
 }
 
 function IncludedFeature({ children }: { children: React.ReactNode }) {
-  return <li className="flex items-start gap-2 text-sm text-muted"><Check className="mt-0.5 size-4 shrink-0 text-accent-strong" />{children}</li>;
+  return <li className="flex items-start gap-2 text-sm text-muted-foreground"><Check className="mt-0.5 size-4 shrink-0 text-primary" />{children}</li>;
 }
 
 function PlanDetails({ data }: { data: PlanUsageDto }) {
@@ -37,29 +37,29 @@ function PlanDetails({ data }: { data: PlanUsageDto }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="relative overflow-hidden rounded-2xl bg-text px-6 py-7 text-bg shadow-[var(--shadow)] sm:px-8 sm:py-9">
-        <div className="absolute -right-12 -top-16 size-56 rounded-full bg-accent/25 blur-3xl" aria-hidden="true" />
+      <Card className="relative overflow-hidden px-6 py-7 sm:px-8 sm:py-9">
+        <div className="absolute -right-12 -top-16 size-56 rounded-full bg-primary/10 blur-3xl" aria-hidden="true" />
         <div className="relative flex flex-col gap-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="rounded-full border border-bg/20 bg-bg/10 px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-bg">{data.plan.displayName} plan</span>
-            {isFree ? <span className="text-sm text-bg/65">No payment method required</span> : <span className="text-sm text-bg/65">Pro features are active</span>}
+            <span className="rounded-full bg-primary/10 px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-primary">{data.plan.displayName} plan</span>
+            {isFree ? <span className="text-sm text-muted-foreground">No payment method required</span> : <span className="text-sm text-muted-foreground">Pro features are active</span>}
           </div>
           <div className="max-w-2xl">
-            <p className="font-syne text-5xl font-semibold tracking-tight sm:text-6xl">{data.remaining.questionsThisMonth}</p>
-            <h2 className="mt-1 font-syne text-2xl font-semibold sm:text-3xl">AI questions left this month</h2>
-            <p className="mt-2 text-sm text-bg/65">{data.usage.questionsThisMonth} of {data.limits.questionsPerMonth} used. Your monthly allowance resets {resets.monthly}.</p>
+            <p className="font-syne text-5xl font-semibold tracking-tight sm:text-6xl text-foreground">{data.remaining.questionsThisMonth}</p>
+            <h2 className="mt-1 font-syne text-2xl font-semibold sm:text-3xl text-foreground">AI questions left this month</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{data.usage.questionsThisMonth} of {data.limits.questionsPerMonth} used. Your monthly allowance resets {resets.monthly}.</p>
           </div>
           <div className="max-w-2xl">
-            <div className="h-1.5 overflow-hidden rounded-full bg-bg/15" aria-hidden="true"><div className="h-full rounded-full bg-accent" style={{ width: `${questionProgress}%` }} /></div>
-            <p className="mt-3 text-sm text-bg/70"><span className="font-medium text-bg">Today:</span> {data.remaining.questionsToday} of {data.limits.questionsPerDay} questions remaining. Resets {resets.daily}.</p>
+            <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${questionProgress}%` }} /></div>
+            <p className="mt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Today:</span> {data.remaining.questionsToday} of {data.limits.questionsPerDay} questions remaining. Resets {resets.daily}.</p>
           </div>
         </div>
-      </section>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section>
-          <h2 className="font-syne text-2xl font-semibold tracking-tight text-text">What your plan includes</h2>
-          <p className="mt-1 text-sm text-faint">Your limits are applied automatically when you create something new.</p>
+          <h2 className="font-syne text-2xl font-semibold tracking-tight text-foreground">What your plan includes</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Your limits are applied automatically when you create something new.</p>
           <ul className="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-2">
             <IncludedFeature>{data.limits.maxConnectionsNonDemo} database connection{data.limits.maxConnectionsNonDemo === 1 ? "" : "s"}, plus the demo database</IncludedFeature>
             <IncludedFeature>{data.limits.maxDashboards} dashboard{data.limits.maxDashboards === 1 ? "" : "s"}</IncludedFeature>
@@ -71,18 +71,18 @@ function PlanDetails({ data }: { data: PlanUsageDto }) {
         </section>
 
         {isFree ? (
-          <Card className="flex flex-col gap-4 p-5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-accent-soft text-accent-strong"><Sparkles className="size-4" /></div>
-            <div><h2 className="font-syne text-lg font-semibold text-text">Need more room?</h2><p className="mt-1 text-sm leading-6 text-muted">Pro will add higher limits and password-protected sharing. Checkout is not available yet.</p></div>
+          <Card className="flex flex-col gap-4 p-5 shadow-sm">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Sparkles className="size-4" /></div>
+            <div><h2 className="font-syne text-lg font-semibold text-foreground">Need more room?</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Pro will add higher limits and password-protected sharing. Checkout is not available yet.</p></div>
             <Button disabled className="w-full"><Sparkles data-icon="inline-start" />Coming soon</Button>
           </Card>
         ) : null}
       </div>
 
       {data.plan.status === "disabled" ? (
-        <Card className="flex items-start gap-3 border-danger/30 bg-danger/10 p-5">
-          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-danger" />
-          <div><h2 className="font-semibold text-text">Account disabled</h2><p className="mt-1 text-sm text-muted">You can still view and export your data. Contact support to restore account access.</p></div>
+        <Card className="flex items-start gap-3 border-destructive/30 bg-destructive/10 p-5 shadow-sm">
+          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-destructive" />
+          <div><h2 className="font-semibold text-foreground">Account disabled</h2><p className="mt-1 text-sm text-muted-foreground">You can still view and export your data. Contact support to restore account access.</p></div>
         </Card>
       ) : null}
     </div>
@@ -106,7 +106,7 @@ export function PlanUsageView() {
           actions={<Button variant="ghost" size="sm" onClick={refresh} disabled={loading}><RefreshCw data-icon="inline-start" />Refresh</Button>}
         />
         {loading ? <PlanUsageLoading /> : null}
-        {error ? <Card className="p-5"><p className="font-medium text-text">Usage is temporarily unavailable.</p><p className="mt-1 text-sm text-faint">Please try again in a moment.</p></Card> : null}
+        {error ? <Card className="p-5 shadow-sm"><p className="font-medium text-foreground">Usage is temporarily unavailable.</p><p className="mt-1 text-sm text-muted-foreground">Please try again in a moment.</p></Card> : null}
         {data ? <PlanDetails data={data} /> : null}
       </div>
     </div>
