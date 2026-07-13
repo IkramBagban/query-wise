@@ -84,7 +84,7 @@ function renderBlockEvidence(block: AgentResultBlock): string {
   ].join("\n");
 }
 
-function buildVerificationPrompt(question: string, blocks: AgentResultBlock[], answer: string, fanoutHint: number[]): string {
+export function buildVerificationPrompt(question: string, blocks: AgentResultBlock[], answer: string, fanoutHint: number[]): string {
   const evidence = blocks.map(renderBlockEvidence).join("\n\n");
   const hint =
     fanoutHint.length > 0
@@ -100,12 +100,15 @@ function buildVerificationPrompt(question: string, blocks: AgentResultBlock[], a
   ].join("\n");
 }
 
-const VERIFIER_SYSTEM = [
+export const VERIFIER_SYSTEM = [
   "You verify a data analyst's drafted answer against the query results it is based on.",
   "Check: does the answer address every part of the question? Do the stated numbers match the data?",
   "Is the time window correct? Could any SUM/AVG over a join be double-counting (fan-out)?",
   "The stats line is computed over the full result — any claim about consistency, trend, spikes, or ranges MUST be checked against min/max/mean, not only the visible rows.",
-  "Check that the answer covers every block, in block-index order, and that ambiguous terms (e.g. 'top selling') state their interpretation (by units vs by revenue).",
+  "Check that the answer covers every block (the analyst chooses the order by importance, so order is not itself an issue), and that ambiguous terms (e.g. 'top selling') state their interpretation (by units vs by revenue).",
+  "When the answer names WHEN an extreme or trend occurred (a month, week, or period), check the named period against the labels in the stats line and the rows. Right magnitude with the wrong period label is a number_mismatch.",
+  "question_not_answered includes soft asks: if the user asked to 'know more' about something and the answer neither goes deeper nor explicitly offers to, flag it.",
+  "Flag as number_mismatch any two readings that contradict each other about the same period (e.g. 'stable' weekly vs a described surge in the same months).",
   "Be strict but do not invent problems. Return ok=true with an empty issues array when the answer is sound.",
   "Only report concrete, actionable issues.",
 ].join("\n");
