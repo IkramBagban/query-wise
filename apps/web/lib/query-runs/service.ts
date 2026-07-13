@@ -1,10 +1,12 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import { Prisma, type QueryRun } from "@prisma/client";
 import { getAppDb, withAppDbTransaction } from "@query-wise/shared/app-db";
 import { requireUser } from "@/lib/auth";
 import { appendMessage, DEFAULT_CONVERSATION_TITLE } from "@/lib/conversations";
-import { AppError, requireFound } from "@query-wise/shared/dal/core";
+import { AppError, requireFound, resourceNotFound } from "@query-wise/shared/dal/core";
+import { ChartConfigSchema } from "@/lib/dashboards/schemas";
 import type { QueryResultBlock, QueryRunDto, QueryRunStatus } from "@query-wise/shared/types";
 import { getUserPlan, recordQuestionTerminal, reserveQuestionQuota } from "@query-wise/shared/plans";
 import { recordMetricEvent } from "@query-wise/shared/metrics";
@@ -189,6 +191,54 @@ export async function getOwnedQueryRun(queryRunId: string): Promise<QueryRun> {
   return requireFound(await getAppDb().queryRun.findFirst({
     where: { id: queryRunId, ownerUserId: userId },
   }));
+}
+
+// SPEC-09 §1/§2.1: validation for the alternate-views PATCH. The transform union
+// mirrors the shared `ViewTransform` type; `chartConfig` reuses the dashboard
+// ChartConfig schema so a view's config is exactly a pinnable chart config.
+const ViewTransformSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("topN"), n: z.number().int().min(1).max(500), measureKey: z.string().min(1).max(200), othersBucket: z.boolean() }).strict(),
+  z.object({ kind: z.literal("cumulative"), measureKeys: z.array(z.string().min(1).max(200)).min(1).max(50) }).strict(),
+  z.object({ kind: z.literal("percentOfTotal"), measureKeys: z.array(z.string().min(1).max(200)).min(1).max(50) }).strict(),
+  z.object({ kind: z.literal("pivot"), seriesKey: z.string().min(1).max(200) }).strict(),
+]);
+const BlockViewSchema = z
+  .object({
+    id: z.string().min(1).max(100),
+    chartConfig: ChartConfigSchema,
+    transform: ViewTransformSchema.nullable(),
+    stackMode: z.enum(["none", "stacked", "percent"]).optional(),
+    normalized: z.boolean().optional(),
+  })
+  .strict();
+const UpdateBlockViewsSchema = z.object({ views: z.array(BlockViewSchema).min(1).max(8) }).strict();
+
+/**
+ * SPEC-09 §2.1: persist a finalized block's alternate views. Owner-only (via
+ * getOwnedQueryRun), zod-validated, and additive — it only rewrites the target
+ * block inside the existing `resultBlocks` JSON. The back-compat invariant (§1)
+ * is enforced here: the block's `chartConfig` is re-mirrored to `views[0]` so
+ * legacy readers (shares, dashboards, old-message fallback) keep working.
+ */
+export async function updateBlockViews(queryRunId: string, blockIndex: number, input: unknown): Promise<QueryRunDto> {
+  const parsed = UpdateBlockViewsSchema.safeParse(input);
+  if (!parsed.success) throw new AppError("VALIDATION_FAILED", "Invalid block views payload.");
+  const run = await getOwnedQueryRun(queryRunId);
+  const blocks = ((run.resultBlocks as unknown as QueryResultBlock[]) ?? []).slice();
+  const targetIndex = blocks.findIndex((block) => block.index === blockIndex);
+  if (targetIndex === -1) throw resourceNotFound();
+  const views = parsed.data.views as unknown as NonNullable<QueryResultBlock["views"]>;
+  blocks[targetIndex] = {
+    ...blocks[targetIndex],
+    views,
+    // Back-compat mirror: chartConfig MUST equal views[0].chartConfig whenever views exist.
+    chartConfig: views[0].chartConfig,
+  };
+  const saved = await getAppDb().queryRun.update({
+    where: { id: queryRunId },
+    data: { resultBlocks: blocks as unknown as Prisma.InputJsonValue },
+  });
+  return queryRunDto(saved);
 }
 
 // todo: explain what this does. 

@@ -70,8 +70,9 @@ export function createSetChartTool(deps: { state: AgentRunState; emitters: Analy
   const { state, emitters } = deps;
   return tool({
     description:
-      "Choose the chart for a result block. Measures (numeric) go on yKey/yKeys/valueKey; the dimension " +
-      "(categorical or time) goes on xKey/nameKey. Omit blockIndex to target the latest block.",
+      "Choose the chart for a result block's default view. Measures (numeric) go on yKey/yKeys/valueKey; the dimension " +
+      "(categorical or time) goes on xKey/nameKey. Omit blockIndex to target the latest block. " +
+      "The user can add alternate views (top-N, cumulative, % of total, pivot) themselves; do not run new SQL merely to re-arrange data already returned.",
     inputSchema: z.object({
       blockIndex: z.number().int().min(0).optional(),
       type: z.enum(CHART_TYPES),

@@ -70,6 +70,12 @@ export const conversationsApi = {
   submitStream: (input: Omit<SubmitQueryInput, "idempotencyKey">, onEvent: (event: QueryStreamEvent) => void) =>
     streamQuerySubmission({ ...input, idempotencyKey: createIdempotencyKey() }, onEvent),
   queryRun: (id: string) => apiRequest<QueryRunDto>(`/api/query/${id}`),
+  // SPEC-09 §2.1: persist the alternate views for one finalized result block.
+  updateBlockViews: (queryRunId: string, blockIndex: number, views: import("@query-wise/shared/types").BlockView[]) =>
+    apiRequest<QueryRunDto>(`/api/query/${queryRunId}/blocks/${blockIndex}/views`, {
+      method: "PATCH",
+      body: { views },
+    }),
 };
 
 async function streamQuerySubmission(input: SubmitQueryInput, onEvent: (event: QueryStreamEvent) => void) {

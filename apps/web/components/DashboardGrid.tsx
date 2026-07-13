@@ -450,6 +450,7 @@ export function DashboardGrid({
                 title: widget.title,
                 mode,
                 chartConfig: widget.chartConfig,
+                viewTransform: widget.viewTransform ?? null,
                 preview: isBoundedResultPreview(state.preview)
                   ? state.preview
                   : (widget.snapshot as BoundedResultPreview),

@@ -265,7 +265,11 @@ export async function runAgentQueryRun(input: {
     const type = (block.chartConfig as { type?: string } | null)?.type;
     return Boolean(type) && type !== "table" && type !== "none";
   });
-  const sqlAttempts = result.transcript.filter((step) => step.tool === "run_sql").length;
+  // SPEC-09 §3.2: quiet probes are counted separately — exclude them from the
+  // sqlAttempts metric so probing doesn't inflate answer-query usage.
+  const sqlAttempts = result.transcript.filter(
+    (step) => step.tool === "run_sql" && (step.input as { presentation?: string } | null)?.presentation !== "quiet",
+  ).length;
   void finalizeQueryRunUsage({
     queryRunId: run.id,
     userId: run.ownerUserId,

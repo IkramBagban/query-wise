@@ -9,9 +9,40 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ResourceState";
-import { V2Chart } from "@/components/V2Chart";
+import { V2Chart, previewToQueryResult } from "@/components/V2Chart";
+import { resolveView } from "@/lib/charts/views";
 import { useApiResource } from "@/hooks";
 import { publicSharesApi, V2ApiError } from "@/lib/api-client";
+import type { BoundedResultPreview, ChartConfig, PublicChartConfig, ViewTransform } from "@query-wise/shared/types";
+
+/**
+ * SPEC-09 §2.3: a shared widget re-applies its pinned transform client-side on the
+ * shared preview — same rows, different arrangement, no new data exposure.
+ */
+function PublicWidgetChart({
+  result,
+  chartConfig,
+  viewTransform,
+}: {
+  result: BoundedResultPreview;
+  chartConfig: PublicChartConfig;
+  viewTransform: ViewTransform | null;
+}) {
+  const resolved = viewTransform
+    ? resolveView(previewToQueryResult(result), {
+        id: "public",
+        chartConfig: chartConfig as ChartConfig,
+        transform: viewTransform,
+      })
+    : null;
+  return (
+    <V2Chart
+      preview={result}
+      config={(resolved?.config ?? chartConfig) as ChartConfig}
+      resultOverride={resolved?.result}
+    />
+  );
+}
 
 export function PublicShareView({ token }: { token: string }) {
   const [password, setPassword] = useState(""); const [unlockError, setUnlockError] = useState<string | null>(null); const [unlocking, setUnlocking] = useState(false);
@@ -45,7 +76,11 @@ export function PublicShareView({ token }: { token: string }) {
             <div className="min-h-0 flex-1 overflow-hidden p-4">
               {widget.result ? (
                 <div className="h-full w-full">
-                  <V2Chart preview={widget.result} config={widget.chartConfig} />
+                  <PublicWidgetChart
+                    result={widget.result}
+                    chartConfig={widget.chartConfig}
+                    viewTransform={widget.viewTransform ?? null}
+                  />
                 </div>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center rounded-lg border border-warning/30 bg-warning/10 p-5 text-center">

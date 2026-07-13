@@ -289,6 +289,10 @@ model DashboardWidget {
   // SPEC-06 §5: { dateColumn, tableAlias, defaultRange } | null. Present only when
   // the pinned query carries the :qw_from/:qw_to parameter markers.
   filterBinding   Json?    @map("filter_binding")
+  // SPEC-09 §2.3: the pinned view's client-side transform (ViewTransform | null).
+  // Applied after snapshot/live data load, before charting. Nullable — pre-SPEC-09
+  // widgets (and views pinning the raw dataset) simply render the snapshot as-is.
+  viewTransform   Json?    @map("view_transform")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

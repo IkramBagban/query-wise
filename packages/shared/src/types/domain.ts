@@ -42,6 +42,25 @@ export interface MessageDto {
   queryRunId: ResourceId | null; metadata: MessageRecord["metadata"]; createdAt: IsoDateTime;
 }
 export type QueryResultBlockValidation = "valid" | "blocked";
+// SPEC-09 §1: a deterministic, client-side derivation of a block's dataset. Views
+// are specs, not materialized data — the transformed rows are recomputed on render
+// from the block's bounded `resultPreview`, so nothing about execution, persistence
+// size, or the 500-row cap changes.
+export type ViewTransform =
+  | { kind: "topN"; n: number; measureKey: string; othersBucket: boolean }
+  | { kind: "cumulative"; measureKeys: string[] }
+  | { kind: "percentOfTotal"; measureKeys: string[] }
+  | { kind: "pivot"; seriesKey: string };
+// SPEC-09 §1: one persisted view of a block. Multiple views share the block's single
+// dataset (and its single auditable SQL statement); only the arrangement differs.
+export interface BlockView {
+  id: string;
+  chartConfig: ChartConfig;
+  transform: ViewTransform | null;
+  // Persisted user toggles that were ephemeral local state before SPEC-09.
+  stackMode?: "none" | "stacked" | "percent";
+  normalized?: boolean;
+}
 export interface QueryResultBlock {
   index: number;
   purpose: string;
@@ -53,6 +72,10 @@ export interface QueryResultBlock {
   truncated: boolean;
   executionTimeMs: number;
   chartConfig: ChartConfig | null;
+  // SPEC-09 §1: optional alternate views. Historical blocks have only `chartConfig`.
+  // Back-compat invariant: when present, `chartConfig` MUST mirror `views[0].chartConfig`
+  // so old readers (shares, dashboards, legacy messages) keep working untouched.
+  views?: BlockView[];
 }
 export interface QueryRunRecord extends OwnedResource {
   conversationId: ResourceId; connectionId: ResourceId; triggeringMessageId: ResourceId; responseMessageId: ResourceId | null;
@@ -76,11 +99,11 @@ export type DashboardDateRange = { preset: DateRangePreset } | { from: IsoDateTi
 // when the stored SQL carries the :qw_from/:qw_to parameter markers.
 export interface WidgetFilterBinding { dateColumn: string; tableAlias: string | null; defaultRange: DashboardDateRange }
 export interface DashboardRecord extends OwnedResource, SoftDeletableResource { name: string }
-export interface DashboardWidgetRecord extends DurableResource { dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null; mode: WidgetMode; connectionId: ResourceId | null; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null }
+export interface DashboardWidgetRecord extends DurableResource { dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null; mode: WidgetMode; connectionId: ResourceId | null; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null; viewTransform: ViewTransform | null }
 export interface DashboardAccessGrantRecord extends DurableResource { dashboardId: ResourceId; recipientUserId: ClerkUserId; permission: "view" }
 export interface DashboardShareLinkRecord extends DurableResource { dashboardId: ResourceId; tokenHash: string; encryptedToken: EncryptedPayload | null; passwordHash: string | null; version: number; viewCount: number; lastViewedAt: IsoDateTime | null; expiresAt: IsoDateTime | null; revokedAt: IsoDateTime | null }
-export interface DashboardOwnerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null; connectionId: ResourceId | null; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null }
-export interface DashboardViewerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null }
+export interface DashboardOwnerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; queryRunId: ResourceId | null; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; queryDefinition: ProviderQuery | null; connectionId: ResourceId | null; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null; viewTransform: ViewTransform | null }
+export interface DashboardViewerWidgetDto extends DurableResource { id: ResourceId; dashboardId: ResourceId; title: string; chartConfig: ChartConfig; layout: WidgetLayout; snapshot: BoundedResultPreview; lastRefreshedAt: IsoDateTime | null; lastRefreshError: string | null; filterBinding: WidgetFilterBinding | null; viewTransform: ViewTransform | null }
 // SPEC-06 §2 (as-built: whole-dashboard mode): the dashboard is live or snapshot.
 export interface DashboardOwnerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "owner"; mode: WidgetMode; defaultDateRange: DashboardDateRange | null; refreshIntervalSeconds: number | null; widgets: DashboardOwnerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
 export interface DashboardViewerDto { contractVersion: ContractVersion; id: ResourceId; name: string; access: "viewer"; mode: WidgetMode; defaultDateRange: DashboardDateRange | null; refreshIntervalSeconds: number | null; widgets: DashboardViewerWidgetDto[]; createdAt: IsoDateTime; updatedAt: IsoDateTime }
@@ -88,7 +111,7 @@ export interface DashboardViewerDto { contractVersion: ContractVersion; id: Reso
 // preview on success; `error` is set (and the old snapshot kept) on failure.
 export interface WidgetRefreshResultDto { widgetId: ResourceId; status: "ok" | "error" | "skipped"; result: BoundedResultPreview | null; lastRefreshedAt: IsoDateTime | null; error: { code: string; message: string } | null }
 export interface DashboardRefreshResultDto { contractVersion: ContractVersion; dashboardId: ResourceId; widgets: WidgetRefreshResultDto[] }
-export interface PublicDashboardWidgetDto { id: ResourceId; title: string; chartConfig: PublicChartConfig; layout: WidgetLayout; result: BoundedResultPreview | null; error: { code: string; message: string } | null }
+export interface PublicDashboardWidgetDto { id: ResourceId; title: string; chartConfig: PublicChartConfig; layout: WidgetLayout; result: BoundedResultPreview | null; error: { code: string; message: string } | null; viewTransform: ViewTransform | null }
 export interface PublicDashboardDto { contractVersion: ContractVersion; dashboard: { name: string; updatedAt: IsoDateTime; widgets: PublicDashboardWidgetDto[] }; share: { expiresAt: IsoDateTime | null } }
 export interface AuditLogRecord extends DurableResource { actorUserId: ClerkUserId | null; action: string; resourceType: string; resourceId: string | null; outcome: string; metadata: Record<string, JsonValue> }
 export interface DurableJobRecord extends DurableResource { type: string; payloadVersion: number; payload: Record<string, JsonValue>; idempotencyKey: string; status: JobStatus; priority: number; attempts: number; maxAttempts: number; availableAt: IsoDateTime; leaseOwner: string | null; leaseExpiresAt: IsoDateTime | null; lastErrorCode: string | null; startedAt: IsoDateTime | null; completedAt: IsoDateTime | null }

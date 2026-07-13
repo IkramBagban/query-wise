@@ -141,6 +141,8 @@ export interface CreateWidgetInput {
   chartConfig: ChartConfig;
   layout: { schemaVersion: 1; x: number; y: number; w: number; h: number };
   snapshot: BoundedResultPreview;
+  // SPEC-09 §2.3: the pinned view's client-side transform (null/omitted = raw dataset).
+  viewTransform?: import("@query-wise/shared/types").ViewTransform | null;
 }
 
 export type {
