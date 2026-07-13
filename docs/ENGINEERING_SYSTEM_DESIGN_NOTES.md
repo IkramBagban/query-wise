@@ -2167,3 +2167,100 @@ test runner. Behavior and the spec's logical placement are preserved; `index.ts`
   Confirm a far-under-budget 2-query run shows no digested output in the step logs
   (`agent.context.assembled`), and a 12+ turn over-budget conversation logs
   `agent.history.trimmed` while sending the final question intact.
+
+## Analyst voice, verifier gaps & interleaved narration (SPEC-11, 2026-07-13)
+
+**What changed:** Three things, three commits. (§A/§B) The ANSWERING prompt moved
+from an *inventory* ("cover every block, in ascending index order, one reading each")
+to an analyst *briefing* (bolded headline first, every number a comparison, anomalies
+flagged with a hypothesis, soft asks answered or explicitly offered, next-step
+questions to close); the verifier gained three checks. (§C) Answer text is no longer a
+single blob appended after the timeline — every contiguous run of answer text becomes
+a positioned `narration` transcript step, so the agent can interleave
+think→chart→explain→chart→synthesis in whatever shape fits the question.
+
+### §A — briefing ANSWERING (`system-prompt.ts`)
+- Replaced the per-block choreography and the SPEC-10 "Cover blocks in ascending block
+  order" line (acceptance 4b) with six briefing rules. Block coverage is still
+  required, but ORDER/placement is the agent's call (by importance, not execution).
+- Kept intact: view-switch line, cross-block synthesis line, never-reproduce-rows,
+  markdown/bold rules, block-reference style, ambiguity-interpretation line.
+
+### §B — verifier gaps (`verification.ts`)
+Three additions to `VERIFIER_SYSTEM`, no schema change (existing issue kinds suffice):
+1. **Period-label attribution** — right magnitude with the wrong month/week/period is a
+   `number_mismatch`. The stats line already carries labels (`max 2729077.09 (2025-11)`),
+   so the verifier has the ground truth to catch "the Nov spike happened in October".
+2. **Soft-ask coverage** — `question_not_answered` now includes "tell me more about X"
+   that got neither a deeper look nor an explicit offer.
+3. **Internal consistency** — two readings contradicting each other about the same
+   period (weekly "stable" vs a monthly surge) is a `number_mismatch`.
+- Also dropped the "in block-index order" coverage requirement (deviation from the
+  literal §B text, mandated by acceptance 4b: the analyst now chooses order, so the
+  verifier must not treat importance-ordering as an error).
+
+### §C — interleaved narration (the design rule: arbitrary interleaving, agent owns shape)
+- **Stream loop (`index.ts`).** The `fullStream` consumer now tracks TWO segment
+  accumulators (thinking + narration) via a shared `consumeStream`. A reasoning-delta
+  flushes any open narration first; a text-delta flushes any open thinking first; a
+  tool-call flushes both — so each thought/prose run lands as its own ordered
+  transcript step at its true position. Thinking → `{tool:"thinking"}` (unchanged);
+  answer text → new `{tool:"narration", outcome:"ok", summary:<text>}`. There is no
+  distinguished "final answer" segment. The finalize fallback emits its answer as an
+  end-positioned narration segment too.
+- **`content` back-compat.** The returned `answer` = all narration segments joined by
+  a blank line, so title generation, conversation memory, shares, `[SQL used]` history
+  annotation, and legacy renderers keep working untouched. The no-narration guardrail
+  is unchanged: zero answer text anywhere still falls back to last-thought / "Here is
+  the analysis" / the "model returned no answer text" error.
+- **Prompt (`system-prompt.ts`).** A new SHAPE note hands the choice of response shape
+  to the agent as judgment ("run all queries then walk through; or explain each as it
+  lands; or headline first, evidence after — choose what reads best"). Deliberately
+  NO example sequence — examples become templates. The parallel-call guidance moved
+  into this note.
+- **Correction safety.** The verification correction pass rewrites the whole answer, so
+  before it runs we strip the draft's narration steps in place (preserving the
+  transcript reference); the correction then appends fresh narration. Prevents a
+  reloaded transcript from showing both the draft and the corrected prose.
+- **Live + reloaded UI (`AgentActivity.tsx`, `WorkspaceView.tsx`).** New `narration`
+  TimelineStep. `activitiesToSteps` (live, from `narration`/`narration-delta`
+  activities) and `parseAgentTranscript` (reloaded, from persisted steps) produce the
+  IDENTICAL shape, so the two views are pixel-for-pixel. `AgentTimeline` renders
+  narration as full-width markdown at its position (no rail dot, `mt-1.5`); a
+  preceding row ends its rail cleanly above it. The trailing answer blob is gone (it
+  would double-render); finalized messages suppress the `content` blob when narration
+  steps exist. `showWritingHint` still keys off `textDelta` (the paired `text-delta`
+  event fires on every mid-run segment, so the hint never claims "Writing analysis"
+  while prose is already on screen).
+
+### Compaction & narration
+No change needed: `compactToolResults` only digests `role:"tool"` `run_sql` results.
+Narration is assistant text in the model messages and is never a digest candidate, so
+"compaction never digests narration" (§C.5) holds by construction. The verifier still
+receives the full concatenated answer (all narration segments) as before.
+
+### Tradeoffs / risks
+- More transcript steps per run (one per prose run). Each is small; persistence is
+  additive JSON under `metadata.agentV3.transcript`.
+- Correction narration lands at the END (after all tool steps) rather than interleaved,
+  because the correction is a short tool-free rewrite — acceptable, correctness > shape,
+  and rare.
+- `content` for new messages is the joined narration; legacy consumers that assumed a
+  single trailing paragraph still get faithful prose (segments joined by blank lines).
+
+### How to test
+- Unit (pure `node:assert` + `tsx`, existing convention):
+  `apps/web/lib/llm/agent/verification.test.ts` — asserts the three §B additions are
+  present in `VERIFIER_SYSTEM`, the block-index-order requirement is gone, and
+  `buildVerificationPrompt` hands the verifier the labeled extreme (`2025-11`) + peak
+  value for the incident fixture (LLM-free). Run: `pnpm --filter @query-wise/web exec
+  tsx lib/llm/agent/verification.test.ts`.
+- Type/build: `tsc --noEmit -p apps/web` clean; `pnpm --filter @query-wise/web build`.
+- Live (acceptance §1/§3, demo DB): re-ask the 2026-07-12 four-part question — the
+  answer must open with a bolded headline, attribute the surge to Nov–Dec (not
+  Oct–Nov), keep weekly/monthly readings consistent, flag the Mar-30 boundary week as a
+  possible artifact with an offer, give the top product a deeper look or explicit
+  offer, and close with next-step questions (no meta-note). Then ask several multi-block
+  questions and confirm the response SHAPE varies across them (e.g. one interleaved
+  walkthrough, one batch-then-explain) and that each narration segment renders at its
+  true position both live and after reload.
