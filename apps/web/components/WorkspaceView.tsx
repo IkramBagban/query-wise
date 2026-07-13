@@ -62,7 +62,7 @@ import {
   type ConnectionListItem,
   type QueryStreamEvent,
 } from "@/lib/api-client";
-import type { BoundedResultPreview, ChartConfig, ViewTransform } from "@query-wise/shared/types";
+import type { BoundedResultPreview, ChartConfig, ProviderQuery, QueryResultBlock, ViewTransform } from "@query-wise/shared/types";
 
 const suggestions = [
   "What changed in the last 30 days?",
@@ -1097,7 +1097,7 @@ function AssistantMessage({
   message: ConversationMessageDto;
   dashboardOptions: { value: string; label: string }[];
   onCreateDashboard: (name: string) => Promise<string>;
-  onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string, viewTransform: ViewTransform | null) => Promise<void>;
+  onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string, viewTransform: ViewTransform | null, block: QueryResultBlock | undefined) => Promise<void>;
 }) {
   const blocks = message.queryRun?.resultBlocks;
   const hasBlocks = blocks && blocks.length > 0;
@@ -1486,20 +1486,27 @@ export function ConversationView({ conversationId }: { conversationId: string })
     chartConfig: ChartConfig,
     targetDashboardId: string,
     viewTransform: ViewTransform | null = null,
+    block?: QueryResultBlock,
   ) {
     const run = message.queryRun;
-    if (!targetDashboardId || !message.queryRunId || !isBoundedResultPreview(run?.resultPreview)) {
+    // Pin the specific block's data (SQL + snapshot), not the legacy block-0
+    // mirror — so any block a user opens can be saved as its own widget.
+    const preview = block ? block.resultPreview : run?.resultPreview;
+    const queryDefinition: ProviderQuery | undefined = block
+      ? { kind: "sql", dialectId: "postgresql", text: block.sql }
+      : run?.generatedQuery;
+    if (!targetDashboardId || !message.queryRunId || !isBoundedResultPreview(preview)) {
       throw new Error("This chart is not ready to save.");
     }
     setError(null);
     try {
       await dashboardsApi.createWidget(targetDashboardId, {
-        title: chartConfig.title ?? conversation.data?.title ?? "Query result",
+        title: chartConfig.title ?? block?.purpose ?? conversation.data?.title ?? "Query result",
         queryRunId: message.queryRunId,
-        queryDefinition: run.generatedQuery,
+        queryDefinition,
         chartConfig,
         layout: { schemaVersion: 1, x: 0, y: 0, w: 6, h: 4 },
-        snapshot: run.resultPreview,
+        snapshot: preview,
         viewTransform,
       });
     } catch (reason) {

@@ -82,6 +82,7 @@ interface ConversationResultCardProps {
     config: ChartConfig,
     dashboardId: string,
     viewTransform: import("@query-wise/shared/types").ViewTransform | null,
+    block: QueryResultBlock | undefined,
   ) => Promise<void>;
 }
 
@@ -393,7 +394,9 @@ export function ConversationResultCard({
   const rowCount = block?.rowCount ?? run.returnedRowCount ?? preview.returnedRowCount;
   const executionTimeMs = block?.executionTimeMs ?? run.executionTimeMs;
   const sqlText = block?.sql ?? run.generatedQuery?.text;
-  const showPin = !block || block.index === 0;
+  // Every result block can be pinned — saveResult uses the block's own SQL and
+  // snapshot (not the legacy block-0 mirror), so pinning block N saves block N.
+  const showPin = true;
   const stats = summarizeNumericColumn(result.columns, result.rows, [
     (baseConfig as { valueKey?: string }).valueKey,
     (baseConfig as { yKey?: string }).yKey,
@@ -436,7 +439,7 @@ export function ConversationResultCard({
   // SPEC-09 §2.3: pinning captures the ACTIVE view — its config and its transform —
   // so the widget re-applies the same arrangement on snapshot/live/share render.
   const save = async (dashboardId: string) => {
-    await onSave(message, config, dashboardId, activeView.transform);
+    await onSave(message, config, dashboardId, activeView.transform, block);
     pushToast({ title: "Chart saved to dashboard", variant: "success" });
   };
 
