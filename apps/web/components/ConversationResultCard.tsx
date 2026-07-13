@@ -332,6 +332,10 @@ export function ConversationResultCard({
   // Same data-aware option logic the inline card uses, so the fullscreen dialog
   // offers only valid chart types instead of all five.
   const viewOptions = previewResult ? computeResultViewOptions(previewResult) : null;
+  // A single-row numeric result renders as a KPI (StatCard) everywhere via V2Chart,
+  // so the inspector's chart-type picker is meaningless — hide it (matches the
+  // inline card, which offers no chart types for this shape).
+  const isKpiResult = Boolean(viewOptions?.isSingleRow && viewOptions?.hasNumericColumn);
   const dialogChartTypes = viewOptions?.chartTypes ?? ["bar"];
   const initialType: ChartType =
     baseConfig.type !== "table" && dialogChartTypes.includes(baseConfig.type)
@@ -596,7 +600,7 @@ export function ConversationResultCard({
                 </div>
               </section>
 
-              {detailsView === "chart" ? (
+              {detailsView === "chart" && !isKpiResult ? (
                 <section>
                   <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">Chart type</p>
                   <div className="mt-2 grid grid-cols-2 gap-1.5" aria-label="Chart type">

@@ -1,6 +1,8 @@
 "use client";
 
 import { ChartRenderer } from "@/components/charts/ChartRenderer";
+import { StatCard } from "@/components/charts/StatCard";
+import { computeResultViewOptions } from "@/lib/charts/options";
 import type { QueryResult } from "@/types";
 import type { BoundedResultPreview, ChartConfig } from "@query-wise/shared/types";
 
@@ -58,6 +60,16 @@ export function V2Chart({
   }
   const result =
     resultOverride ?? previewToQueryResult(preview as BoundedResultPreview);
+  // A single-row numeric result is a KPI, not a chart: rendering it as a bar/line
+  // gives a meaningless single full-width bar. Mirror the inline card's Overview
+  // (StatCard) here so the inspector modal, dashboard widgets, and public shares —
+  // all of which route through V2Chart — show the same KPI tiles the card does.
+  // `table` is honored (the user explicitly asked for rows); everything else with
+  // a single numeric row falls back to the stat view.
+  const viewOptions = computeResultViewOptions(result);
+  if (config.type !== "table" && viewOptions.isSingleRow && viewOptions.hasNumericColumn) {
+    return <StatCard result={result} />;
+  }
   // ChartRenderer only switches on config.type; availableTypes is informational
   // (the type switcher is gated by data shape upstream in ResultBlockCard).
   return (
