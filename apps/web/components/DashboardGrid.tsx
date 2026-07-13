@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, LayoutGrid, RefreshCw, RotateCcw } from "lucide-react";
+import { AlertCircle, Check, RefreshCw, RotateCcw } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor } from "react-grid-layout";
 import type { Layout, LayoutItem } from "react-grid-layout";
 
@@ -27,10 +27,11 @@ const WAVE_STAGGER_MS = 60; // §8b staggered refresh wave
 export interface DashboardGridProps {
   widgets: DashboardWidget[];
   dashboardId: string;
-  isEditing: boolean;
+  canEdit: boolean;
   onLayoutSaved?: () => void;
   busyWidget?: string | null;
   onRemoveWidget?: (widgetId: string) => void;
+  onRenameWidget?: (widgetId: string, title: string) => Promise<void> | void;
   canRefresh?: boolean;
   mode?: WidgetMode;
   defaultDateRange?: DashboardDateRange | null;
@@ -92,10 +93,11 @@ function isStale(lastRefreshedAt: string | null, windowMs: number): boolean {
 export function DashboardGrid({
   widgets,
   dashboardId,
-  isEditing,
+  canEdit,
   onLayoutSaved,
   busyWidget = null,
   onRemoveWidget,
+  onRenameWidget,
   canRefresh = false,
   mode: modeProp = "live",
   defaultDateRange = null,
@@ -111,7 +113,7 @@ export function DashboardGrid({
   const failedLayoutRef = useRef<Layout | null>(null);
   const savingRef = useRef(false);
   const scopeRef = useRef(0);
-  const previousEditingRef = useRef(isEditing);
+  const previousEditingRef = useRef(canEdit);
 
   /* ---------------------------- live state ------------------------------- */
 
@@ -328,13 +330,13 @@ export function DashboardGrid({
   );
 
   useEffect(() => {
-    if (previousEditingRef.current && !isEditing && pendingLayoutRef.current) {
+    if (previousEditingRef.current && !canEdit && pendingLayoutRef.current) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = null;
       queueMicrotask(() => void drainSaveQueue());
     }
-    previousEditingRef.current = isEditing;
-  }, [drainSaveQueue, isEditing]);
+    previousEditingRef.current = canEdit;
+  }, [drainSaveQueue, canEdit]);
 
   useEffect(() => {
     return () => {
@@ -361,43 +363,43 @@ export function DashboardGrid({
   const anyRefreshing = refreshingAll || Object.values(states).some((s) => s.refreshing);
 
   return (
-    <div className="space-y-2">
-      {/* SPEC-06 §2/§5/§6: dashboard-level mode toggle + (when live) the date range
-          and Refresh all — a tight, left-aligned control row (no empty container). */}
+    <div className="space-y-3">
+      {/* One clean toolbar: mode + range on the left, an ambient autosave chip and
+          Refresh on the right. No edit mode — the board is always live-editable and
+          every drag/resize autosaves. */}
       {canRefresh ? (
         <div className="flex flex-wrap items-center gap-2">
           <ModeToggle value={mode} onChange={changeMode} disabled={anyRefreshing} />
           {isLive && hasFilterBound ? (
             <DateRangePicker value={range} onChange={changeRange} disabled={anyRefreshing} />
           ) : null}
-          {isLive ? (
-            <Button type="button" variant="ghost" size="sm" onClick={() => void refreshAll()} disabled={anyRefreshing}>
-              <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
-              {anyRefreshing ? "Refreshing…" : "Refresh all"}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
 
-      {isEditing && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent-line bg-accent-soft px-4 py-2.5 text-[13px] text-muted">
-          <div className="flex items-center gap-2">
-            <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-accent-strong" />
-            <span>Drag to rearrange · resize from any edge — changes save on their own</span>
-          </div>
-          <div aria-live="polite" aria-atomic="true" className="font-mono text-[11px]">
-            {saveState === "saving" ? (
-              <span className="flex items-center gap-1.5 text-muted">
-                <Spinner size="sm" /> saving…
+          <div className="ml-auto flex items-center gap-2">
+            {canEdit ? (
+              <span aria-live="polite" aria-atomic="true" className="font-mono text-[11px] text-faint">
+                {saveState === "saving" ? (
+                  <span className="flex items-center gap-1.5"><Spinner size="sm" /> saving…</span>
+                ) : saveState === "saved" ? (
+                  <span className="flex items-center gap-1.5 text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+                    <Check className="h-3 w-3" /> saved
+                  </span>
+                ) : null}
               </span>
-            ) : saveState === "saved" ? (
-              <span className="flex items-center gap-1.5 text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
-                <Check className="h-3.5 w-3.5" /> layout saved
-              </span>
+            ) : null}
+            {isLive ? (
+              <button
+                type="button"
+                onClick={() => void refreshAll()}
+                disabled={anyRefreshing}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted shadow-sm transition-colors hover:border-border-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
+                {anyRefreshing ? "Refreshing…" : "Refresh"}
+              </button>
             ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
       {saveState === "error" ? (
         <div
@@ -435,9 +437,9 @@ export function DashboardGrid({
             cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
             rowHeight={80}
             margin={[12, 12]}
-            dragConfig={{ enabled: isEditing }}
-            resizeConfig={{ enabled: isEditing, handles: ["se", "sw", "ne", "nw", "e", "w", "n", "s"] }}
-            onLayoutChange={isEditing ? (newLayout) => handleLayoutChange(newLayout) : undefined}
+            dragConfig={{ enabled: canEdit, handle: ".qw-drag-handle", cancel: ".qw-no-drag" }}
+            resizeConfig={{ enabled: canEdit, handles: ["se", "sw", "ne", "nw", "e", "w", "n", "s"] }}
+            onLayoutChange={canEdit ? (newLayout) => handleLayoutChange(newLayout) : undefined}
             compactor={verticalCompactor}
           >
             {layout.map((layoutItem) => {
@@ -464,10 +466,11 @@ export function DashboardGrid({
                 <div key={widget.id}>
                   <LiveWidgetCard
                     view={view}
-                    isEditing={isEditing}
+                    canEdit={canEdit}
                     removing={busyWidget === widget.id}
                     onRefresh={() => void refreshOne(widget.id, range)}
                     onRemove={onRemoveWidget ? () => onRemoveWidget(widget.id) : undefined}
+                    onRename={onRenameWidget ? (title) => onRenameWidget(widget.id, title) : undefined}
                   />
                 </div>
               );
@@ -476,22 +479,5 @@ export function DashboardGrid({
         )}
       </div>
     </div>
-  );
-}
-
-export function EditLayoutButton({ isEditing, onToggle }: { isEditing: boolean; onToggle: () => void }) {
-  if (isEditing) {
-    return (
-      <Button type="button" variant="primary" size="sm" onClick={onToggle}>
-        <Check className="h-3.5 w-3.5" />
-        Done editing
-      </Button>
-    );
-  }
-  return (
-    <Button type="button" variant="ghost" size="sm" onClick={onToggle}>
-      <LayoutGrid className="h-3.5 w-3.5" />
-      Edit layout
-    </Button>
   );
 }

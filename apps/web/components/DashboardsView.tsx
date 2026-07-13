@@ -28,7 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { DashboardGrid, EditLayoutButton, WidgetCardSkeleton } from "@/components/DashboardGrid";
+import { DashboardGrid, WidgetCardSkeleton } from "@/components/DashboardGrid";
 import { ModeBadge } from "@/components/dashboard/primitives";
 import { EmptyState, ErrorState } from "@/components/ResourceState";
 import { ShareDashboardModal } from "@/components/ShareDashboardModal";
@@ -533,15 +533,14 @@ function EditableTitle({
 
 export function DashboardDetailView({
   dashboardId,
-  editor = false,
 }: {
   dashboardId: string;
+  /** Kept for route compatibility; there is no separate edit mode anymore. */
   editor?: boolean;
 }) {
   const router = useRouter();
   const resource = useApiResource((signal) => dashboardsApi.get(dashboardId, signal), dashboardId);
   const [shareOpen, setShareOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(editor);
   const [busyWidget, setBusyWidget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasActiveLinks, setHasActiveLinks] = useState(false);
@@ -612,24 +611,18 @@ export function DashboardDetailView({
         </Link>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${dashboard.mode === "live" ? "bg-accent-soft text-accent-strong" : "bg-surface-2 text-faint"}`}>
-              <LayoutDashboard className="size-5" strokeWidth={1.75} />
-            </span>
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
-                <ModeBadge mode={dashboard.mode} />
-                {refreshing ? <Spinner size="sm" /> : null}
-              </div>
-              <p className="mt-0.5 text-[13px] text-faint">
-                {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)} · {dashboard.access}
-              </p>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
+              <ModeBadge mode={dashboard.mode} />
+              {refreshing ? <Spinner size="sm" /> : null}
             </div>
+            <p className="mt-0.5 text-[13px] text-faint">
+              {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)} · {dashboard.access}
+            </p>
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {owner ? <EditLayoutButton isEditing={isEditing} onToggle={() => setIsEditing((v) => !v)} /> : null}
             {owner ? (
               <div className="relative inline-flex">
                 <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
@@ -683,7 +676,7 @@ export function DashboardDetailView({
           key={`${dashboardId}:${dashboard.widgets.map((widget) => widget.id).join(",")}`}
           widgets={dashboard.widgets}
           dashboardId={dashboardId}
-          isEditing={isEditing && owner}
+          canEdit={owner}
           busyWidget={busyWidget}
           canRefresh={owner}
           mode={dashboard.mode}
@@ -693,6 +686,9 @@ export function DashboardDetailView({
             void mutateWidget(widgetId, () =>
               dashboardsApi.removeWidget(dashboardId, widgetId),
             )
+          }
+          onRenameWidget={(widgetId, title) =>
+            mutateWidget(widgetId, () => dashboardsApi.updateWidget(dashboardId, widgetId, { title }))
           }
           onLayoutSaved={() => void resource.refresh()}
         />
