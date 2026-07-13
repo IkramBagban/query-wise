@@ -49,6 +49,7 @@ const KEY_COOLDOWN_MS = 60_000;
  */
 const DEFAULT_CHAINS: Record<LlmTask, LlmCandidate[]> = {
   agent: [
+    { provider: "anthropic", model: "claude-sonnet-5" },
     { provider: "google", model: "gemini-3.5-flash" },
     { provider: "google", model: "gemini-3.1-flash-lite" },
     { provider: "google", model: "gemini-2.5-flash" },
@@ -131,7 +132,8 @@ export function resolveKeysFor(provider: Provider): string[] {
   if (provider === "groq") raw = process.env.GROQ_API_KEY;
   else if (provider === "google")
     raw = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.QUERYWISE_INGESTION_LLM_API_KEY;
-  else if (provider === "anthropic") raw = process.env.ANTHROPIC_API_KEY;
+  else if (provider === "anthropic") 
+    raw = process.env.ANTHROPIC_API_KEY;
   return (raw ?? "")
     .split(",")
     .map((k) => k.trim())
