@@ -596,6 +596,21 @@ function makeQueryEventHandler(
            }
            return { ...state, status: "Thinking", activities };
         }
+        if (data.kind === "narration-delta") {
+           // A positioned answer-text segment streams like thinking-delta: grow the
+           // trailing narration activity in place (SPEC-11 §C.3). The paired
+           // `text-delta` event drives `textDelta` (the "text has started" signal
+           // for showWritingHint), so this branch only touches the activity content.
+           const activities = [...state.activities];
+           const last = activities[activities.length - 1];
+           if (last && last.kind === "narration") {
+             activities[activities.length - 1] = {
+               ...last,
+               content: (last.content || "") + data.chunk,
+             };
+           }
+           return { ...state, status: "Writing answer", activities };
+        }
         if (data.kind === "tool-result" || data.kind === "retry") {
            const activities = [...state.activities];
            // Match by callId when present so parallel calls of the same tool
@@ -1055,11 +1070,8 @@ function PendingAssistantMessage({ state }: { state: StreamState }) {
             })}
           </div>
         )}
-        {state.textDelta && (
-          <div className="mt-3">
-            <Markdown>{state.textDelta}</Markdown>
-          </div>
-        )}
+        {/* Answer text renders as positioned narration steps inside the timeline
+            (SPEC-11 §C.3), so there is no trailing answer blob here. */}
         {showWritingHint && (
           <div className="mt-3 flex items-center gap-2 text-xs text-faint">
             <span className="font-medium">Writing analysis</span>
@@ -1121,6 +1133,13 @@ function AssistantMessage({
 
   const timeline = <AgentTimeline steps={steps} renderBlock={renderBlock} />;
 
+  // SPEC-11 §C.2: when the transcript carries positioned narration steps, the
+  // answer text already renders in the timeline at its true position, so the
+  // trailing `content` blob is suppressed (content stays the faithful
+  // concatenation for legacy consumers). Historical messages have no narration
+  // steps and keep rendering `content` exactly as before.
+  const hasNarration = steps.some((step) => step.kind === "narration");
+
   // Safety net only: blocks the timeline cannot place (e.g. very old messages
   // whose transcript carries no run_sql steps at all).
   const orphanBlocks = hasBlocks
@@ -1136,7 +1155,7 @@ function AssistantMessage({
           <span className="text-[10px] text-faint">{formatClockTime(message.createdAt)}</span>
         </div>
         {timeline}
-        {!hasBlocks && message.content && !message.metadata.errorCode ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
+        {!hasBlocks && message.content && !message.metadata.errorCode && !hasNarration ? <div className="mt-2"><Markdown>{message.content}</Markdown></div> : null}
         {message.metadata.errorCode ? <p className="mt-2 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">{message.content || "Something went wrong while processing your query. Please try again."}</p> : null}
         {/* Orphan blocks that weren't rendered inline by the timeline */}
         {orphanBlocks.length > 0 ? (
@@ -1162,7 +1181,7 @@ function AssistantMessage({
              onSave={onSave}
            />
         ) : null}
-        {(hasBlocks || orphanBlocks.length > 0) && message.content ? <div className="mt-3"><Markdown>{message.content}</Markdown></div> : null}
+        {(hasBlocks || orphanBlocks.length > 0) && message.content && !hasNarration ? <div className="mt-3"><Markdown>{message.content}</Markdown></div> : null}
       </div>
     </div>
   );

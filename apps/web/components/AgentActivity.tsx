@@ -9,6 +9,7 @@ import { Markdown } from "@/components/ui/markdown";
 /** Normalized step consumed by the timeline, from either live events or the persisted transcript. */
 export type TimelineStep =
   | { kind: "thinking"; content: string; live?: boolean }
+  | { kind: "narration"; content: string; live?: boolean }
   | { kind: "tool"; tool: string; input?: unknown; status: "pending" | "ok" | "error"; summary: string; blockIndex?: number | null };
 
 /** Raw live-activity element accumulated in StreamState.activities. */
@@ -56,6 +57,11 @@ export function activitiesToSteps(
       if (!activity.content?.trim()) continue;
       lastThinking = steps.length;
       steps.push({ kind: "thinking", content: activity.content });
+    } else if (activity.kind === "narration") {
+      // A positioned answer-text segment (SPEC-11 §C.3). Empty starts are skipped
+      // until their first narration-delta lands, exactly like thinking.
+      if (!activity.content?.trim()) continue;
+      steps.push({ kind: "narration", content: activity.content });
     } else if (["tool-call", "tool-result", "retry"].includes(activity.kind)) {
       if (HIDDEN_TOOLS.has(activity.tool ?? "")) continue;
       steps.push({
@@ -95,6 +101,9 @@ export function parseAgentTranscript(metadata: unknown): TimelineStep[] {
     };
     if (typeof tool !== "string" || typeof summary !== "string") return [];
     if (tool === "thinking") return summary.trim() ? [{ kind: "thinking", content: summary }] : [];
+    // SPEC-11 §C.3: a persisted narration step renders at its true position — the
+    // same shape activitiesToSteps produces live, so reloaded == live pixel-for-pixel.
+    if (tool === "narration") return summary.trim() ? [{ kind: "narration", content: summary }] : [];
     if (HIDDEN_TOOLS.has(tool)) return [];
 
     // Determine blockIndex: use persisted value if available, otherwise for
@@ -301,7 +310,19 @@ export function AgentTimeline({
   return (
     <div className="mt-2.5 flex flex-col">
       {steps.map((step, idx) => {
-        const isLast = idx === steps.length - 1;
+        // A row's rail also ends when a full-width narration follows it, so the
+        // vertical line stops cleanly above the prose instead of running through it.
+        const nextIsNarration = steps[idx + 1]?.kind === "narration";
+        const isLast = idx === steps.length - 1 || nextIsNarration;
+        if (step.kind === "narration") {
+          // Full-width analyst prose at its true position (SPEC-11 §C.3): no rail
+          // dot, rendered as markdown, sitting between rows / under a card / at the end.
+          return (
+            <div key={idx} className="mt-1.5">
+              <Markdown>{step.content}</Markdown>
+            </div>
+          );
+        }
         if (step.kind === "thinking") {
           return <ThinkingRow key={idx} step={step} isLast={isLast} />;
         }
