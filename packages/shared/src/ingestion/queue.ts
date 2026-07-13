@@ -30,8 +30,21 @@ async function optionalBullMq(): Promise<{ Queue: BullMqQueueConstructor } | nul
 }
 
 function redisConnectionOptions(): unknown | null {
-  const url = process.env.QUERYWISE_REDIS_URL ?? process.env.REDIS_URL;
-  return url ? { url } : null;
+  const urlString = process.env.QUERYWISE_REDIS_URL ?? process.env.REDIS_URL;
+  if (!urlString) return null;
+  try {
+    const parsed = new URL(urlString);
+    return {
+      host: parsed.hostname,
+      port: parsed.port ? parseInt(parsed.port, 10) : 6379,
+      username: parsed.username || undefined,
+      password: parsed.password || undefined,
+      tls: parsed.protocol === "rediss:" ? {} : undefined,
+      maxRetriesPerRequest: null,
+    };
+  } catch {
+    return { url: urlString };
+  }
 }
 
 function deterministicJobRowId(idempotencyKey: string): string {

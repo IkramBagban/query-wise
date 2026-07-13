@@ -37,12 +37,24 @@ async function loadBullMq(): Promise<{ Worker: BullMqWorkerConstructor } | null>
 }
 
 function redisConnectionOptions(): unknown {
-  const url = process.env.QUERYWISE_REDIS_URL ?? process.env.REDIS_URL;
-  if (!url) {
+  const urlString = process.env.QUERYWISE_REDIS_URL ?? process.env.REDIS_URL;
+  if (!urlString) {
     devLog("error", "schema-ingestion.worker.redis-missing", "Schema ingestion worker Redis URL is not configured.");
     throw new Error("QUERYWISE_REDIS_URL or REDIS_URL must be configured for schema ingestion workers.");
   }
-  return { url };
+  try {
+    const parsed = new URL(urlString);
+    return {
+      host: parsed.hostname,
+      port: parsed.port ? parseInt(parsed.port, 10) : 6379,
+      username: parsed.username || undefined,
+      password: parsed.password || undefined,
+      tls: parsed.protocol === "rediss:" ? {} : undefined,
+      maxRetriesPerRequest: null,
+    };
+  } catch {
+    return { url: urlString };
+  }
 }
 
 async function main(): Promise<void> {
