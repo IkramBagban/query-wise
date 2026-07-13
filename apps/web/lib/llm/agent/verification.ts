@@ -199,6 +199,13 @@ export async function runSelfVerification(params: {
   const hasBudget = state.sqlAttempts < state.budget.maxSqlAttempts;
   if (hasBudget) {
     try {
+      // SPEC-11 §C: the correction rewrites the answer, so the draft's positioned
+      // narration steps are stale. Drop them (in place, preserving the transcript
+      // reference) before the correction run appends its fresh narration — otherwise
+      // the reloaded timeline would render both the draft and the corrected prose.
+      const withoutNarration = state.transcript.filter((step) => step.tool !== "narration");
+      state.transcript.length = 0;
+      state.transcript.push(...withoutNarration);
       const corrected = await params.runCorrection(correctionMessageFor(initial.issues, state.blocks), 2);
       const answer = corrected.trim() || params.answer;
       const recheck = await verify(answer);

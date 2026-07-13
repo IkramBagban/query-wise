@@ -48,6 +48,8 @@ export interface AnalystAgentRuntime {
 export type AgentActivityKind =
   | "thinking"
   | "thinking-delta"
+  | "narration"
+  | "narration-delta"
   | "tool-call"
   | "tool-result"
   | "retry";

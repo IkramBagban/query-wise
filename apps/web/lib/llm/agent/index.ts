@@ -256,42 +256,74 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       },
     });
 
-    let text = "";
-    // Reasoning is captured per segment: each contiguous run of thoughts (before
-    // the model calls a tool or writes text) becomes its own ordered transcript
-    // step, so the finalized view matches the live interleaving instead of
-    // collapsing every thought into one block appended
-    let segment = "";
-    const flushReasoning = () => {
-      if (segment.trim()) {
-        const thought = segment.trim();
+    // Thinking AND answer text are captured per contiguous segment (SPEC-11 §C.1):
+    // every run of thoughts and every run of answer text becomes its own ordered
+    // transcript step at its TRUE position, so the finalized/reloaded view matches
+    // the live interleaving. There is no distinguished "final answer" segment — the
+    // model owns the response shape (think→chart→explain→chart, or all charts then a
+    // walkthrough, or headline-first). `narrationSegments` is the ordered list of
+    // answer segments; joined double-newline it forms the message `content` for
+    // back-compat (titles, memory, shares, legacy renderers).
+    const narrationSegments: string[] = [];
+    let thinkingSegment = "";
+    let narrationSegment = "";
+    const flushThinking = () => {
+      if (thinkingSegment.trim()) {
+        const thought = thinkingSegment.trim();
         devLog("debug", "agent.thought.completed", "Thought block completed", { text: thought });
         state.transcript.push({ tool: "thinking", input: {}, outcome: "ok", summary: thought });
       }
-      segment = "";
+      thinkingSegment = "";
     };
-    for await (const part of result.fullStream) {
-      if (part.type === "reasoning-delta" && part.text) {
-        // Start a fresh thinking block whenever reasoning resumes after a tool
-        // call or text — otherwise later thoughts get dropped by the UI reducer.
-        if (!segment) {
-          params.onActivity?.({ kind: "thinking", label: "Thinking" });
-          devLog("debug", "agent.thought.started", "Thought block started");
-        }
-        segment += part.text;
-        params.onActivity?.({ kind: "thinking-delta", label: "Thinking", chunk: part.text });
-      } else if (part.type === "text-delta" && part.text) {
-        flushReasoning();
-        text += part.text;
-        streamedText = true;
-        params.onTextDelta?.(part.text);
-      } else if (part.type === "tool-call") {
-        flushReasoning();
-      } else if (part.type === "error") {
-        throw part.error;
+    const flushNarration = () => {
+      if (narrationSegment.trim()) {
+        const narration = narrationSegment.trim();
+        devLog("debug", "agent.narration.completed", "Narration segment completed", { text: narration });
+        state.transcript.push({ tool: "narration", input: {}, outcome: "ok", summary: narration });
+        narrationSegments.push(narration);
       }
-    }
-    flushReasoning();
+      narrationSegment = "";
+    };
+    const consumeStream = async (stream: typeof result.fullStream) => {
+      for await (const part of stream) {
+        if (part.type === "reasoning-delta" && part.text) {
+          // Reasoning resumes: close any open narration segment first so ordering
+          // is preserved, then start a fresh thinking block (a new start activity
+          // each time, or the UI reducer drops later thoughts).
+          flushNarration();
+          if (!thinkingSegment) {
+            params.onActivity?.({ kind: "thinking", label: "Thinking" });
+            devLog("debug", "agent.thought.started", "Thought block started");
+          }
+          thinkingSegment += part.text;
+          params.onActivity?.({ kind: "thinking-delta", label: "Thinking", chunk: part.text });
+        } else if (part.type === "text-delta" && part.text) {
+          // Answer text resumes: close any open thinking block, then stream this
+          // narration segment as its own positioned activity (mirrors thinking).
+          flushThinking();
+          if (!narrationSegment) {
+            params.onActivity?.({ kind: "narration", label: "" });
+            devLog("debug", "agent.narration.started", "Narration segment started");
+          }
+          narrationSegment += part.text;
+          streamedText = true;
+          params.onActivity?.({ kind: "narration-delta", label: "", chunk: part.text });
+          // onTextDelta stays live for status + the "text has started" signal.
+          params.onTextDelta?.(part.text);
+        } else if (part.type === "tool-call") {
+          // A tool call ends both the current thought and narration segments so the
+          // block lands between them at its true position.
+          flushThinking();
+          flushNarration();
+        } else if (part.type === "error") {
+          throw part.error;
+        }
+      }
+    };
+    await consumeStream(result.fullStream);
+    flushThinking();
+    flushNarration();
+    let text = narrationSegments.join("\n\n");
 
     // Finalize fallback: if the model spent its whole step budget on tool calls /
     // reasoning and never wrote the answer (common on hard multi-query questions),
@@ -320,15 +352,12 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
         providerOptions: getThinkingProviderOptions(candidateProvider),
         abortSignal: params.abortSignal,
       });
-      for await (const part of finalize.fullStream) {
-        if (part.type === "text-delta" && part.text) {
-          text += part.text;
-          streamedText = true;
-          params.onTextDelta?.(part.text);
-        } else if (part.type === "error") {
-          throw part.error;
-        }
-      }
+      // The finalize answer is a narration segment too (positioned at the end,
+      // after all tool steps), so it persists and renders like any other prose.
+      await consumeStream(finalize.fullStream);
+      flushThinking();
+      flushNarration();
+      text = narrationSegments.join("\n\n");
     }
 
     // Persist token usage (and log cache hits) when the provider reports them.
