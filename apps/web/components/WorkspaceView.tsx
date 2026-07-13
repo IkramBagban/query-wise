@@ -164,10 +164,6 @@ function ConnectionPicker({ value, onChange, disabled }: ConnectionPickerProps) 
 /* ------------------------- Empty chat data source ------------------------- */
 
 function setStoredConnectionId(connectionId: string) {
-  if (connectionId === "__demo__") {
-    window.sessionStorage.removeItem(STORAGE_KEYS.connection);
-    return;
-  }
   window.sessionStorage.setItem(STORAGE_KEYS.connection, connectionId);
 }
 
@@ -248,10 +244,9 @@ function DataSourceStatusPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const isDemo = value === "__demo__";
   const selectedIngestion = getIngestionStatusView(selectedConnection?.schemaSyncStatus);
-  const readyLabel = isDemo ? "Demo ready" : selectedConnection ? selectedIngestion.label : "Choose source";
-  const sourceName = isDemo ? "demo" : selectedConnection?.name ?? "Select database";
+  const readyLabel = selectedConnection ? selectedIngestion.label : "Choose source";
+  const sourceName = selectedConnection?.name ?? "Select database";
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -281,7 +276,6 @@ function DataSourceStatusPicker({
         `${connection.name} ${connection.databaseName}`.toLowerCase().includes(normalizedQuery),
       )
     : connections;
-  const showDemo = !normalizedQuery || "demo server-managed ecommerce".includes(normalizedQuery);
 
   return (
     <div ref={rootRef} className="relative mx-auto flex w-full justify-center">
@@ -303,7 +297,7 @@ function DataSourceStatusPicker({
         </span>
         <span className="hidden h-3 w-px bg-border sm:block" />
         <span className="inline-flex items-center gap-1.5">
-          <span className={`size-2 rounded-full ${isDemo || selectedIngestion.ready ? "bg-success" : selectedIngestion.tone === "danger" ? "bg-danger" : "bg-warning"}`} />
+          <span className={`size-2 rounded-full ${selectedIngestion.ready ? "bg-success" : selectedIngestion.tone === "danger" ? "bg-danger" : "bg-warning"}`} />
           {readyLabel}
         </span>
         {typeof tableCount === "number" ? (
@@ -325,7 +319,7 @@ function DataSourceStatusPicker({
           {/* header */}
           <div className="flex items-center justify-between border-b border-border bg-surface-2/60 px-3.5 py-2.5">
             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
-              Data sources · {connections.length + 1}
+              Data sources · {connections.length}
             </span>
             <button
               type="button"
@@ -356,16 +350,6 @@ function DataSourceStatusPicker({
 
           {/* list */}
           <div className="max-h-[19rem] overflow-y-auto p-1.5">
-            {showDemo ? (
-              <SourceRow
-                name="demo"
-                detail="server-managed ecommerce demo"
-                statusTone="success"
-                statusLabel="ready"
-                selected={isDemo}
-                onClick={() => choose("__demo__")}
-              />
-            ) : null}
             {filtered.map((connection) => {
               const ingestion = getIngestionStatusView(connection.schemaSyncStatus);
               const tone = ingestion.ready ? "success" : ingestion.tone === "danger" ? "danger" : "warning";
@@ -382,11 +366,11 @@ function DataSourceStatusPicker({
                 />
               );
             })}
-            {!filtered.length && !showDemo ? (
+            {!filtered.length ? (
               <p className="px-3 py-4 text-center font-mono text-[11px] text-faint">No sources match “{query.trim()}”</p>
             ) : null}
             {!connections.length && !normalizedQuery ? (
-              <p className="px-3 py-2 text-center font-mono text-[11px] text-faint">No saved connections yet — the demo is ready to go.</p>
+              <p className="px-3 py-2 text-center font-mono text-[11px] text-faint">No saved connections yet.</p>
             ) : null}
           </div>
 
@@ -461,7 +445,6 @@ export function NewConversationView() {
   const connections = useApiResource((signal) => connectionsApi.list(100, undefined, signal));
   const [connectionId, setConnectionId] = useState("");
   const [creating, setCreating] = useState(false);
-  const [creatingDemo, setCreatingDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshConnections = connections.refresh;
   const selectedConnection = connections.data?.items.find((item) => item.id === connectionId) ?? null;
@@ -490,35 +473,16 @@ export function NewConversationView() {
     }
   }
 
-  async function connectDemo() {
-    setCreatingDemo(true);
-    setError(null);
-    try {
-      const connection = await connectionsApi.createDemo();
-      const conversation = await conversationsApi.create(connection.id);
-      router.push(`/chats/${conversation.id}`);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to connect to demo database");
-    } finally {
-      setCreatingDemo(false);
-    }
-  }
-
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 sm:p-6">
       <PageHeader eyebrow="New chat" title="Choose a connection" description="A conversation stays bound to one database for its full lifetime. To query a different database, start a new chat." />
       <Card className="p-5">
-        <div className="mb-5 rounded-lg border border-border bg-surface-2 p-4">
-          <h2 className="font-medium">Try the ecommerce demo</h2>
-          <p className="mt-1 text-xs text-faint">Connect to the server-managed pre-seeded database and start querying immediately.</p>
-          <Button className="mt-3" variant="ghost" loading={creatingDemo} onClick={() => void connectDemo()}><Database className="h-4 w-4" />Use demo database</Button>
-        </div>
         {connections.loading && !connections.data ? (
           <ConnectionRowsSkeleton rows={3} />
         ) : connections.error ? (
           <ErrorState error={connections.error} onRetry={() => void connections.refresh()} />
         ) : !connections.data?.items.length ? (
-          <EmptyState title="No saved connections" description="Use the demo above or add your PostgreSQL database." action={<Link href="/connections/new" className="rounded-md bg-accent px-4 py-2 text-sm font-medium">Add connection</Link>} />
+          <EmptyState title="No saved connections" description="Add your PostgreSQL database to get started." action={<Link href="/connections/new" className="rounded-md bg-accent px-4 py-2 text-sm font-medium">Add connection</Link>} />
         ) : (
           <div className="space-y-4">
             <Select className="w-full" value={connectionId} onChange={setConnectionId} options={connections.data.items.map((item) => {
@@ -787,11 +751,11 @@ export function EmptyWorkspaceView() {
     [connectionId, connectionItems],
   );
   const selectedSchema = useApiResource(
-    (signal) => connectionId && connectionId !== "__demo__" ? connectionsApi.schema(connectionId, signal) : Promise.resolve(null),
+    (signal) => connectionId ? connectionsApi.schema(connectionId, signal) : Promise.resolve(null),
     connectionId,
   );
   const selectedIngestion = getIngestionStatusView(selectedConnection?.schemaSyncStatus);
-  const schemaSyncWarning = connectionId && connectionId !== "__demo__" && !selectedIngestion.terminal && selectedConnection
+  const schemaSyncWarning = connectionId && !selectedIngestion.terminal && selectedConnection
     ? "Schema syncing — your first query may be slower."
     : null;
   const tableCount = selectedSchema.data?.metadata?.entities.length ?? null;
@@ -800,10 +764,12 @@ export function EmptyWorkspaceView() {
     if (!connections.data) return;
     const stored = typeof window === "undefined" ? null : window.sessionStorage.getItem(STORAGE_KEYS.connection);
     const storedIsValid = stored ? connectionItems.some((item) => item.id === stored) : false;
-    if (connectionId && (connectionId === "__demo__" || connectionItems.some((item) => item.id === connectionId))) return;
-    const nextConnectionId = storedIsValid && stored ? stored : connectionItems[0]?.id ?? "__demo__";
-    setConnectionId(nextConnectionId);
-    if (nextConnectionId !== "__demo__") setStoredConnectionId(nextConnectionId);
+    if (connectionId && connectionItems.some((item) => item.id === connectionId)) return;
+    const nextConnectionId = storedIsValid && stored ? stored : connectionItems[0]?.id ?? null;
+    if (nextConnectionId) {
+      setConnectionId(nextConnectionId);
+      setStoredConnectionId(nextConnectionId);
+    }
   }, [connectionId, connectionItems, connections.data]);
 
   const refreshConnections = connections.refresh;
@@ -826,14 +792,15 @@ export function EmptyWorkspaceView() {
     setQuestion("");
     setSubmitting(true);
     setError(null);
+    if (!connectionId) {
+      setError("Please connect a data source first to start chatting.");
+      setSubmitting(false);
+      return;
+    }
+    
     setStreamState({ status: "Starting conversation...", textDelta: "", activities: [], blocks: [] });
     try {
-      let resolvedConnectionId = connectionId;
-      if (connectionId === "__demo__") {
-        const demo = await connectionsApi.createDemo();
-        resolvedConnectionId = demo.id;
-      }
-      const conversation = await conversationsApi.create(resolvedConnectionId);
+      const conversation = await conversationsApi.create(connectionId);
       window.sessionStorage.setItem(STORAGE_KEYS.pendingQuestion, trimmed);
       bumpChatVersion();
       router.push(`/chats/${conversation.id}`);
@@ -845,7 +812,7 @@ export function EmptyWorkspaceView() {
     }
   }
 
-  const disableComposer = !connectionId || connections.loading;
+  const disableComposer = connections.loading;
 
   return (
     <div className="relative flex h-[calc(100vh-3.5rem)] min-h-[640px] flex-col items-center justify-center overflow-hidden bg-bg px-4 py-10 lg:h-screen">
