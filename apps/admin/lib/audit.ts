@@ -27,13 +27,13 @@ export interface AdminAuditEvent {
 
 function safeMetadata(
   metadata: Record<string, unknown> | undefined,
-): Prisma.InputJsonObject {
+): Prisma.JsonObject {
   if (!metadata) return {};
   try {
     const serialized = JSON.stringify(metadata, (_k, v) =>
       typeof v === "bigint" ? v.toString() : v,
     );
-    return JSON.parse(serialized) as Prisma.InputJsonObject;
+    return JSON.parse(serialized) as Prisma.JsonObject;
   } catch {
     return { truncated: true };
   }
