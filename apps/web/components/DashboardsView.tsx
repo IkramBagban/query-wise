@@ -7,7 +7,9 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Check,
+  Clock,
   LayoutDashboard,
+  LayoutGrid,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -601,55 +603,76 @@ export function DashboardDetailView({
 
   return (
     <div className="space-y-6">
-      <header>
-        <Link
-          href="/dashboards"
-          className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-faint no-underline transition-colors duration-150 hover:text-accent-strong"
-        >
-          <ArrowLeft className="size-3" strokeWidth={2} />
-          Dashboards
-        </Link>
+      <header className="relative">
+        {/* ambient accent glow anchoring the masthead */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-6 -top-8 h-28 w-72 opacity-60"
+          style={{ background: "var(--glow)" }}
+        />
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
-              <ModeBadge mode={dashboard.mode} />
-              {refreshing ? <Spinner size="sm" /> : null}
-            </div>
-            <p className="mt-0.5 text-[13px] text-faint">
-              {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"} · updated {timeAgo(dashboard.updatedAt)} · {dashboard.access}
-            </p>
-          </div>
+        <div className="relative">
+          <Link
+            href="/dashboards"
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-faint no-underline transition-colors duration-150 hover:text-accent-strong"
+          >
+            <ArrowLeft className="size-3" strokeWidth={2} />
+            Dashboards
+          </Link>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {owner ? (
-              <div className="relative inline-flex">
-                <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
-                  <Share2 className="h-3.5 w-3.5" />
-                  Share
-                </Button>
-                {hasActiveLinks && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-success ring-1 ring-bg" />
-                )}
+          <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
+                <ModeBadge mode={dashboard.mode} />
+                {refreshing ? <Spinner size="sm" /> : null}
               </div>
-            ) : null}
-            {owner ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  aria-label="Dashboard options"
-                  className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-faint transition-colors duration-150 hover:border-border-2 hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <MoreHorizontal className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
-                    <Trash2 className="size-3.5" />
-                    Delete dashboard
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+
+              {/* stat rail — hairline-separated mono micro-labels, not a gray sentence */}
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-faint">
+                <span className="inline-flex items-center gap-1.5 text-muted">
+                  <LayoutGrid className="size-3 text-faint" strokeWidth={2} />
+                  {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"}
+                </span>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="size-3" strokeWidth={2} />
+                  {timeAgo(dashboard.updatedAt)}
+                </span>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span>{dashboard.access}</span>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {owner ? (
+                <div className="relative inline-flex">
+                  <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
+                    <Share2 className="h-3.5 w-3.5" />
+                    Share
+                  </Button>
+                  {hasActiveLinks && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-success ring-1 ring-bg" />
+                  )}
+                </div>
+              ) : null}
+              {owner ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label="Dashboard options"
+                    className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-faint transition-colors duration-150 hover:border-border-2 hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                      <Trash2 className="size-3.5" />
+                      Delete dashboard
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
           </div>
         </div>
       </header>

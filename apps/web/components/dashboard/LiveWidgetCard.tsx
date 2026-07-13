@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Check, GripVertical, Pencil, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, GripVertical, Pencil, RefreshCw, Snowflake, Trash2, X } from "lucide-react";
 
 import { V2Chart, isBoundedResultPreview, previewToQueryResult } from "@/components/V2Chart";
 import { resolveView } from "@/lib/charts/views";
@@ -159,17 +159,22 @@ export function LiveWidgetCard({
   return (
     <div
       className={cn(
-        "group/widget relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-16px_rgba(0,0,0,0.25)] transition-all duration-200 hover:border-border-2 hover:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_16px_40px_-20px_rgba(0,0,0,0.35)]",
+        "group/widget relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-[0_1px_2px_rgba(15,25,16,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-line/60 hover:shadow-[0_18px_40px_-24px_var(--accent-line)]",
         pulsing && "qw-border-pulse",
       )}
     >
+      {/* editorial top hairline — lights up on hover, replaces the hard divider */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-px bg-gradient-to-r from-transparent via-accent-line to-transparent opacity-0 transition-opacity duration-300 group-hover/widget:opacity-100"
+      />
       {/* thin refresh progress bar */}
       {view.refreshing ? <span aria-hidden className="qw-live-bar" /> : null}
 
       {/* header — the drag zone (interactive controls opt out via .qw-no-drag) */}
       <div
         className={cn(
-          "qw-drag-handle flex shrink-0 items-center gap-2 px-3.5 py-2.5",
+          "qw-drag-handle flex shrink-0 items-center gap-2 px-4 pb-2 pt-3",
           canEdit && "cursor-grab active:cursor-grabbing",
         )}
       >
@@ -243,7 +248,7 @@ export function LiveWidgetCard({
 
       {/* chart body — stays interactive; dims to 60% during refresh, never blanks */}
       <div
-        className="min-h-0 flex-1 overflow-hidden border-t border-border/60 px-3 pb-2 pt-3 transition-opacity duration-200"
+        className="min-h-0 flex-1 overflow-hidden px-3.5 pb-1 pt-1 transition-opacity duration-200"
         style={{ opacity: view.refreshing ? 0.6 : 1 }}
       >
         <div className="h-full w-full">
@@ -255,12 +260,18 @@ export function LiveWidgetCard({
         </div>
       </div>
 
-      {/* footer — ambient freshness only */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-3.5 py-1.5 text-[10.5px]">
+      {/* footer — ambient freshness, no hard divider */}
+      <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2.5 pt-0.5 text-[10.5px]">
         {isSnapshot ? (
-          <span className="font-mono text-faint">snapshot · frozen at pin time</span>
+          <span className="inline-flex items-center gap-1.5 font-mono text-faint">
+            <Snowflake className="size-2.5" strokeWidth={2.25} />
+            frozen at pin time
+          </span>
         ) : (
-          <FreshnessLabel lastRefreshedAt={view.lastRefreshedAt} />
+          <span className="inline-flex items-center gap-1.5 font-mono">
+            <span aria-hidden className="size-1 rounded-full bg-accent/70" />
+            <FreshnessLabel lastRefreshedAt={view.lastRefreshedAt} />
+          </span>
         )}
         {!isSnapshot && !view.filterBound ? (
           <span className="font-mono text-faint/70">not time-filtered</span>
