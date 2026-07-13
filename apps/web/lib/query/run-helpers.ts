@@ -28,6 +28,7 @@ export function toV2ChartConfig(chart: ReturnType<typeof resolveChartConfig>): C
 
 export async function generateAndPersistTitle(input: {
   conversationId: string;
+  ownerUserId: string;
   userMessage: string;
   assistantMessage: string;
   abortSignal: AbortSignal;
@@ -42,7 +43,7 @@ export async function generateAndPersistTitle(input: {
       apiKeys: llmConfig.apiKeys,
     });
     if (title) {
-      await setGeneratedConversationTitle(input.conversationId, title);
+      await setGeneratedConversationTitle(input.conversationId, title, input.ownerUserId);
     }
   } catch (error) {
     devLogError("conversation.title.generation-failed", "Conversation title generation failed.", error, {

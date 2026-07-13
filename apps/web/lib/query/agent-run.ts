@@ -292,6 +292,7 @@ export async function runAgentQueryRun(input: {
 
   void generateAndPersistTitle({
     conversationId: run.conversationId,
+    ownerUserId: run.ownerUserId,
     userMessage: input.question,
     assistantMessage: result.answer,
     abortSignal,

@@ -170,10 +170,20 @@ export async function needsGeneratedConversationTitle(conversationId: string): P
   return record.title === DEFAULT_CONVERSATION_TITLE;
 }
 
-export async function setGeneratedConversationTitle(conversationId: string, title: string): Promise<void> {
-  const { userId } = await requireUser();
+/**
+ * Persist an auto-generated title. Scoped by an EXPLICIT ownerUserId (not
+ * requireUser): this runs in a fire-and-forget background task after the query
+ * response, where the request-scoped auth context is already gone — calling
+ * requireUser there throws AUTHENTICATION_REQUIRED and the title silently never
+ * persists. The caller (the durable query run) already owns a trusted ownerUserId.
+ */
+export async function setGeneratedConversationTitle(
+  conversationId: string,
+  title: string,
+  ownerUserId: string,
+): Promise<void> {
   await getAppDb().conversation.updateMany({
-    where: { id: conversationId, ownerUserId: userId, deletedAt: null, title: DEFAULT_CONVERSATION_TITLE },
+    where: { id: conversationId, ownerUserId, deletedAt: null, title: DEFAULT_CONVERSATION_TITLE },
     data: { title },
   });
 }
