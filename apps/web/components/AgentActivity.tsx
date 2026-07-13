@@ -23,7 +23,7 @@ export interface StreamActivity {
 }
 
 /** Internal tools that must never surface to the user. */
-const HIDDEN_TOOLS = new Set(["set_chart"]);
+const HIDDEN_TOOLS = new Set(["set_chart", "verify"]);
 
 const TOOL_LABELS: Record<string, string> = {
   run_sql: "Ran SQL query",
@@ -36,6 +36,11 @@ const TOOL_PENDING_LABELS: Record<string, string> = {
   describe_tables: "Exploring schema",
   sample_values: "Sampling values",
 };
+
+/** SPEC-09 §3.3: a run_sql step whose input carries presentation:'quiet' is a probe. */
+function isQuietStep(input: unknown): boolean {
+  return Boolean(input && typeof input === "object" && (input as { presentation?: unknown }).presentation === "quiet");
+}
 
 /* ------------------------------ Adapters -------------------------------- */
 
@@ -95,8 +100,10 @@ export function parseAgentTranscript(metadata: unknown): TimelineStep[] {
     // Determine blockIndex: use persisted value if available, otherwise for
     // successful run_sql steps, fallback to sequential assignment (the n-th
     // successful query → block index n). This keeps old conversations working.
+    // SPEC-09 §3.3: quiet probes are NOT blocks — they get no blockIndex and must
+    // not advance the fallback counter, or they'd shift every later block's index.
     let resolvedBlockIndex: number | undefined;
-    if (tool === "run_sql" && outcome === "ok") {
+    if (tool === "run_sql" && outcome === "ok" && !isQuietStep(input)) {
       resolvedBlockIndex = typeof persistedBlockIndex === "number" ? persistedBlockIndex : successfulRunSqlCount;
       successfulRunSqlCount++;
     }
@@ -210,9 +217,14 @@ function ToolRow({
 }) {
   const isError = step.status === "error";
   const isPending = step.status === "pending";
-  const label = isPending
-    ? TOOL_PENDING_LABELS[step.tool] ?? step.tool
-    : TOOL_LABELS[step.tool] ?? step.tool;
+  const quiet = step.tool === "run_sql" && isQuietStep(step.input);
+  const label = quiet
+    ? isPending
+      ? "Probing data"
+      : "Probed data"
+    : isPending
+      ? TOOL_PENDING_LABELS[step.tool] ?? step.tool
+      : TOOL_LABELS[step.tool] ?? step.tool;
 
   let sql: string | null = null;
   let inputJson: string | null = null;

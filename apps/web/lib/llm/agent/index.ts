@@ -1,8 +1,8 @@
 import "server-only";
-import { stepCountIs, streamText, type JSONValue, type ModelMessage, type ToolSet } from "ai";
+import { stepCountIs, streamText, type ModelMessage, type ToolSet } from "ai";
 import { devLog } from "@query-wise/shared/observability";
+import { recordLlmUsage } from "@query-wise/shared/metrics";
 import { resolveChartConfig } from "@/lib/charts";
-import type { ChatMessage } from "@/types";
 import {
   getModel,
   getThinkingProviderOptions,
@@ -21,6 +21,8 @@ import {
 } from "../model-router";
 import { assembleAgentSystemPrompt } from "./system-prompt";
 import { estimateTokens, resolveContextBudget } from "./context-budget";
+import { buildMessages, HISTORY_VERBATIM_MESSAGES, type AgentMessage } from "./history";
+import { compactToolResults } from "./compaction";
 import { createDescribeTablesTool } from "./tools/describe-tables";
 import { createRunSqlTool } from "./tools/run-sql";
 import { createSampleValuesTool } from "./tools/sample-values";
@@ -32,7 +34,6 @@ import { runSelfVerification } from "./verification";
 import {
   AgentExecutionError,
   resolveAgentBudget,
-  type AgentMemoryContext,
   type AgentRunState,
   type AnalystAgentResult,
   type RunAnalystAgentParams,
@@ -52,95 +53,6 @@ export type {
   SqlValidationOutcome,
 } from "./types";
 
-interface AgentMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-/** Number of trailing messages (~2 turns) always kept verbatim in history. */
-const HISTORY_VERBATIM_MESSAGES = 4;
-
-function renderHistoryMessage(message: ChatMessage): AgentMessage {
-  return {
-    role: message.role,
-    content:
-      message.role === "assistant" && message.sql
-        ? `${message.content}\n\n[SQL used: ${message.sql}]`
-        : message.content,
-  };
-}
-
-/**
- * Render distilled conversation memory (SPEC-02 §4) as a single, compact
- * context message: rolling summary, established filters / window, and recent
- * block headlines. This is what makes "now break that down by region" resolve
- * correctly ten turns deep, after the verbatim window has scrolled away.
- * Returns null when there is nothing worth injecting.
- */
-function renderMemoryPreamble(memory: AgentMemoryContext | undefined): string | null {
-  if (!memory) return null;
-  const parts: string[] = [];
-  if (memory.rollingSummary?.trim()) parts.push(`Earlier in this conversation: ${memory.rollingSummary.trim()}`);
-  if (memory.entities?.length) parts.push(`Entities discussed: ${memory.entities.join(", ")}`);
-  if (memory.timeWindow?.trim()) parts.push(`Established time window: ${memory.timeWindow.trim()}`);
-  if (memory.activeFilters?.length) parts.push(`Active filters: ${memory.activeFilters.join("; ")}`);
-  if (memory.blockSummaries?.length) parts.push(`Recent results:\n${memory.blockSummaries.join("\n")}`);
-  if (parts.length === 0) return null;
-  return [
-    "CONVERSATION MEMORY (for resolving follow-ups like \"break that down\" or \"same period\"; reuse these unless the user changes them):",
-    ...parts,
-  ].join("\n");
-}
-
-/**
- * Token-aware history selection (SPEC-01 §3): keep the last ~2 turns verbatim,
- * then add older messages newest-first until the history token budget is spent;
- * drop the rest. Replaces the fixed `history.slice(-12)`. A memory preamble
- * (SPEC-02 §4) is prepended within the same budget when present.
- */
-function buildMessages(
-  history: ChatMessage[],
-  question: string,
-  historyBudgetTokens: number,
-  maxMessages?: number,
-  memory?: AgentMemoryContext,
-): AgentMessage[] {
-  const rendered = history.map(renderHistoryMessage);
-  const verbatimCount = Math.min(rendered.length, HISTORY_VERBATIM_MESSAGES);
-  const tail = rendered.slice(rendered.length - verbatimCount);
-  const older = rendered.slice(0, rendered.length - verbatimCount);
-
-  const memoryPreamble = renderMemoryPreamble(memory);
-  const memoryTokens = memoryPreamble ? estimateTokens(memoryPreamble) : 0;
-
-  let usedTokens = tail.reduce((sum, message) => sum + estimateTokens(message.content), 0) + memoryTokens;
-  const kept: AgentMessage[] = [];
-  for (let index = older.length - 1; index >= 0; index -= 1) {
-    if (maxMessages !== undefined && kept.length + tail.length >= maxMessages) break;
-    const cost = estimateTokens(older[index].content);
-    if (usedTokens + cost > historyBudgetTokens) break;
-    kept.unshift(older[index]);
-    usedTokens += cost;
-  }
-
-  let messages = [...kept, ...tail];
-  if (maxMessages !== undefined && messages.length > maxMessages) {
-    messages = messages.slice(messages.length - maxMessages);
-  }
-
-  // Memory rides in front of the retained history so follow-up resolution has it
-  // regardless of how much verbatim history fit the budget.
-  if (memoryPreamble) {
-    messages = [{ role: "user", content: memoryPreamble }, ...messages];
-  }
-
-  const last = messages[messages.length - 1];
-  if (!last || last.role !== "user" || last.content.trim() !== question.trim()) {
-    messages.push({ role: "user", content: question });
-  }
-  return messages;
-}
-
 function buildTools(params: RunAnalystAgentParams, state: AgentRunState): ToolSet {
   const shared = { state, runtime: params.runtime, emitters: params };
   // describe_tables is ALWAYS registered (SPEC-01 §3): with the tiered schema
@@ -156,66 +68,6 @@ function buildTools(params: RunAnalystAgentParams, state: AgentRunState): ToolSe
     explain_query: createExplainQueryTool(shared),
     get_column_stats: createGetColumnStatsTool({ schema: params.schema, state, emitters: params }),
   };
-}
-
-/** Digest an older run_sql result (SPEC-01 §4): keep shape + a 3-row sample. */
-function digestRunSqlOutput(
-  output: unknown,
-  state: AgentRunState,
-): { type: "json"; value: JSONValue } | null {
-  if (!output || typeof output !== "object") return null;
-  const wrapped = output as { type?: string; value?: unknown };
-  if (wrapped.type !== "json" || !wrapped.value || typeof wrapped.value !== "object") return null;
-  const value = wrapped.value as Record<string, unknown>;
-  // Errors and non-block results are already small — leave them verbatim.
-  if (value.error !== undefined || typeof value.blockIndex !== "number") return null;
-
-  const block = state.blocks.find((candidate) => candidate.index === value.blockIndex);
-  const rows = Array.isArray(value.rows) ? value.rows : [];
-  const digest = {
-    blockIndex: value.blockIndex,
-    purpose: block?.purpose,
-    columns: value.columns,
-    rowCount: value.rowCount,
-    totalRowCount: value.totalRowCount,
-    truncated: value.truncated,
-    sampleRows: rows.slice(0, 3),
-    note: "summarized — the full result is shown to the user as a block; re-query only if you need values you no longer see",
-  };
-  return { type: "json", value: digest as unknown as JSONValue };
-}
-
-/**
- * Rewrite every run_sql tool result EXCEPT the most recent into a compact digest
- * (SPEC-01 §4). sample_values / describe_tables results are already small and
- * stay verbatim. Runs inside the AI SDK `prepareStep` hook before each step.
- */
-function compactToolResults(messages: ModelMessage[], state: AgentRunState): ModelMessage[] {
-  const runSqlLocations: Array<{ messageIndex: number; partIndex: number }> = [];
-  messages.forEach((message, messageIndex) => {
-    if (message.role !== "tool" || !Array.isArray(message.content)) return;
-    message.content.forEach((part, partIndex) => {
-      if (part.type === "tool-result" && part.toolName === "run_sql") {
-        runSqlLocations.push({ messageIndex, partIndex });
-      }
-    });
-  });
-  if (runSqlLocations.length <= 1) return messages;
-  const mostRecent = runSqlLocations[runSqlLocations.length - 1];
-
-  return messages.map((message, messageIndex) => {
-    if (message.role !== "tool" || !Array.isArray(message.content)) return message;
-    let changed = false;
-    const content = message.content.map((part, partIndex) => {
-      if (part.type !== "tool-result" || part.toolName !== "run_sql") return part;
-      if (messageIndex === mostRecent.messageIndex && partIndex === mostRecent.partIndex) return part;
-      const digest = digestRunSqlOutput(part.output, state);
-      if (!digest) return part;
-      changed = true;
-      return { ...part, output: digest };
-    });
-    return changed ? { ...message, content } : message;
-  });
 }
 
 /** Short digest of already-executed blocks, injected during recovery (SPEC-01 §1). */
@@ -267,12 +119,15 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     sqlAttempts: 0,
     sampleCalls: 0,
     searchCalls: 0,
+    quietQueries: 0,
     budget: agentBudget,
   };
   const budget = resolveContextBudget(params.provider, params.model);
   const tools = buildTools(params, state);
 
   let streamedText = false;
+  // Stable ordinal for idempotent per-call usage records within this run.
+  let llmCallOrdinal = 0;
 
   // One streamed attempt. `recovery` re-runs with a shrunken context after a
   // true mid-run context overflow (SPEC-01 §1). `correction` appends a
@@ -300,6 +155,13 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       recovery ? HISTORY_VERBATIM_MESSAGES : undefined,
       // Recovery already ran once; drop memory to reclaim tokens for the retry.
       recovery ? undefined : params.memory,
+      // SPEC-10 §2.6: never let long-conversation truncation be silent.
+      (report) =>
+        devLog("info", "agent.history.trimmed", "Trimmed history to fit budget.", {
+          recovery,
+          model: candidateModel,
+          ...report,
+        }),
     );
     if (recovery && state.blocks.length > 0) {
       messages.push({
@@ -353,7 +215,23 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       abortSignal: params.abortSignal,
       // §4 tool-result compaction: digest older run_sql results before each step.
       prepareStep: ({ messages: stepMessages, stepNumber }) => {
-        const compacted = compactToolResults(stepMessages, state);
+        // SPEC-10 §2.3: estimate the step's tokens FIRST, then compact only when
+        // the context is actually large (> 50% of budget.target). The incident ran
+        // at <10% of budget and still lost data to unconditional digesting.
+        const estimatedTokens = stepMessages.reduce(
+          (sum, message) =>
+            sum + estimateTokens(typeof message.content === "string" ? message.content : JSON.stringify(message.content)),
+          0,
+        );
+        // SPEC-10 §2.4: the correction turn exists to RE-READ data — it must never
+        // digest. A 2-step correction run cannot meaningfully overflow.
+        const compacted = correction
+          ? stepMessages
+          : compactToolResults(stepMessages, state, {
+              estimatedTokens,
+              targetTokens: budget.target,
+              estimate: estimateTokens,
+            });
         // Step-budget awareness: tell the model where it is in its budget so it
         // converges and writes the answer BEFORE running out of steps, rather than
         // getting cut off mid-tool-call. Injected only in the final few steps to
@@ -453,16 +331,38 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
       }
     }
 
-    // Cache-hit metrics when the provider reports them (SPEC-01 §5).
+    // Persist token usage (and log cache hits) when the provider reports them.
+    // Best-effort: never fail the run over telemetry.
     try {
-      const usage = await result.usage;
-      const cachedInputTokens = (usage as { cachedInputTokens?: number } | undefined)?.cachedInputTokens;
+      const usage = await result.usage as {
+        inputTokens?: number;
+        outputTokens?: number;
+        cachedInputTokens?: number;
+        reasoningTokens?: number;
+      } | undefined;
+      const cachedInputTokens = usage?.cachedInputTokens;
       if (typeof cachedInputTokens === "number") {
         devLog("info", "agent.cache.usage", "Prompt cache usage.", {
           recovery,
           model: candidateModel,
           cachedInputTokens,
-          inputTokens: (usage as { inputTokens?: number }).inputTokens,
+          inputTokens: usage?.inputTokens,
+        });
+      }
+      if (params.usageContext) {
+        await recordLlmUsage({
+          userId: params.usageContext.userId,
+          queryRunId: params.usageContext.queryRunId,
+          connectionId: params.usageContext.connectionId,
+          task: "agent",
+          provider: candidateProvider,
+          model: candidateModel,
+          inputTokens: usage?.inputTokens,
+          outputTokens: usage?.outputTokens,
+          cachedInputTokens: usage?.cachedInputTokens,
+          reasoningTokens: usage?.reasoningTokens ?? null,
+          success: true,
+          callOrdinal: llmCallOrdinal++,
         });
       }
     } catch {
@@ -613,6 +513,7 @@ export async function runAnalystAgent(params: RunAnalystAgentParams): Promise<An
     durationMs: Date.now() - startedAt,
     blockCount: state.blocks.length,
     sqlAttempts: state.sqlAttempts,
+    quietQueries: state.quietQueries,
     sampleCalls: state.sampleCalls,
     answerLength: answer.length,
     recovered,

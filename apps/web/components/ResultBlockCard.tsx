@@ -19,8 +19,9 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { Tooltip } from "@/components/ui/tooltip";
 import { previewToQueryResult, V2Chart } from "@/components/V2Chart";
 import { computeResultViewOptions } from "@/lib/charts/options";
+import { resolveView } from "@/lib/charts/views";
 import { formatNumber } from "@/lib/utils";
-import type { BoundedResultPreview, ChartConfig, ChartType } from "@query-wise/shared/types";
+import type { BlockView, BoundedResultPreview, ChartConfig, ChartType, ViewTransform } from "@query-wise/shared/types";
 
 /**
  * The one result-block card. Rendered identically while the agent is still
@@ -60,6 +61,36 @@ export interface ResultBlockCardProps {
   actions?: React.ReactNode;
   /** Notifies the wrapper (dialog, save flow) when the user switches chart type. */
   onChartTypeChange?: (type: ChartType) => void;
+  /**
+   * SPEC-09 §2: the active view's client-side transform, applied to the chart (not
+   * the table/SQL tabs, which always show the underlying dataset for provenance).
+   */
+  transform?: ViewTransform | null;
+  /** SPEC-09 §2.1: alternate views. Chips render only when more than one exists. */
+  views?: BlockView[];
+  activeViewId?: string;
+  onSelectView?: (id: string) => void;
+  onDeleteView?: (id: string) => void;
+  /** Persisted toggles for the active view (were ephemeral before SPEC-09). */
+  initialStackMode?: BarStackMode;
+  initialNormalized?: boolean;
+  onStackModeChange?: (mode: BarStackMode) => void;
+  onNormalizedChange?: (on: boolean) => void;
+}
+
+const TRANSFORM_CHIP_LABEL: Record<ViewTransform["kind"], string> = {
+  topN: "Top N",
+  cumulative: "Cumulative",
+  percentOfTotal: "% of total",
+  pivot: "Pivot",
+};
+
+/** Short chip label for a view: its transform (with N filled in) or its chart type. */
+function viewChipLabel(view: BlockView): string {
+  const t = view.transform;
+  if (!t) return CHART_TYPE_META[view.chartConfig.type]?.label ?? "View";
+  if (t.kind === "topN") return `Top ${t.n}`;
+  return TRANSFORM_CHIP_LABEL[t.kind];
 }
 
 function ChartTypeSwitcher({
@@ -132,6 +163,15 @@ export function ResultBlockCard({
   running,
   actions,
   onChartTypeChange,
+  transform,
+  views,
+  activeViewId,
+  onSelectView,
+  onDeleteView,
+  initialStackMode,
+  initialNormalized,
+  onStackModeChange,
+  onNormalizedChange,
 }: ResultBlockCardProps) {
   const hasData = Boolean(preview);
   const result = useMemo(() => (preview ? previewToQueryResult(preview) : null), [preview]);
@@ -191,18 +231,38 @@ export function ResultBlockCard({
   };
 
   const activeChartType = chartTypes.includes(chartType) ? chartType : initialChartType;
-  const config: ChartConfig = { ...(chartConfig ?? { schemaVersion: 1, type: "table" }), type: activeChartType };
+  const baseConfig: ChartConfig = { ...(chartConfig ?? { schemaVersion: 1, type: "table" }), type: activeChartType };
+
+  // SPEC-09 §2.2: apply the active view's transform to the chart data (only — the
+  // table/SQL tabs always show the underlying dataset for provenance). resolveView
+  // is total: an invalid transform for this shape returns the raw result, so the
+  // chip simply behaves like the raw view rather than erroring.
+  const resolved = useMemo(
+    () => (result && transform ? resolveView(result, { id: activeViewId ?? "view", chartConfig: baseConfig, transform }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [result, transform, activeChartType, activeViewId],
+  );
+  const config: ChartConfig = resolved ? { ...resolved.config, type: activeChartType } : baseConfig;
 
   // Index-to-100 toggle: offered only for multi-series line/area, where mixed
   // scales otherwise flatten the smaller series. Absolute is the default (the
   // charts also auto-use a secondary axis for the common 2-series case).
   const isMultiSeries = Boolean(config.seriesKey) || (config.yKeys?.length ?? 0) > 1;
   const canNormalize = (activeChartType === "line" || activeChartType === "area") && isMultiSeries;
-  const [normalized, setNormalized] = useState(false);
+  const [normalized, setNormalized] = useState(initialNormalized ?? false);
 
   // Grouped / Stacked / 100% for multi-series bar & area (composition views).
   const canStack = (activeChartType === "bar" || activeChartType === "area") && isMultiSeries;
-  const [stackMode, setStackMode] = useState<BarStackMode>("none");
+  const [stackMode, setStackMode] = useState<BarStackMode>(initialStackMode ?? "none");
+
+  const pickStackMode = (mode: BarStackMode) => {
+    setStackMode(mode);
+    onStackModeChange?.(mode);
+  };
+  const pickNormalized = (on: boolean) => {
+    setNormalized(on);
+    onNormalizedChange?.(on);
+  };
   const statsLabel =
     rowCount != null
       ? `${formatNumber(rowCount)} row${rowCount === 1 ? "" : "s"}${executionTimeMs != null ? ` · ${executionTimeMs}ms` : ""}`
@@ -226,6 +286,45 @@ export function ResultBlockCard({
           <span className="tabular-nums text-[11px] text-faint">{statsLabel}</span>
         ) : null}
       </div>
+
+      {views && views.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5" role="tablist" aria-label="Views">
+          {views.map((view) => {
+            const isActive = view.id === activeViewId;
+            return (
+              <span
+                key={view.id}
+                className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
+                  isActive
+                    ? "border-accent-line bg-accent-soft text-accent-strong"
+                    : "border-border bg-surface-2/60 text-faint hover:text-text"
+                }`}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => onSelectView?.(view.id)}
+                  className="inline-flex items-center"
+                >
+                  {viewChipLabel(view)}
+                </button>
+                {onDeleteView && views.length > 1 ? (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${viewChipLabel(view)} view`}
+                    title="Remove view"
+                    onClick={() => onDeleteView(view.id)}
+                    className="ml-0.5 hidden text-faint/70 hover:text-danger group-hover:inline"
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5">
         <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5" role="tablist" aria-label="Result view">
@@ -257,7 +356,7 @@ export function ResultBlockCard({
                   type="button"
                   title={label}
                   aria-pressed={stackMode === mode}
-                  onClick={() => setStackMode(mode)}
+                  onClick={() => pickStackMode(mode)}
                   className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium transition ${
                     stackMode === mode ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
                   }`}
@@ -275,7 +374,7 @@ export function ResultBlockCard({
                   type="button"
                   title={label}
                   aria-pressed={normalized === on}
-                  onClick={() => setNormalized(on)}
+                  onClick={() => pickNormalized(on)}
                   className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium transition ${
                     normalized === on ? "bg-accent-soft text-accent-strong shadow-sm" : "text-faint hover:text-text"
                   }`}
@@ -296,7 +395,13 @@ export function ResultBlockCard({
         {tab === "chart" ? (
           hasData ? (
             <div className="h-64 min-w-0 rounded-xl border border-border/70 bg-surface-2/30 p-2 sm:h-72">
-              <V2Chart preview={preview} config={config} normalize={canNormalize && normalized} stackMode={canStack ? stackMode : "none"} />
+              <V2Chart
+                preview={preview}
+                config={config}
+                resultOverride={resolved?.result ?? undefined}
+                normalize={canNormalize && normalized}
+                stackMode={canStack ? stackMode : "none"}
+              />
             </div>
           ) : (
             <div className="rounded-xl border border-border/70 bg-surface-2/30">

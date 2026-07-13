@@ -879,37 +879,128 @@ function UseCases() {
 
 /* --------------------------------- Pricing -------------------------------- */
 
+type PlanFeature = { text: string; included: boolean };
+
+const FREE_FEATURES: PlanFeature[] = [
+  { text: "25 AI questions / month, 5 per day", included: true },
+  { text: "1 PostgreSQL connection, plus demo", included: true },
+  { text: "Auto-charts & 1 dashboard", included: true },
+  { text: "1 public share link, no password", included: true },
+  { text: "Daily schema re-sync", included: true },
+  { text: "Read-only safety, always on", included: true },
+  { text: "Password-protected shares", included: false },
+  { text: "Extended agent runs & priority", included: false },
+];
+
+const PRO_FEATURES: PlanFeature[] = [
+  { text: "500 AI questions / month, 50 per day", included: true },
+  { text: "5 PostgreSQL connections", included: true },
+  { text: "Up to 100 dashboards", included: true },
+  { text: "20 public share links, password OK", included: true },
+  { text: "Extended agent runs for complex questions", included: true },
+  { text: "20 schema re-syncs per day", included: true },
+  { text: "Higher concurrency & priority", included: true },
+  { text: "Email support, best-effort", included: true },
+];
+
+function PlanFeatureRow({ text, included }: PlanFeature) {
+  return (
+    <li className={`flex items-start gap-3 text-[14.5px] ${included ? "text-text" : "text-faint"}`}>
+      {included ? (
+        <Check className="mt-0.5 size-4 shrink-0 text-accent-strong" strokeWidth={2.5} />
+      ) : (
+        <X className="mt-0.5 size-4 shrink-0 text-faint" strokeWidth={2.25} />
+      )}
+      <span className={included ? undefined : "line-through decoration-border-2"}>{text}</span>
+    </li>
+  );
+}
+
 function Pricing() {
-  const included = ["Unlimited questions", "PostgreSQL connections", "Auto-charts & dashboards", "Secure public sharing", "Read-only safety, always on"];
   return (
     <section id="pricing" className="border-y border-border bg-bg-2 px-7 py-28">
       <div className="mx-auto max-w-[1180px]">
         <div data-reveal className="mx-auto max-w-2xl text-center">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Pricing</p>
-          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">Free while in beta</h2>
+          <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
+            Start free. Scale when you need to.
+          </h2>
           <p className="mt-4 text-[16.5px] leading-relaxed text-muted">
-            Every feature, generous limits, no credit card. Paid plans arrive later — beta users get grandfathered perks.
+            Free is enough to prove QueryWise on real data. Pro unlocks volume, multi-DB workspaces, and password-protected sharing when you&apos;re ready. Payments are coming soon.
           </p>
         </div>
-        <div data-reveal className="mx-auto mt-12 max-w-md rounded-3xl border border-accent-line bg-surface p-8 text-center shadow-[0_0_60px_-30px_var(--accent)]">
-          <p className="m-0 font-mono text-[11px] uppercase tracking-[0.18em] text-accent-strong">Beta</p>
-          <p className="m-0 mt-3 font-syne text-6xl font-bold">$0</p>
-          <p className="m-0 mt-1 text-sm text-faint">while in beta</p>
-          <ul className="m-0 mt-7 flex list-none flex-col gap-3 p-0 text-left">
-            {included.map((item) => (
-              <li key={item} className="flex items-center gap-3 text-[15px] text-text">
-                <Check className="size-4 shrink-0 text-accent-strong" strokeWidth={2.5} />
-                {item}
-              </li>
-            ))}
-          </ul>
-          <Link
-            href="/sign-up"
-            className="mt-8 block rounded-xl bg-accent px-6 py-3.5 text-base font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-10px_var(--accent-line)]"
-          >
-            Start free →
-          </Link>
+
+        <div data-reveal className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+          {/* Free */}
+          <div className="flex flex-col rounded-3xl border border-border bg-surface p-8 shadow-[0_20px_50px_-40px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center justify-between gap-3">
+              <p className="m-0 font-mono text-[11px] uppercase tracking-[0.18em] text-muted">Free</p>
+              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] text-faint">
+                Available now
+              </span>
+            </div>
+            <div className="mt-4 flex items-end gap-1.5">
+              <p className="m-0 font-syne text-5xl font-bold tracking-tight">$0</p>
+              <p className="mb-1.5 text-sm text-faint">/ month</p>
+            </div>
+            <p className="m-0 mt-2 text-[14.5px] leading-relaxed text-muted">
+              Try the full product path: connect, ask, and chart, without a credit card.
+            </p>
+            <ul className="m-0 mt-7 flex list-none flex-col gap-3 p-0">
+              {FREE_FEATURES.map((f) => (
+                <PlanFeatureRow key={f.text} {...f} />
+              ))}
+            </ul>
+            <Link
+              href="/sign-up"
+              className="mt-8 block rounded-xl border border-border bg-bg px-6 py-3.5 text-center text-base font-semibold text-text no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line hover:bg-surface-2"
+            >
+              Start free →
+            </Link>
+          </div>
+
+          {/* Pro — coming soon */}
+          <div className="relative flex flex-col overflow-hidden rounded-3xl border border-accent-line bg-surface p-8 shadow-[0_0_60px_-28px_var(--accent)]">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full opacity-40 blur-3xl"
+              style={{ background: "radial-gradient(closest-side, var(--accent-soft), transparent)" }}
+            />
+            <div className="relative flex items-center justify-between gap-3">
+              <p className="m-0 font-mono text-[11px] uppercase tracking-[0.18em] text-accent-strong">Pro</p>
+              <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 font-mono text-[10px] font-medium text-accent-strong">
+                Coming soon
+              </span>
+            </div>
+            <div className="relative mt-4 flex items-end gap-1.5">
+              <p className="m-0 font-syne text-5xl font-bold tracking-tight">$29</p>
+              <p className="mb-1.5 text-sm text-faint">/ month</p>
+            </div>
+            <p className="relative m-0 mt-2 text-[14.5px] leading-relaxed text-muted">
+              For daily analysis: more questions, more databases, and dashboards you can share live.
+            </p>
+            <ul className="relative m-0 mt-7 flex list-none flex-col gap-3 p-0">
+              {PRO_FEATURES.map((f) => (
+                <PlanFeatureRow key={f.text} {...f} />
+              ))}
+            </ul>
+            <button
+              type="button"
+              disabled
+              className="relative mt-8 w-full cursor-not-allowed rounded-xl bg-accent/70 px-6 py-3.5 text-base font-semibold text-accent-ink opacity-90"
+            >
+              Coming soon
+            </button>
+            <p className="relative m-0 mt-3 text-center font-mono text-[11px] text-faint">
+              Checkout & billing not live yet
+            </p>
+          </div>
         </div>
+
+        <p data-reveal className="mx-auto mt-10 max-w-xl text-center font-mono text-xs leading-relaxed text-faint">
+          Limits are planned product caps — free usage stays fair so platform AI keys aren&apos;t exhausted.
+          Team plans and usage-based top-ups may follow.
+        </p>
       </div>
     </section>
   );
@@ -923,6 +1014,7 @@ const FAQS = [
   ["Can it modify or delete my data?", "No. Enforcement is layered: a read-only role, single-statement validation, bounded results, and query timeouts. QueryWise physically cannot write."],
   ["Do I need to know SQL?", "No — you ask in plain English. But the generated SQL is always shown and explained, so analysts can verify every answer and learn from it."],
   ["What happens when the AI gets it wrong?", "You see the SQL and the row counts, so wrong answers are visible rather than silent. Rephrase or correct in a follow-up — the conversation keeps context."],
+  ["What's free vs Pro?", "Free is for trying QueryWise: 25 questions a month (5 a day), one connection, one dashboard, and one open public share link (no password). Pro (coming soon) raises the question limits, adds multi-DB workspaces, password-protected sharing, and extended agent runs for complex questions. Payments are not live yet."],
 ] as const;
 
 function Faq() {
@@ -977,7 +1069,7 @@ function FinalCta() {
             <ArrowRight className="size-4 transition-transform duration-150 group-hover:translate-x-0.5" strokeWidth={2} />
           </Link>
         </div>
-        <p data-reveal className="m-0 mt-4 font-mono text-xs text-faint">No credit card · Free while in beta</p>
+        <p data-reveal className="m-0 mt-4 font-mono text-xs text-faint">No credit card · Free plan available · Pro coming soon</p>
       </div>
     </section>
   );

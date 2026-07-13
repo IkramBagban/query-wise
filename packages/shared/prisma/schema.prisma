@@ -81,6 +81,34 @@ enum JobStatus {
   @@map("v2_job_status")
 }
 
+// Plan catalog id. Default free; pro is granted only by manual DB mutation (or a
+// future payment webhook). No public API sets pro.
+enum PlanId {
+  free
+  pro
+
+  @@map("v2_plan_id")
+}
+
+// v1 ships only active | disabled. `disabled` blocks every plan-enforced mutation
+// (ACCOUNT_DISABLED) while leaving reads allowed. Payment dunning states are
+// reserved for a later phase.
+enum PlanStatus {
+  active
+  disabled
+
+  @@map("v2_plan_status")
+}
+
+// How the current plan row was assigned. A payment source is reserved for a later
+// phase and intentionally omitted from the v1 enum (additive later).
+enum PlanSource {
+  default
+  manual
+
+  @@map("v2_plan_source")
+}
+
 model User {
   id          String    @id @db.Uuid
   clerkUserId String    @unique(map: "v2_users_clerk_user_id_key") @map("clerk_user_id")
@@ -103,6 +131,10 @@ model DatabaseConnection {
   encryptedSecret   Json?            @map("encrypted_secret")
   credentialVersion Int              @default(1) @map("credential_version")
   status            ConnectionStatus @default(pending)
+  // The platform demo connection does not consume the Free non-demo connection
+  // slot. A boolean flag is authoritative; name-matching is fragile (users can
+  // rename or collide). Set in createDemoConnection.
+  isDemo            Boolean          @default(false) @map("is_demo")
   lastTestedAt      DateTime?        @map("last_tested_at") @db.Timestamptz(6)
   lastTestErrorCode String?          @map("last_test_error_code")
   lastSchemaSyncAt  DateTime?        @map("last_schema_sync_at") @db.Timestamptz(6)
@@ -257,6 +289,10 @@ model DashboardWidget {
   // SPEC-06 §5: { dateColumn, tableAlias, defaultRange } | null. Present only when
   // the pinned query carries the :qw_from/:qw_to parameter markers.
   filterBinding   Json?    @map("filter_binding")
+  // SPEC-09 §2.3: the pinned view's client-side transform (ViewTransform | null).
+  // Applied after snapshot/live data load, before charting. Nullable — pre-SPEC-09
+  // widgets (and views pinning the raw dataset) simply render the snapshot as-is.
+  viewTransform   Json?    @map("view_transform")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -360,4 +396,160 @@ model DurableJob {
   @@index([status, availableAt, priority(sort: Desc), id], map: "v2_jobs_claim_idx")
   @@index([status, leaseExpiresAt], map: "v2_jobs_lease_idx")
   @@map("v2_durable_jobs")
+}
+
+// One row per user (keyed on the Clerk user id, matching every ownerUserId
+// column). Lazily upserted on the first authenticated enforcement point. The five
+// *Override columns are set by ops: null = use catalog value; a set value wins
+// (effectiveLimit = override ?? catalog[planId]).
+model UserPlan {
+  id           String     @id @db.Uuid
+  userId       String     @unique @map("user_id")
+  planId       PlanId     @default(free) @map("plan_id")
+  status       PlanStatus @default(active)
+  source       PlanSource @default(default)
+  proGrantedAt DateTime?  @map("pro_granted_at") @db.Timestamptz(6)
+  notes        String?
+
+  // Per-user limit overrides. Set by ops; resolved by the entitlement service
+  // only. No other product code reads these.
+  questionsPerDayOverride       Int? @map("questions_per_day_override")
+  questionsPerMonthOverride     Int? @map("questions_per_month_override")
+  maxConnectionsOverride        Int? @map("max_connections_override")
+  maxDashboardsOverride         Int? @map("max_dashboards_override")
+  schemaRefreshesPerDayOverride Int? @map("schema_refreshes_per_day_override")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("v2_user_plans")
+}
+
+// Per-user rolling counters for fast quota checks. One row per (user, periodType,
+// periodKey). Incremented atomically alongside question accept.
+model UserUsagePeriod {
+  id                   String   @id @db.Uuid
+  userId               String   @map("user_id")
+  periodType           String   @map("period_type") // "day" | "month"
+  periodKey            String   @map("period_key") // "2026-07-09" | "2026-07"
+  questionsAccepted    Int      @default(0) @map("questions_accepted")
+  questionsSucceeded   Int      @default(0) @map("questions_succeeded")
+  questionsFailed      Int      @default(0) @map("questions_failed")
+  schemaRefreshes      Int      @default(0) @map("schema_refreshes")
+  chartsGenerated      Int      @default(0) @map("charts_generated")
+  llmInputTokens       BigInt   @default(0) @map("llm_input_tokens")
+  llmOutputTokens      BigInt   @default(0) @map("llm_output_tokens")
+  llmCachedInputTokens BigInt   @default(0) @map("llm_cached_input_tokens")
+  llmCallCount         Int      @default(0) @map("llm_call_count")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, periodType, periodKey], map: "v2_user_usage_periods_user_period_key")
+  @@index([periodType, periodKey], map: "v2_user_usage_periods_period_idx")
+  @@map("v2_user_usage_periods")
+}
+
+// Lifetime rollups. Current resource counts (dashboards/connections now) are
+// derived from primary tables, not these lifetime counters.
+model UserUsageTotals {
+  userId               String   @id @map("user_id")
+  questionsAccepted    Int      @default(0) @map("questions_accepted")
+  questionsSucceeded   Int      @default(0) @map("questions_succeeded")
+  questionsFailed      Int      @default(0) @map("questions_failed")
+  chartsGenerated      Int      @default(0) @map("charts_generated")
+  dashboardsCreated    Int      @default(0) @map("dashboards_created")
+  connectionsCreated   Int      @default(0) @map("connections_created")
+  sharesCreated        Int      @default(0) @map("shares_created")
+  schemaSyncsSucceeded Int      @default(0) @map("schema_syncs_succeeded")
+  llmInputTokens       BigInt   @default(0) @map("llm_input_tokens")
+  llmOutputTokens      BigInt   @default(0) @map("llm_output_tokens")
+  llmCachedInputTokens BigInt   @default(0) @map("llm_cached_input_tokens")
+  llmCallCount         Int      @default(0) @map("llm_call_count")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("v2_user_usage_totals")
+}
+
+// One row per model call (agent, utility, title, memory, verify, ingest,
+// embedding, ...). Idempotency via (queryRunId, callOrdinal). The task and
+// provider/model indexes back the ops cost-explorer queries.
+model LlmUsageRecord {
+  id                String   @id @db.Uuid
+  userId            String   @map("user_id")
+  queryRunId        String?  @map("query_run_id") @db.Uuid
+  connectionId      String?  @map("connection_id") @db.Uuid
+  task              String
+  provider          String
+  model             String
+  inputTokens       Int      @default(0) @map("input_tokens")
+  outputTokens      Int      @default(0) @map("output_tokens")
+  totalTokens       Int      @default(0) @map("total_tokens")
+  cachedInputTokens Int      @default(0) @map("cached_input_tokens")
+  reasoningTokens   Int?     @map("reasoning_tokens")
+  success           Boolean  @default(true)
+  latencyMs         Int?     @map("latency_ms")
+  attemptIndex      Int?     @map("attempt_index")
+  callOrdinal       Int?     @map("call_ordinal")
+  metadata          Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt(sort: Desc)], map: "v2_llm_usage_user_created_idx")
+  @@index([queryRunId], map: "v2_llm_usage_query_run_idx")
+  @@index([task, createdAt(sort: Desc)], map: "v2_llm_usage_task_created_idx")
+  @@index([provider, model, createdAt(sort: Desc)], map: "v2_llm_usage_provider_model_idx")
+  @@map("v2_llm_usage_records")
+}
+
+// Per-question aggregate ("what did this question cost?").
+model QueryRunUsage {
+  queryRunId        String   @id @map("query_run_id") @db.Uuid
+  userId            String   @map("user_id")
+  inputTokens       Int      @default(0) @map("input_tokens")
+  outputTokens      Int      @default(0) @map("output_tokens")
+  cachedInputTokens Int      @default(0) @map("cached_input_tokens")
+  llmCallCount      Int      @default(0) @map("llm_call_count")
+  agentSteps        Int?     @map("agent_steps")
+  sqlAttempts       Int?     @map("sql_attempts")
+  budgetProfile     String?  @map("budget_profile")
+  chartGenerated    Boolean  @default(false) @map("chart_generated")
+  chartType         String?  @map("chart_type")
+  primaryProvider   String?  @map("primary_provider")
+  primaryModel      String?  @map("primary_model")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt(sort: Desc)], map: "v2_query_run_usage_user_idx")
+  @@map("v2_query_run_usage")
+}
+
+// Append-only product analytics. payload holds small safe JSON only (counts,
+// enums, ids, booleans); never secrets or row data.
+model MetricEvent {
+  id           String   @id @db.Uuid
+  userId       String?  @map("user_id")
+  eventType    String   @map("event_type")
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  queryRunId   String?  @map("query_run_id") @db.Uuid
+  payload      Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt(sort: Desc)], map: "v2_metric_events_user_created_idx")
+  @@index([eventType, createdAt(sort: Desc)], map: "v2_metric_events_type_created_idx")
+  @@map("v2_metric_events")
+}
+
+// Audit of plan mutations (manual grant/revoke; future payment webhooks).
+model PlanChangeLog {
+  id         String   @id @db.Uuid
+  userId     String   @map("user_id")
+  fromPlanId String   @map("from_plan_id")
+  toPlanId   String   @map("to_plan_id")
+  source     String
+  notes      String?
+  actorLabel String?  @map("actor_label")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt(sort: Desc)], map: "v2_plan_change_log_user_idx")
+  @@map("v2_plan_change_logs")
 }

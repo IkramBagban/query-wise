@@ -6,6 +6,9 @@ import type {
   AnalystAgentResult,
   AnalystAgentRuntime,
 } from "@/lib/llm/agent";
+import { AGENT_BUDGET_PROFILES } from "@/lib/llm/agent/types";
+import { getPlanForUser } from "@/lib/plans";
+import { finalizeQueryRunUsage, recordMetricEvent } from "@query-wise/shared/metrics";
 import { completeQueryRun, transitionQueryRun } from "@/lib/query-runs";
 import { getBackendLlmConfig } from "@/lib/llm/client";
 import { devLog } from "@query-wise/shared/observability";
@@ -171,11 +174,17 @@ export async function runAgentQueryRun(input: {
   const agentRuntime = createAgentRuntime(input.runtime, input.context, abortSignal);
   const agentStartedAt = Date.now();
 
-  const [rankedTables, analysisState] = await Promise.all([
+  const [rankedTables, analysisState, plan] = await Promise.all([
     rankTablesForQuestion(input.schema, input.question),
     // SPEC-02 §4: distilled cross-turn memory, injected within the history budget.
     getConversationAnalysisState(run.conversationId).catch(() => undefined),
+    getPlanForUser(run.ownerUserId),
   ]);
+
+  // Plan gating: Free forces the standard agent budget (extended stays Pro-only)
+  // and routes onto the fast model tier. Pro lets the question heuristic decide.
+  const forcedBudget =
+    plan.limits.maxAgentBudgetProfile === "standard" ? AGENT_BUDGET_PROFILES.standard : undefined;
 
   const result = await runAnalystAgent({
     question: input.question,
@@ -187,6 +196,12 @@ export async function runAgentQueryRun(input: {
     provider: llmConfig.provider,
     model: llmConfig.model,
     apiKeys: llmConfig.apiKeys,
+    budget: forcedBudget,
+    usageContext: {
+      userId: run.ownerUserId,
+      queryRunId: run.id,
+      connectionId: run.connectionId,
+    },
     abortSignal,
     onTextDelta: (chunk) => emit?.("text-delta", { chunk }),
     onActivity: (event) => emit?.("activity", event),
@@ -243,6 +258,37 @@ export async function runAgentQueryRun(input: {
     ...buildLegacyMirror(resultBlocks[0]),
   });
   emit?.("completed", { status: run.status, statusVersion: run.statusVersion });
+
+  // Metrics (best-effort, never blocks the response): fold agent metadata into the
+  // per-run aggregate, bump the succeeded question counters, and emit events.
+  const chartBlock = result.blocks.find((block) => {
+    const type = (block.chartConfig as { type?: string } | null)?.type;
+    return Boolean(type) && type !== "table" && type !== "none";
+  });
+  // SPEC-09 §3.2: quiet probes are counted separately — exclude them from the
+  // sqlAttempts metric so probing doesn't inflate answer-query usage.
+  const sqlAttempts = result.transcript.filter(
+    (step) => step.tool === "run_sql" && (step.input as { presentation?: string } | null)?.presentation !== "quiet",
+  ).length;
+  void finalizeQueryRunUsage({
+    queryRunId: run.id,
+    userId: run.ownerUserId,
+    agentSteps: result.transcript.length,
+    sqlAttempts,
+    budgetProfile: forcedBudget ? "standard" : undefined,
+    chartGenerated: Boolean(chartBlock),
+    chartType: (chartBlock?.chartConfig as { type?: string } | null)?.type ?? null,
+  });
+  if (chartBlock) {
+    void recordMetricEvent({
+      userId: run.ownerUserId,
+      eventType: "chart.generated",
+      resourceType: "query-run",
+      resourceId: run.id,
+      queryRunId: run.id,
+      payload: { chartType: (chartBlock.chartConfig as { type?: string } | null)?.type ?? null },
+    });
+  }
 
   void generateAndPersistTitle({
     conversationId: run.conversationId,

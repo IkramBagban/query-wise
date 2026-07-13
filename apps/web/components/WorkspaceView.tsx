@@ -62,7 +62,7 @@ import {
   type ConnectionListItem,
   type QueryStreamEvent,
 } from "@/lib/api-client";
-import type { BoundedResultPreview, ChartConfig } from "@query-wise/shared/types";
+import type { BoundedResultPreview, ChartConfig, ViewTransform } from "@query-wise/shared/types";
 
 const suggestions = [
   "What changed in the last 30 days?",
@@ -1085,7 +1085,7 @@ function AssistantMessage({
   message: ConversationMessageDto;
   dashboardOptions: { value: string; label: string }[];
   onCreateDashboard: (name: string) => Promise<string>;
-  onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string) => Promise<void>;
+  onSave: (message: ConversationMessageDto, config: ChartConfig, dashboardId: string, viewTransform: ViewTransform | null) => Promise<void>;
 }) {
   const blocks = message.queryRun?.resultBlocks;
   const hasBlocks = blocks && blocks.length > 0;
@@ -1462,7 +1462,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
     return dashboard.id;
   }
 
-  async function saveResult(message: ConversationMessageDto, chartConfig: ChartConfig, targetDashboardId: string) {
+  async function saveResult(
+    message: ConversationMessageDto,
+    chartConfig: ChartConfig,
+    targetDashboardId: string,
+    viewTransform: ViewTransform | null = null,
+  ) {
     const run = message.queryRun;
     if (!targetDashboardId || !message.queryRunId || !isBoundedResultPreview(run?.resultPreview)) {
       throw new Error("This chart is not ready to save.");
@@ -1476,6 +1481,7 @@ export function ConversationView({ conversationId }: { conversationId: string })
         chartConfig,
         layout: { schemaVersion: 1, x: 0, y: 0, w: 6, h: 4 },
         snapshot: run.resultPreview,
+        viewTransform,
       });
     } catch (reason) {
       const errorMessage = reason instanceof Error ? reason.message : "Unable to save result";

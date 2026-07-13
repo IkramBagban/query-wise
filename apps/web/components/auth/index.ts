@@ -1,2 +1,2 @@
 export * from "./AuthPageShell";
-export * from "./UserControl";
+export * from "./AccountMenu";

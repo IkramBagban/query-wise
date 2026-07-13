@@ -49,6 +49,7 @@ const KEY_COOLDOWN_MS = 60_000;
  */
 const DEFAULT_CHAINS: Record<LlmTask, LlmCandidate[]> = {
   agent: [
+    { provider: "anthropic", model: "claude-sonnet-5" },
     { provider: "google", model: "gemini-3.5-flash" },
     { provider: "google", model: "gemini-3.1-flash-lite" },
     { provider: "google", model: "gemini-2.5-flash" },
@@ -65,6 +66,10 @@ const DEFAULT_CHAINS: Record<LlmTask, LlmCandidate[]> = {
     { provider: "google", model: "gemini-3.1-flash-lite" },
   ],
 };
+
+// Product decision (2026-07-11): no plan-based model tiering — every plan routes
+// through the same task chains. If tiering returns, reintroduce it as a separate
+// env-configured chain (e.g. LLM_AGENT_CHAIN_FAST) resolved from the plan.
 
 const CHAIN_ENV_VAR: Record<LlmTask, string> = {
   agent: "LLM_AGENT_CHAIN",
@@ -112,7 +117,10 @@ function dedupe(candidates: LlmCandidate[]): LlmCandidate[] {
  * config still steers the primary; the env override (if set) replaces the
  * default tail.
  */
-export function resolveTaskChain(task: LlmTask, preferred?: LlmCandidate | null): LlmCandidate[] {
+export function resolveTaskChain(
+  task: LlmTask,
+  preferred?: LlmCandidate | null,
+): LlmCandidate[] {
   const override = parseChain(process.env[CHAIN_ENV_VAR[task]]);
   const base = override.length > 0 ? override : DEFAULT_CHAINS[task];
   return dedupe([...(preferred ? [preferred] : []), ...base]);
@@ -124,7 +132,8 @@ export function resolveKeysFor(provider: Provider): string[] {
   if (provider === "groq") raw = process.env.GROQ_API_KEY;
   else if (provider === "google")
     raw = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.QUERYWISE_INGESTION_LLM_API_KEY;
-  else if (provider === "anthropic") raw = process.env.ANTHROPIC_API_KEY;
+  else if (provider === "anthropic") 
+    raw = process.env.ANTHROPIC_API_KEY;
   return (raw ?? "")
     .split(",")
     .map((k) => k.trim())

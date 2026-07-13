@@ -6,7 +6,16 @@ import { devLog, devLogError } from "@query-wise/shared/observability";
 import { getModel, type Provider, withModelFallback } from "./llm";
 import type { SchemaEmbeddingRecord, SchemaEntityDescription } from "@query-wise/shared/ingestion";
 import { embedTexts } from "@query-wise/shared/ai";
+import { recordLlmUsage } from "@query-wise/shared/metrics";
 import { computeEntityFingerprint } from "./fingerprint";
+
+/** Owner/connection context so ingestion LLM + embedding token usage is attributable. */
+export interface IngestUsageContext {
+  userId: string;
+  connectionId: string;
+}
+
+type ModelUsage = { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number } | undefined;
 
 const DESCRIPTION_BATCH_SIZE = 8;
 const EMBEDDING_DIMENSIONS = 384;
@@ -98,7 +107,21 @@ function truncateWideEntity(entity: MetadataEntity): { truncatedEntity: Metadata
   };
 }
 
-async function describeBatchWithLlm(entities: MetadataEntity[], config: { provider: Provider; model: string; apiKey: string }, maxOutputTokens = 6000) {
+async function describeBatchWithLlm(entities: MetadataEntity[], config: { provider: Provider; model: string; apiKey: string }, maxOutputTokens = 6000, usageContext?: IngestUsageContext) {
+  const recordIngestUsage = (usage: ModelUsage) => {
+    if (!usageContext) return;
+    void recordLlmUsage({
+      userId: usageContext.userId,
+      connectionId: usageContext.connectionId,
+      task: "ingest",
+      provider: config.provider,
+      model: config.model,
+      inputTokens: usage?.inputTokens,
+      outputTokens: usage?.outputTokens,
+      cachedInputTokens: usage?.cachedInputTokens,
+      success: true,
+    });
+  };
   const entityIds = entities.map((e) => e.id);
   const prompt = [
     "Enrich the provided PostgreSQL tables with concise, analytics-oriented metadata.",
@@ -132,6 +155,7 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
         }),
     });
     tables = result.object.tables;
+    recordIngestUsage((result as { usage?: ModelUsage }).usage);
   } catch (structuredError) {
     devLogError("schema-ingestion.llm.structured-failed", "Structured generation failed, falling back to text+parse", structuredError, {
       provider: config.provider,
@@ -139,7 +163,7 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
       batchEntityIds: entityIds,
     });
 
-    const { text } = await withModelFallback({
+    const textResult = await withModelFallback({
       provider: config.provider,
       model: config.model,
       execute: (candidateModel) =>
@@ -151,6 +175,8 @@ async function describeBatchWithLlm(entities: MetadataEntity[], config: { provid
           temperature: 0.0,
         }),
     });
+    recordIngestUsage((textResult as { usage?: ModelUsage }).usage);
+    const { text } = textResult;
 
     let jsonText = text.trim();
     const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -209,6 +235,7 @@ export async function describeEntities(
   entities: MetadataEntity[],
   existing: Record<string, SchemaEntityDescription> = {},
   onBatch?: (descriptions: Record<string, SchemaEntityDescription>) => Promise<void>,
+  usageContext?: IngestUsageContext,
 ): Promise<Record<string, SchemaEntityDescription>> {
   const descriptions = { ...existing };
   const llmConfig = configuredProvider();
@@ -261,7 +288,7 @@ export async function describeEntities(
       let batchDescriptions: SchemaEntityDescription[];
       if (llmConfig) {
         try {
-          batchDescriptions = await describeBatchWithLlm(batchEntities, llmConfig, maxTokens);
+          batchDescriptions = await describeBatchWithLlm(batchEntities, llmConfig, maxTokens, usageContext);
         } catch (error) {
           devLogError("schema-ingestion.descriptions.batch-failed", "LLM description batch failed, using heuristic fallback.", error, {
             batchEntityIds: batchIds,
@@ -325,6 +352,7 @@ export async function createEmbeddingRecords(input: {
   entities: MetadataEntity[];
   descriptions: Record<string, SchemaEntityDescription>;
   alreadyEmbeddedEntityIds?: Set<string>;
+  ownerUserId?: string;
 }): Promise<SchemaEmbeddingRecord[]> {
   const itemsToEmbed: { entity: MetadataEntity, description: SchemaEntityDescription, kind: "table-summary" | "question-summary", text: string }[] = [];
   
@@ -338,7 +366,10 @@ export async function createEmbeddingRecords(input: {
   if (itemsToEmbed.length === 0) return [];
   
   const texts = itemsToEmbed.map(item => item.text);
-  const embeddings = await embedTexts(texts);
+  const embeddings = await embedTexts(
+    texts,
+    input.ownerUserId ? { userId: input.ownerUserId, connectionId: input.connectionId } : undefined,
+  );
   
   if (!embeddings) {
     return []; // Fall back to lexical seamlessly

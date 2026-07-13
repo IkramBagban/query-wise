@@ -3,7 +3,10 @@
   "private": true,
   "scripts": {
     "dev": "concurrently --names web,worker \"pnpm --filter @query-wise/web dev\" \"pnpm --filter @query-wise/worker dev\"",
+    "dev:admin": "pnpm --filter @query-wise/admin dev",
     "build": "pnpm --filter @query-wise/web build && pnpm --filter @query-wise/worker build",
+    "build:admin": "pnpm --filter @query-wise/admin build",
+    "test:admin": "pnpm --filter @query-wise/admin test",
     "db:generate": "pnpm --filter @query-wise/shared db:generate",
     "db:migrate:dev": "pnpm --filter @query-wise/shared db:migrate:dev",
     "db:migrate:deploy": "pnpm --filter @query-wise/shared db:migrate:deploy"

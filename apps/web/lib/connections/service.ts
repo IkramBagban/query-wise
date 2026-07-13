@@ -16,6 +16,8 @@ import { executeIdempotently, idempotencyFingerprint } from "@/lib/idempotency";
 import { getConnectionSecret } from "./credentials";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { writeAuditLog } from "@/lib/audit";
+import { assertAccountActive, assertConnectionQuota, getPlanForUser } from "@/lib/plans";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
 
 function dto(record: DatabaseConnection): ConnectionDto {
   const adapter = getDataSourceAdapter(record.providerId);
@@ -55,8 +57,15 @@ export async function getConnection(connectionId: ResourceId): Promise<Connectio
   return dto(await requireOwnedConnection(connectionId));
 }
 
-export async function createConnection(input: { name: string; providerId: "postgresql"; connectionString: string }): Promise<ConnectionDto> {
+export async function createConnection(input: { name: string; providerId: "postgresql"; connectionString: string; isDemo?: boolean }): Promise<ConnectionDto> {
   const { userId } = await requireUser();
+  // Plan gate: disabled accounts cannot create connections; the non-demo cap is
+  // enforced for user-owned databases only (the demo is slot-exempt).
+  const plan = await getPlanForUser(userId);
+  assertAccountActive(plan);
+  if (!input.isDemo) {
+    await assertConnectionQuota(userId, plan);
+  }
   const adapter = getDataSourceAdapter(input.providerId);
   requireCapability(adapter, "connection-test");
   const parsed = parsePostgresUrl(input.connectionString);
@@ -82,6 +91,7 @@ export async function createConnection(input: { name: string; providerId: "postg
         id, ownerUserId: userId, providerId: adapter.providerId, dialectId: adapter.dialectId, name: input.name,
         hostDisplay: parsed.hostDisplay, port: parsed.port, databaseName: parsed.databaseName,
         encryptedSecret: encryptedSecret as unknown as Prisma.InputJsonValue,
+        isDemo: input.isDemo ?? false,
         status: result.success ? "connected" : "error", lastTestedAt: new Date(),
         lastTestErrorCode: result.errorCode, schemaSyncStatus: result.success ? "queued" : "never",
       },
@@ -109,6 +119,13 @@ export async function createConnection(input: { name: string; providerId: "postg
     status: record.status,
     schemaSyncStatus: record.schemaSyncStatus,
   });
+  void recordMetricEvent({
+    userId,
+    eventType: "connection.created",
+    resourceType: "connection",
+    resourceId: id,
+    payload: { providerId: adapter.providerId, isDemo: input.isDemo ?? false, testSucceeded: result.success },
+  });
   return dto(record);
 }
 
@@ -132,6 +149,7 @@ export async function createDemoConnection(): Promise<ConnectionDto> {
     name: "QueryWise Demo (Ecommerce)",
     providerId: "postgresql",
     connectionString: url.toString(),
+    isDemo: true,
   });
 }
 
@@ -261,6 +279,12 @@ export async function deleteConnection(connectionId: ResourceId): Promise<void> 
       resourceId: connectionId,
       outcome: "succeeded",
     }, tx);
+  });
+  void recordMetricEvent({
+    userId: record.ownerUserId,
+    eventType: "connection.deleted",
+    resourceType: "connection",
+    resourceId: connectionId,
   });
   await getDataSourceAdapter(record.providerId).dispose(connectionId);
 }

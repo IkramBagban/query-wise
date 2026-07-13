@@ -116,6 +116,9 @@ export interface AgentResultBlock {
   index: number;
   purpose: string;
   sql: string;
+  /** Validated/normalized SQL, used to dedupe an identical re-run (e.g. from the
+   *  verification correction pass) into the existing block instead of a new card. */
+  normalizedSql?: string;
   result: BoundedQueryResult;
   /** Agent-provided hint via set_chart, already axis-validated. */
   chartHint: ChartHint | null;
@@ -180,6 +183,15 @@ export interface RunAnalystAgentParams extends AnalystAgentEmitters {
   budget?: AgentBudget;
   /** Distilled prior-turn memory injected into context (SPEC-02 §4). */
   memory?: AgentMemoryContext;
+  /**
+   * Usage-recording context threaded to persist per-call LLM token usage. When
+   * present, each model call writes an LlmUsageRecord keyed to this run/user.
+   */
+  usageContext?: {
+    userId: string;
+    queryRunId?: string | null;
+    connectionId?: string | null;
+  };
 }
 
 /** Mutable per-run state shared by the tools. */
@@ -190,6 +202,8 @@ export interface AgentRunState {
   sampleCalls: number;
   /** search_schema calls made this run (SPEC-02 §1.1, capped at maxSearchCalls). */
   searchCalls: number;
+  /** Quiet probe queries made this run (SPEC-09 §3.2, capped at maxQuietQueries). */
+  quietQueries: number;
   /** Resolved budget for the run; tools read their caps from here (SPEC-02 §2). */
   budget: AgentBudget;
 }
@@ -200,15 +214,17 @@ export interface AgentBudget {
   maxSqlAttempts: number;
   maxSampleCalls: number;
   maxSearchCalls: number;
+  /** SPEC-09 §3.2: separate cap for quiet probes so they don't consume sqlAttempts. */
+  maxQuietQueries: number;
 }
 
 /**
- * Adaptive budget profiles (SPEC-02 §2). `standard` preserves the historical
- * fixed values; `extended` engages for complex, multi-part questions.
+ * Adaptive budget profiles (SPEC-02 §2, SPEC-09 §3.2). `standard` preserves the
+ * historical fixed values; `extended` engages for complex, multi-part questions.
  */
 export const AGENT_BUDGET_PROFILES: Record<"standard" | "extended", AgentBudget> = {
-  standard: { maxSteps: 14, maxSqlAttempts: 8, maxSampleCalls: 8, maxSearchCalls: 3 },
-  extended: { maxSteps: 22, maxSqlAttempts: 12, maxSampleCalls: 12, maxSearchCalls: 4 },
+  standard: { maxSteps: 14, maxSqlAttempts: 8, maxSampleCalls: 8, maxSearchCalls: 3, maxQuietQueries: 4 },
+  extended: { maxSteps: 22, maxSqlAttempts: 12, maxSampleCalls: 12, maxSearchCalls: 4, maxQuietQueries: 8 },
 };
 
 export type AgentBudgetProfile = keyof typeof AGENT_BUDGET_PROFILES;

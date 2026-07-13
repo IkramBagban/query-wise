@@ -2,6 +2,67 @@
 
 This document captures the important backend/data-logic decisions so you can explain them in interviews and quickly reason about future changes.
 
+## Admin panel Phases 1–5 (`apps/admin`, SPEC-08, 2026-07-10)
+
+**What changed:** Full operator panel in a separate Next.js app. Phase 1 auth gate; Phases 2–5 read surfaces, four audited actions, cost/events/system, content-gated run debug.
+
+### Access control (fail closed)
+- Allowlist `ADMIN_CLERK_USER_IDS` (Clerk ids only). Empty/unset → reject **everyone in every environment** (no dev bypass).
+- Middleware + layout + every query/action entry point re-run `requireAdmin()`.
+- Env: `QUERYWISE_APP_DATABASE_URL` (or alias `DATABASE_URL`), Clerk keys, `ADMIN_CLERK_USER_IDS`. **No** LLM keys, encryption key, or demo DB URL.
+
+### Read surfaces (Phase 2 / 4)
+- **Overview** — KPIs from `UserUsagePeriod` period tables first; LLM provider/model month groupBy; top consumers; plan distribution; 24h quota/schema events.
+- **Users list** — paginated (≤50), sort by tokens/questions/created/activity; Clerk identity cache (15m TTL); filters plan/status/overrides; search by email (Clerk) or raw id.
+- **User detail** — plan + overrides + history, usage meters via `resolveEffectiveLimits`, 30d trend, LLM breakdowns, metadata-only runs, resources without credentials/tokens/titles, admin audit trail.
+- **Cost** — ≤90d `LlmUsageRecord` slice; CSV export (tokens only, no invented $). Indexes `v2_llm_usage_task_created_idx` / `v2_llm_usage_provider_model_idx` already landed with SPEC-07 migration (no duplicate migration).
+- **Events** — cursor-paginated `MetricEvent` stream.
+- **System** — job status counts, schema sync metrics, query error distribution (read-only).
+
+### Actions (Phase 3)
+Four server actions in `lib/actions/admin-actions.ts`, each `requireAdmin()` + transaction + `AuditLog` (+ `PlanChangeLog` / `user.plan_changed` where plan-shaped):
+1. Grant Pro / revoke Free (`source=manual`, `proGrantedAt` on grant).
+2. Quota overrides (nullable columns; clamped 0–10_000); product already resolves `override ?? catalog`.
+3. Reset day/month `UserUsagePeriod` counters only — **never** `UserUsageTotals` or history.
+4. Suspend/reactivate → `UserPlan.status`; product already enforces `ACCOUNT_DISABLED` on mutations.
+
+### Privacy (Phase 5)
+- Metadata everywhere. Question text + SQL only in `/users/[id]/runs/[runId]` behind interstitial + `admin.debug_view.opened` audit.
+- `redactResultData` / `assertNoResultPayload` guarantee no `resultPreview`/`resultBlocks` in the DTO; UI shows `«result data hidden — N rows, M blocks»`.
+- Never render connection secrets, share tokens/URLs, password hashes.
+
+### Why
+Replaces SPEC-07 Phase 5 manual SQL with audited buttons; open-source safe (env + deployment barrier).
+
+### Tradeoffs / risks
+- Users sorted by tokens may load all matching `UserPlan` rows then score in-process (fine for early user counts; add SQL rank if the table grows large).
+- Cost explorer pulls up to 50k raw LLM rows in range for distinct-user + series — bounded by 90d; rollup later if needed.
+- `ACCOUNT_DISABLED` + override columns live in product (SPEC-07); admin only mutates the same fields.
+
+### How to test
+- `pnpm --filter @query-wise/admin test` — allowlist, effective limits, result redaction.
+- `pnpm --filter @query-wise/admin build` — must pass.
+- Manual: empty allowlist lockout; grant Pro → product `GET /api/me/plan` shows Pro; set `questionsPerDayOverride=50` on Free → product meters show 50; suspend → mutations 403 `ACCOUNT_DISABLED`; open debug view → audit row + no result rows in HTML.
+- Dev: `pnpm dev:admin` (port 4200).
+
+## LLM key/model router — rate-limit resilience (2026-07-08)
+
+A single reusable router (`apps/web/lib/llm/model-router.ts`) now decides *which model + which API key* every LLM call uses, so free-tier rate limits stop hard-failing the demo.
+
+- **Why:** the agent makes ~4–8 model calls per question, and Gemini free tier caps the smart Flash models at ~20 requests/**day** — so ~3 questions/day before a 429. Previously fallback was same-provider only (`getModelCandidates`) and *every* task (agent, title, memory, verify) shared one model, burning the good model's quota on cheap calls.
+- **Two secrets, comma-separated for rotation:** `GOOGLE_GENERATIVE_AI_API_KEY=k1,k2,k3` and `GROQ_API_KEY=g1,g2`. Nothing else is required.
+- **Per-task chains as code defaults** (no `QUERYWISE_` prefix on the new vars; existing prefixed vars untouched), each overridable by `LLM_AGENT_CHAIN` / `LLM_UTILITY_CHAIN` / `LLM_INGEST_CHAIN` in `provider:model,provider:model` form:
+  - agent: `google:gemini-3.5-flash → google:gemini-3.1-flash-lite → google:gemini-2.5-flash → groq:llama-3.3-70b-versatile`
+  - utility (title/memory/verify): `groq:openai/gpt-oss-120b → groq:llama-3.1-8b-instant → google:gemini-3.1-flash-lite`
+  - ingest: `groq:openai/gpt-oss-120b → groq:llama-3.3-70b-versatile → google:gemini-3.1-flash-lite`
+  No **preview** models (tighter limits, 2-week deprecation). Model ids verified against the Gemini docs (2026-06-30): `gemini-3.5-flash` (stable), `gemini-3.1-flash-lite` (stable), `gemini-3-flash` is `gemini-3-flash-preview` (excluded).
+- **Rotation order (product decision):** exhaust every non-cooled key of the *current* model first, then advance to the next model (which may be another provider). A key that trips a rate limit is put on a **60s cooldown** (`markKeyCooled`) so we stop hammering it; cooled keys are kept as last-resort attempts. Capped at `MAX_LLM_ATTEMPTS = 5` per logical call. Auth errors skip the key without retry/backoff.
+- **Agent integration (`lib/llm/agent/index.ts`):** `streamOnce` is now provider-aware (`getModel`/thinking-options/Anthropic cache keyed to the candidate's provider). The bespoke fallback loop was replaced by `planAttempts(resolveTaskChain("agent", preferred))` where `preferred` is the caller's `QUERYWISE_LLM_PROVIDER/MODEL` (so existing config still steers the primary). Preserves the SPEC-01 side-effect guard (no replay after streamed text/executed SQL) and the context-overflow compact-and-retry. Crossing to a *different* model still requires a fallback-worthy error; rotating to another *key* of the same model happens on any retryable error.
+- **UI retry feedback:** each retry emits the first-class `retry` activity (`kind: "retry", label: "Retrying (2/5)"`), which the agent timeline already renders as a distinct amber row. `withRetry`'s default bumped 3 → 5.
+- **Utility routing:** `generateStructuredObject` gained an optional `task`; memory (`analysis-state.ts`) and verification (`verification.ts`) pass `"utility"`, and title generation routes `"utility"` too — moving all cheap calls onto Groq, off the agent's Gemini quota. Title prompt rewritten (Title Case, 3–6 words, few-shot examples) to stop the 1–2-word titles.
+- **Note:** `getBackendLlmConfig` still reads `QUERYWISE_LLM_MODEL`; to make Gemini 3.5 Flash the agent primary, set `QUERYWISE_LLM_MODEL=gemini-3.5-flash` (or remove it to use the new default). Ingestion enrichment lives in the worker and isn't yet wired to this web-tier router — a follow-up if you want its retries/fallbacks unified.
+- **How to test:** `tsc --noEmit` passes. Set only the two comma-separated key secrets, ask several questions rapidly, and confirm: on a 429 the same question continues on the next key/model, the timeline shows "Retrying (n/5)", titles are descriptive, and title/memory/verify never touch Gemini (check request logs).
+
 ## Monorepo Restructuring (2026-06-29)
 
 **What changed:** Converted from a single Next.js project to a pnpm workspaces monorepo.
@@ -797,6 +858,29 @@ Why this is the right approach:
 - Why this decision:
   - The previous client-side rewrite path incorrectly converted non-LLM auth failures into “Invalid API key” guidance.
   - Session expiry and database credential issues need different recovery actions than updating provider settings.
+
+## 26) Sidebar Conversation Management (Rename & Delete)
+
+- Changed files:
+  - `apps/web/lib/api-client/resources.ts`
+  - `apps/web/components/AppShell.tsx`
+
+- What changed:
+  - Mapped previously existing but unmapped `/api/conversations/[id]` `PATCH` and `DELETE` endpoints to `conversationsApi.update` and `conversationsApi.remove` inside `resources.ts`.
+  - Added a dropdown menu (`DropdownMenu`) to `SidebarChatLink` in the `AppShell` component.
+  - Users can now click the three dots (`MoreHorizontal`) next to a conversation to access "Rename" and "Delete" actions.
+  - "Rename" opens a browser prompt to enter a new name, updating local state and invoking `conversationsApi.update`.
+  - "Delete" opens a confirmation prompt, deleting the conversation and navigating away if the deleted conversation was currently active.
+
+- Why this decision:
+  - Requested UI capability to improve conversation management without relying purely on backend/API direct calls.
+  - Followed standard UI patterns with `shadcn` components to keep the sidebar clean.
+  
+- How to test:
+  1. Open the sidebar and hover over a chat.
+  2. Click the three dots icon.
+  3. Select Rename, enter a new title, and verify it updates immediately.
+  4. Select Delete, confirm, and verify the chat disappears (and if you were on it, you get redirected to `/workspace/new`).
 
 - Tradeoffs and risks:
   - Provider SDK auth failures that only expose a bare `401/403` with no recognizable provider markers will now fall back to a session-style message until more provider-specific signatures are added.
@@ -1775,3 +1859,311 @@ Web-tier implementation of `docs/specs/SPEC-02-AGENT-LOOP-HARNESS.md`, built on 
 - **Tradeoffs / risks:** verification and memory-refresh each add one cheap structured LLM call, but verification is skipped for trivial questions and gated by a flag, and memory refresh is fully off the critical path. The fan-out check is intentionally a heuristic hint (not full grain analysis) — it defers judgement to the verifier. `search_schema` adds up to 3 retrieval round-trips per run (DB-bounded, capped). `explain_query` uses the worker-oriented introspection path from the web tier; it only ever runs a validated read-only inner statement. Memory injection consumes part of the history token budget (accounted for in `buildMessages`), trading a few verbatim turns for a durable summary.
 
 - **How to test:** `pnpm --filter @query-wise/web exec tsc --noEmit` and the worker `tsc --noEmit` build clean (the full `next build` additionally needs the platform SWC binary). Acceptance (`SPEC-02 §6`): ambiguous question on a large schema → `search_schema` then `describe_tables` then correct SQL (no full schema in prompt); a cross-join → `explain_query` flags it and the agent rewrites; a "full picture" multi-part question → `extended` budget logged in `agent.run.started`, ≥3 blocks, every block commented; a SUM-over-1:N question → verification fixes it or the answer carries a `Note:` caveat; a turn-8 follow-up reuses turn-1 filters (memory preamble visible in `agent.context.assembled` / `conversation.memory.updated` logs); a simple KPI question skips verification (compare `agent.run.completed` durations); transcript/persistence shapes unchanged except additive fields.
+
+## SPEC-06 Live Dashboards (static vs. live) + core dashboard features (2026-07-08)
+
+Web-tier implementation of `docs/specs/SPEC-06-LIVE-DASHBOARDS.md`. Turns dashboard widgets from frozen screenshots into a live, refreshable, filterable, drillable surface. Independent of SPEC-01–05; all changes are in `apps/web/**` plus one additive `packages/shared` Prisma migration + DTO types.
+
+- **What changed:**
+  1. **Model + migration (§3, additive).** Mode is **whole-dashboard** (product decision — a dashboard is entirely live or entirely snapshot, not per-widget): `Dashboard` gains `mode` (`"live"` default for NEW rows | `"snapshot"`), `defaultDateRange`, `refreshIntervalSeconds`; `DashboardWidget` gains `connectionId` (denormalized), `lastRefreshedAt`, `lastRefreshError`, `filterBinding` (`{ dateColumn, tableAlias, defaultRange }`). Migration `20260708120000_add_live_dashboards` backfills every existing **dashboard** to `mode = "snapshot"` (so today's frozen behavior is preserved — AC #1) and denormalizes widget `connection_id` from the originating `v2_query_runs` row. Every column is nullable/defaulted; historical dashboards, widgets, and shares keep rendering.
+  2. **Refresh service + endpoints (§4.1).** `lib/dashboards/refresh.ts` resolves the widget's connection (denormalized `connectionId`, healing from `queryRunId → QueryRun.connectionId` when absent), applies the date-range markers (§5), then runs the SQL through the **existing** `lib/query/runtime.ts` `validateReadQuery → executeValidatedReadQuery` path (500-row/15s/2MB, read-only — no new SQL path, AC #10). On success it overwrites `snapshot` + sets `lastRefreshedAt` + clears the error; on failure it keeps the old snapshot and records `lastRefreshError` (AC #4). `POST /api/dashboards/[id]/widgets/[widgetId]/refresh` (single) and `POST /api/dashboards/[id]/refresh` (batch, bounded pool of 4) are the endpoints; `PATCH /api/dashboards/[id]/settings` persists dashboard-level controls. Refresh requires **edit** access so the runtime stays owner-scoped (grants are view-only, so edit == owner); viewers render the owner's last snapshot.
+  3. **Result cache (§4.3).** `lib/dashboards/result-cache.ts` mirrors `public-dashboard-cache.ts`: an in-process in-flight map dedupes concurrent callers within one instance, and Redis (best-effort, graceful when absent) shares one execution across instances, keyed by `(connectionId, sha256(normalizedSql))`, TTL 60s. Ten concurrent viewers/tabs collapse to one DB execution per widget per TTL (AC #5).
+  4. **Global date filter (§5).** At pin time `analyzeFilterBinding` (`lib/dashboards/filter-binding.ts`) scans the generated SQL for an explicit lower (and optional upper) bound on a SPEC-03-classified date column and rewrites those literals to `:qw_from` / `:qw_to` markers, storing `filterBinding`. When no clear predicate exists the widget is simply not bound (the picker skips it, shown with a "not time-filtered" hint) — widgets pinned before this feature stay unbound until re-pinned. At refresh, `applyRangeMarkers` substitutes the resolved range as `TIMESTAMPTZ '…'` literals (values are generated ISO strings, never user free-text) and the result still passes through the read-only validator. The header segmented picker uses the SPEC-04 sliding-pill pattern (`motion.span layoutId="range-pill"`).
+  5. **Grid UX + motion (§6, §8b).** `DashboardGrid.tsx` is now a live orchestrator: per-widget dim-in-place refresh (chart stays mounted, dims to 0.6 with a 2px indeterminate top progress bar — never blank-then-repaint, AC #7), `Snapshot`/freshness/error affordances, per-widget + "Refresh all" buttons, 60ms staggered wave in reading order, count-up number transitions with green-up/amber-down tint, on-load refresh of stale live widgets (>10min or `refreshIntervalSeconds`), and border-pulse on snapshot/unbound widgets when the range changes. Reuses the SPEC-04 motion vocabulary (`--ease-out-expo`, `--ease-standard`, `--dur-*`, the `motion` package, `useReducedMotion`) — added to `globals.css` as named tokens since SPEC-04 had not yet landed them.
+  6. **Click-to-drill drawer + "Ask about this" (§7) — removed per product decision.** Built then pulled: the widget body is a plain (non-clickable) container again, `DashboardGrid` no longer wires a drawer, and the `/chats/new` prefill was removed from `EmptyWorkspaceView`. `components/dashboard/DrillDrawer.tsx` is left in the tree unused (safe to delete) in case the feature returns.
+  7. **Optional auto-refresh (§4.2).** When `refreshIntervalSeconds` is set on a live dashboard, a timer refreshes widgets on cadence, gated by `document.visibilityState` and `visibilitychange` so a hidden tab never burns the user's DB (AC #9).
+  8. **Whole-dashboard mode toggle (§2).** A Live / Snapshot segmented toggle (SPEC-04 sliding pill) in the grid toolbar (owner only) drives `Dashboard.mode` via `PATCH …/settings`. Switching to Live refreshes every widget in a wave; switching to Snapshot freezes the board (no execution, date picker + Refresh all hidden). `refreshWidget`/`refreshDashboard` short-circuit to `skipped`/`[]` when the dashboard is snapshot.
+  9. **Mode is chosen at creation + shown everywhere.** `createDashboard` accepts `mode` (new `DashboardCreateSchema`, default live) and the New Dashboard dialog offers a two-card Live/Snapshot picker. `listDashboards` now returns `mode` (added to the raw SELECT + `DashboardListItem`), and every dashboard card shows a `ModeBadge` (live breathes via a `motion-safe:animate-ping`; snapshot is a crisp frozen chip). `api-client.create(name, mode)`.
+  10. **Dashboard detail header redesigned + inline rename.** The header is a premium band (glass surface, inset top-highlight, mode-keyed accent glow, mode-tinted icon tile) with a mono breadcrumb, mode badge, and a clean action cluster. Renaming is now **double-click the title** (`EditableTitle`: Enter/blur saves via `dashboardsApi.update`, Esc cancels) — the old pencil+dialog rename was removed; the kebab keeps a delete-only action with its own confirm dialog. Removed the drill/"Ask about this" surface entirely per product decision.
+
+- **Type changes (all additive):** `WidgetMode`, `DateRangePreset`, `DashboardDateRange`, `WidgetFilterBinding`, `WidgetRefreshResultDto`, `DashboardRefreshResultDto` added; the owner/viewer **dashboard** DTOs gain `mode` + `defaultDateRange` + `refreshIntervalSeconds`; widget DTOs gain `connectionId`/`lastRefreshedAt`/`lastRefreshError`/`filterBinding`.
+
+- **Public-share interplay:** filter-bound widgets store marker-bearing SQL that intentionally differs from the run's SQL, which would fail the share path's exact-match guard and execute invalid SQL. `executePublicWidget` now substitutes markers with the dashboard's default range and re-validates the result through the adapter's read-only policy before executing; the exact-match guard still applies to unbound widgets (unchanged tamper protection). Non-bound historical widgets are byte-for-byte unaffected.
+
+- **Spec-vs-as-built deviations / grounding notes:**
+  - **Refresh is owner-scoped (edit access).** The spec implies viewers trigger live refreshes; the existing runtime resolves the connection secret via the *current* user (`requireOwnedConnection`/`getConnectionSecret`). To honor "no new SQL path bypasses validation" without weakening auth, refresh requires edit (owner) access; viewers see the owner-refreshed snapshot, and the cache still satisfies the multi-viewer (multi-tab/session) protection in AC #5.
+  - **Pin-time marker injection via a conservative regex, not full AST rewrite.** `analyzeFilterBinding` only binds queries with an explicit date-literal predicate on a known date column (validated by a standalone logic test: two-sided/one-sided predicates bind; `BETWEEN`, `now()`-relative, and no-date queries stay unbound). This matches the spec's "when ambiguous or absent, the widget is not filter-bound."
+  - **Whole-dashboard mode, not per-widget (product decision).** The spec designed mode at widget granularity ("mix a frozen board-deck number with live charts"); the product owner chose a single dashboard-wide mode, so `mode` lives on `Dashboard` and every widget follows it. Since the migration wasn't yet applied, the column was relocated rather than adding a dead per-widget column.
+  - **Click-to-drill / "Ask about this" (§7) removed (product decision).** Built, then pulled before release. The drawer component remains in the tree unused.
+  - **Date picker presets + "All", Custom deferred.** The segmented control ships 7d/30d/90d/MTD/QTD/YTD + All (clear filter); the backend (`resolveRange`, schema) already accepts a custom `{from,to}` span, so a custom popover is an additive follow-up. Per-widget/categorical/cross-filters are explicitly out of scope (§9) and not built.
+
+- **Why:** a `DashboardWidget` stored `queryDefinition` + a frozen `snapshot` but nothing ever re-ran it — the "check every morning" surface silently rotted. Wiring the stored SQL through the existing runtime (plus refresh, a date filter, and drill) makes the dashboard a daily instrument rather than a screenshot album, without a semantic layer and without any new SQL execution path.
+
+- **Tradeoffs / risks:** live refresh adds read load against the user DB, bounded by the same 500-row/15s/2MB caps, the 60s result cache (query-amplification guard), the 10-min on-load staleness gate, and visibility-gated auto-refresh. The regex-based binder is intentionally conservative (misses exotic predicates → unbound rather than mis-rewritten). Marker substitution emits `TIMESTAMPTZ` literals from generated ISO strings only and always re-passes validation, so no injection surface is opened.
+
+- **How to test:** `pnpm --filter @query-wise/web exec tsc --noEmit` passes clean (the full `pnpm build` additionally needs the platform SWC + Prisma engine binaries; run `pnpm db:migrate:deploy` + `pnpm db:generate` first so the new columns/types are present). Acceptance (`SPEC-06 §10`): (1) pre-migration widgets render as before, tagged `Snapshot`; (2) a new widget defaults live and re-executes after the staleness window, bumping `lastRefreshedAt`; (3) "Refresh all" re-runs live widgets concurrently, snapshots untouched; (4) a failing refresh keeps the last snapshot + shows the amber affordance, grid unaffected; (5) 10 tabs → ≤1 DB execution per widget per 60s TTL; (6) the picker rewrites the bound predicate and refreshes only bound live widgets, snapshot/unbound visibly excluded; (7) refresh dims-in-place, no blank flicker (record it); (8) drill drawer opens with the widget's rows and "Ask about this" lands in a pre-seeded conversation; (9) auto-refresh pauses on a hidden tab; (10) all execution goes through the validate→execute runtime; (11) a recording of a refresh + range change shows only eased motion (no blank frames/snapping), and reduced-motion disables it cleanly.
+
+---
+
+## Plans, Entitlements, Usage & Metrics (Free/Pro)
+
+- **What changed:** Introduced Free and Pro product plans with backend-enforced
+  entitlements, a per-user usage/metrics system, and a read-only plan/usage API.
+  New tables (all `v2_`-prefixed, additive migration
+  `20260710120000_add_plans_usage_metrics`): `v2_user_plans` (1:1 with the user,
+  keyed on the Clerk id; includes five nullable per-user override columns and
+  `status active|disabled`), `v2_user_usage_periods` (day/month rolling counters),
+  `v2_user_usage_totals` (lifetime), `v2_llm_usage_records` (per model call),
+  `v2_query_run_usage` (per-question aggregate), `v2_metric_events` (append-only
+  analytics), `v2_plan_change_logs`. Added `is_demo` to `v2_database_connections`.
+  New enums `v2_plan_id`, `v2_plan_status`, `v2_plan_source`. New error codes:
+  `QUOTA_EXCEEDED_DAILY|MONTHLY|SCHEMA_REFRESH`, `PLAN_LIMIT_CONNECTIONS|
+  DASHBOARDS|SHARES`, `PLAN_FEATURE_PASSWORD_SHARES|MODEL`, `ACCOUNT_DISABLED`.
+
+- **The entitlement seam:** `packages/shared/src/plans` holds the catalog
+  (single source of truth for limits), UTC period-key helpers, `getUserPlan`
+  (lazily upserts a Free row on first authenticated enforcement — there is no
+  signup hook), atomic quota reservation, and usage reads. Effective limits are
+  resolved as `override ?? catalog[planId]` so an admin panel can raise a single
+  user's caps without touching plan code; `status = disabled` yields
+  `ACCOUNT_DISABLED` on every mutating path (reads still allowed). The web wrapper
+  `apps/web/lib/plans` caches the plan per request (`react.cache`) and exposes the
+  `assert*` helpers used at each mutation point.
+
+- **Enforcement points (fail-closed, before expensive work):** question quota is
+  reserved inside the accept transaction in `acceptQuerySubmission` (after the
+  idempotency short-circuit so retries never re-count; a monthly rejection rolls
+  back the day increment with the transaction); connection cap in
+  `createConnection` (demo exempt via `isDemo`); dashboard cap in
+  `createDashboard`; active-share-link cap + password-feature gate in
+  `createShare`/`updateShareLink`; schema re-sync cap in `refreshConnectionSchema`
+  before queueing. Agent budget is forced to `standard` for Free and the model
+  router resolves a fast (lite/Groq-led) chain via `resolveTaskChain(task,
+  preferred, planTier)`; premium routing and the extended budget stay Pro-only.
+
+- **Why questions, not tokens, are the unit:** agent runs are multi-step and
+  token cost varies wildly with schema size, so a "25 questions" contract is
+  honest UX where "47,832 tokens" is not. Tokens are still recorded in full for
+  unit economics and a future credit system — they are metrics, not the limit.
+
+- **Metrics instrumentation:** `packages/shared/src/metrics` provides best-effort
+  (never-throw) `recordLlmUsage` (inserts a per-call row and increments day/month
+  period token counters, lifetime totals, and the per-run aggregate),
+  `finalizeQueryRunUsage`, and `recordMetricEvent`. Recording is wired at the
+  agent main loop (`task=agent`, threaded `usageContext`), the ingestion worker
+  describe stage (`task=ingest`) and embeddings (`task=embedding`), plus resource
+  events (connection/dashboard/share create+delete, schema sync queued/succeeded/
+  failed/blocked, question accepted/succeeded/failed/cancelled/quota_blocked,
+  chart.generated). Terminal question counters live at the single `completeQueryRun`
+  / `failQueryRun` choke points to avoid double counting.
+
+- **Manual Pro grant (no payments this phase):** Pro is granted only by mutating
+  `v2_user_plans` (`plan_id='pro', source='manual', pro_granted_at=now()`); revoke
+  sets it back to `free`. The frontend never offers a working upgrade — the Pro
+  CTA is disabled ("coming soon") and `GET /api/me/plan` reports
+  `selfServeUpgradeAvailable:false`. Razorpay billing tables/webhooks are reserved
+  (not created).
+
+- **Tradeoffs / risks:** (1) Quota windows are UTC — IST users see resets at
+  05:30 local; documented in the UI as "resets daily/monthly (UTC)". (2) After a
+  Pro→Free revoke, resources above Free caps are grandfathered for read; new
+  creates are blocked until the user is back under the cap. (3) Metrics writes are
+  best-effort and post-success, so a metrics outage never fails a user request;
+  the append-only event log plus period counters can drift slightly under crashes
+  but reconcile from `v2_llm_usage_records`. (4) Utility LLM calls (title/memory/
+  verify) are not yet given precise per-call token attribution because the shared
+  router does not surface which fallback model actually ran; the `usageContext`
+  seam exists and the dominant cost (agent + ingest + embeddings) is captured
+  accurately. Wiring these precisely requires `runRoutedTask` to return the used
+  attempt — a clean follow-up.
+
+- **How to test:** on a machine with the platform Prisma/SWC binaries, run
+  `pnpm db:generate` then `pnpm db:migrate:deploy` (applies the additive
+  migration), then `pnpm --filter @query-wise/web exec tsc --noEmit` and
+  `pnpm build`. Pure-logic unit tests (no DB) run with tsx:
+  `node_modules/.bin/tsx packages/shared/src/plans/plans.test.ts` (period keys at
+  UTC/month/leap boundaries, catalog limits, `override ?? catalog`) and
+  `.../reserve.test.ts` (day-then-month reservation, per-user isolation, schema
+  refresh cap). Integration checks: a Free user's 6th question in a UTC day →
+  `QUOTA_EXCEEDED_DAILY`; 2nd non-demo connection / 2nd dashboard / 2nd active
+  share / password share / 2nd schema refresh → the matching plan error; an
+  idempotent retry does not double-count; a manually granted Pro user clears all
+  of these; `GET /api/me/plan` returns limits/usage/remaining with
+  `remaining` floored at 0.
+
+## SPEC-09 Blocks, Datasets & Views: 1 query → 1 dataset → N views + quiet probes (2026-07-12)
+
+**What changed:** Loosened the rigid *1 query = 1 block = 1 visualization* coupling
+into *1 query → 1 dataset → N views*, added client-side transform views that need
+no new SQL, and gave the agent a *quiet* probe mode whose results never become
+user-facing cards. Two invariants were preserved throughout: every visual still
+traces to exactly one auditable SQL statement (provenance), and blocks stay
+anchored in the conversation narrative.
+
+### Data model (additive only)
+- New shared types (`packages/shared/src/types/domain.ts`): `ViewTransform`
+  (`topN | cumulative | percentOfTotal | pivot`) and `BlockView`
+  (`{ id, chartConfig, transform, stackMode?, normalized? }`). `QueryResultBlock`
+  gains optional `views?: BlockView[]`.
+- **Back-compat invariant:** `chartConfig` stays populated and MUST mirror
+  `views[0].chartConfig` whenever views exist, so old readers (shares, dashboards,
+  legacy messages, the transcript's `successfulRunSqlCount` fallback) keep working.
+  A block with no `views` renders exactly as before — no chips, no new chrome.
+- The **dataset is not a new table** — it is the block's existing bounded
+  `resultPreview`. Views are *specs*, not materialized data: transformed rows are
+  recomputed client-side on every render (`applyViewTransform`), so execution,
+  persistence size, and the 500-row cap are untouched. `views` nests inside the
+  existing JSON `result_blocks` column — no migration for blocks.
+
+### Transforms (`apps/web/lib/charts`)
+- `applyViewTransform(result, view)` (`views.ts`) is the one pure, **total** entry
+  point — deterministic, never throws; an invalid transform for the shape returns
+  the raw result and the UI hides the chip. Reuses `bucketTopN` (topN),
+  `toPercentOfTotal` (% of total), `pivotSeries` + `detectSeriesKey` (pivot); adds
+  `toCumulative` (running sum over rows ordered by the x key) to `transforms.ts`.
+- `viewChartConfig` widens a pivot's long series column into `yKeys` recomputed
+  from the transformed data, so pivoted widgets survive live refreshes whose
+  top-N series differ. `availableTransforms` gates the menu by data shape
+  (cumulative needs a time x-axis; pivot needs a detectable ≤12-cardinality series
+  key; % of total needs ≥2 measures/a series key; a single-row KPI offers nothing).
+- Rendering composes via `V2Chart`'s new `resultOverride` — same code path in the
+  conversation card, the inspector dialog, pinned dashboard widgets, and public
+  shares.
+
+### Persistence (`PATCH /api/query/[queryRunId]/blocks/[index]/views`)
+- Owner-only (`getOwnedQueryRun`), zod-validated (`UpdateBlockViewsSchema`),
+  additive JSON rewrite of just the target block inside `result_blocks`. The
+  chartConfig mirror is re-enforced server-side (`chartConfig = views[0].chartConfig`).
+  While streaming, views stay local exactly as today; only finalized messages persist.
+
+### Pin & share (composes with SPEC-06)
+- New nullable `view_transform` JSONB column on `v2_dashboard_widgets`
+  (migration `20260712120000_add_block_views`) alongside `mode`/`filterBinding`.
+  Pinning captures the **active** view's config + transform; the widget re-applies
+  `applyViewTransform` after snapshot/live data load, before charting. Public shares
+  run the same transform client-side on the shared preview — same rows, different
+  arrangement, no new data exposure.
+
+### Quiet probes (SPEC-09 §3)
+- `run_sql` input gains `presentation: "block" | "quiet"` (default `block`). The
+  quiet path validates + executes under the **same** read-only policy and caps but
+  pushes no `state.blocks` entry and emits none of the block-facing events
+  (`onBlockData`/`onQueryStats`/valid `onSqlPreview`); the model gets a smaller
+  20-row slice. The statement is still recorded in the transcript
+  (`presentation: "quiet"`), so provenance is non-negotiable and auditable.
+- **Separate budget:** `AgentBudget.maxQuietQueries` (standard 4 / extended 8),
+  tracked on `AgentRunState.quietQueries` — probing never consumes `sqlAttempts`.
+  The `sqlAttempts` metric in `agent-run.ts` excludes quiet steps.
+- **UI:** `AgentActivity` renders quiet `run_sql` rows as "Probed data" (expandable
+  SQL, never a card). `activitiesToSteps`/`parseAgentTranscript` assign quiet steps
+  no `blockIndex` and do not advance `successfulRunSqlCount`, so block indices never
+  shift. Verification only ever sees `state.blocks`, so it ignores quiet results
+  automatically. Compaction digests quiet results like any run_sql result and the
+  "most recent stays verbatim" rule now spans block and quiet results together.
+
+### Agent awareness
+- `set_chart` targets the block's default view (`views[0]`) unchanged, with a note
+  that users can add alternate views themselves. A system-prompt ANSWERING line
+  tells the model to point at view-switching (top 10, cumulative, share of total,
+  pivot) instead of re-querying for a mere re-arrangement, and a TOOLS line explains
+  quiet probes.
+
+### Tradeoffs / risks
+- Transforms run on the bounded preview (≤500 rows), not the full result — a
+  cumulative/top-N view reflects the previewed rows, consistent with every other
+  chart in the product. Table/SQL tabs always show the raw dataset, keeping SQL↔data
+  provenance obvious.
+- Pivot `yKeys` are recomputed on render rather than frozen, trading a tiny compute
+  cost for correctness across live-refresh series drift.
+
+### How to test
+- Unit: `apps/web/lib/charts/views.test.ts` (each transform on empty/single/null/
+  non-numeric shapes; totality/no-throw; single-row offers no transforms; pivot
+  widens to yKeys) and `apps/web/lib/llm/agent/quiet-queries.test.ts` (separate
+  quiet budget; quiet execution leaves `sqlAttempts` at 0; quiet step carries no
+  blockIndex; verification never sees it). `pnpm --filter @query-wise/web build` +
+  `tsc --noEmit` clean across web/shared/worker.
+- Manual (acceptance §5): on a finalized time-series block add cumulative + top-10
+  views → three chips → reload persists → pin cumulative → widget renders
+  cumulatively on snapshot/live/share. A single-row KPI offers no transforms; pivot
+  appears only with a detectable series key. Ask "do we have any refund data worth
+  analyzing?" → a "Probed data" row with expandable SQL, no card, `sqlAttempts`
+  unconsumed (see `agent.run.completed`). "show that cumulative instead" → no new
+  SQL; the answer points at views.
+
+## SPEC-10 Answer Accuracy Hardening: stats-bearing digests, budget-aware compaction, verifiable evidence (2026-07-12)
+
+### The incident (root cause)
+On 2026-07-12 a run answered *"show revenue trend and top selling products"* with
+*"revenue is remarkably consistent, hovering around $1M per month … no significant
+spikes or dips"* — while the data had a Nov/Dec 2025 spike to ~$2.7M and a Jan 2026
+dip to ~$807K. Verification correctly caught the number mismatch, but the harness
+then defeated itself: (1) the correction pass digested the revenue result to
+`sampleRows: rows.slice(0, 3)` (May–Jul, all ~$1M), so the model fixing the claim
+could not see Nov/Dec; (2) the verifier recheck saw only `rows.slice(0, 5)`
+(May–Sep, all ~$1M), so "consistent" passed; (3) compaction ran at <10% of the
+token budget — pure loss. The wrong answer shipped stamped "verified after
+correction". The design rule adopted: **no summarization step may hide extremes,
+and no checking step may see less than the claim it checks.**
+
+### What changed (all `apps/web`, no migrations)
+- **Full-result stats (`lib/llm/agent/column-stats.ts`, new).** `computeColumnStats`
+  is a pure function over ALL returned rows (up to the 500-row cap, not the 50-row
+  model slice). Numeric columns carry `min`/`max`/`mean` + the full `minRow`/`maxRow`;
+  temporal columns carry `min`/`max`. Numeric detection samples values (Postgres
+  numerics arrive as strings); temporal is ISO/Date-parseable; mixed columns are
+  skipped; capped at 8 entries, numerics first. `renderColumnStatsLine` formats the
+  one-line evidence summary. `compactResultForModel` (run-sql.ts) now includes
+  `columnStats` in every run_sql result (block, quiet, reused); the tool description
+  tells the model to trust stats over the row sample.
+- **Faithful digests (`lib/llm/agent/compaction.ts`, extracted from index.ts).**
+  `digestRunSqlOutput` replaces the lossy `sampleRows: rows.slice(0, 3)` with the
+  carried-through `columnStats` plus `firstRows`/`lastRows` (both ends of a series).
+  The Nov/Dec spike now survives summarization by construction — it lives in
+  `columnStats.max`/`maxRow` even though first/last rows are all ~$1M.
+- **Budget-aware compaction.** `compactToolResults` is pure with an injected token
+  estimator. It compacts NOTHING when the step is ≤ 50% of `budget.target`; above
+  that it digests oldest-first, stopping as soon as the estimate drops under the
+  threshold, and always keeps the two most recent run_sql results verbatim.
+  `prepareStep` (index.ts) computes the estimate first and passes `budget.target` in.
+- **Correction never compacts.** In `prepareStep`, a `correction` run returns the
+  step messages untouched (a 2-step correction cannot overflow). Additionally,
+  `correctionMessageFor` (verification.ts) inlines the flagged blocks' 50-row slice +
+  stats line, so even a model that skips re-querying sees the real numbers.
+- **Verifiable evidence (`verification.ts`).** `renderBlockEvidence` now shows the
+  full 50-row model slice (was 5) plus a `stats (over ALL rows)` line. `VERIFIER_SYSTEM`
+  gains two rules: check consistency/trend/spike/range claims against min/max/mean,
+  and check block-order coverage + ambiguous-term interpretation. `maxOutputTokens`
+  stays 600 (evidence grows input, not output).
+- **Long-conversation history (`lib/llm/agent/history.ts`, extracted from index.ts).**
+  `buildMessages` no longer prepends the memory preamble when `tail + preamble`
+  already exceed `historyBudgetTokens`. It sheds load in order — oldest verbatim
+  tail down to the last turn (2), then block summaries oldest-first, then the rolling
+  summary — and NEVER drops the final question. Anything dropped is reported via an
+  injected callback that logs `agent.history.trimmed` (counts).
+- **Prompt (`system-prompt.ts`).** Two ANSWERING lines: cover blocks in ascending
+  index order; state the chosen interpretation for ambiguous terms.
+- **Token leaf (`lib/llm/agent/tokens.ts`, new).** `estimateTokens` moved here (zero
+  deps) so the pure history/compaction modules depend on it without pulling in
+  `@/lib/llm-config`; `context-budget.ts` re-exports it (call sites unchanged).
+
+### Why the extraction
+The stats/digest/compaction/history logic was pulled into dependency-light leaf
+modules (with injected logger/estimator) specifically so it is pure and unit-testable
+in isolation — the host `index.ts` imports `server-only` and cannot be loaded by a
+test runner. Behavior and the spec's logical placement are preserved; `index.ts`,
+`run-sql.ts`, and `verification.ts` import and use the leaves.
+
+### Tradeoffs / risks
+- Stats add an O(rows·cols) pass per result (≤500 rows) — negligible next to SQL
+  execution, and computed once at tool-result time.
+- Larger verifier input (50 rows + stats) costs input tokens; accepted deliberately —
+  a verifier that can't see the claim's data is worse than useless.
+- Compaction now keeps two results verbatim (was one) and skips under threshold, so
+  peak context is marginally higher on large multi-query runs; recovery-on-overflow
+  (SPEC-01 §1) remains the backstop.
+
+### How to test
+- Unit (pure, extend existing `node:assert` + `tsx` convention):
+  `apps/web/lib/llm/agent/column-stats.test.ts` (empty/single/string-numeric/nulls/
+  all-null/mixed/>8-columns/temporal + the §0 Nov/Dec incident fixture),
+  `compaction.test.ts` (spike survives digest via columnStats; under-threshold →
+  identical array; over-threshold → oldest-first with last-2 verbatim; early-stop),
+  `history.test.ts` (over-budget preamble trimming order; question never dropped;
+  `onTrim` fired). Run with `tsx <file>.test.ts`. `tsc --noEmit -p apps/web` clean.
+- Live (acceptance §4/§6, run on the demo DB): re-ask *"show revenue trend and top
+  selling products"* — the answer must mention the Nov–Dec spike (or the correction/
+  caveat path must flag it), and multi-block answers cover blocks in ascending order.
+  Confirm a far-under-budget 2-query run shows no digested output in the step logs
+  (`agent.context.assembled`), and a 12+ turn over-budget conversation logs
+  `agent.history.trimmed` while sending the final question intact.

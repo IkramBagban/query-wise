@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Database,
   ExternalLink,
+  Eye,
+  EyeOff,
   Plus,
   RefreshCw,
   Table2,
@@ -278,6 +280,7 @@ function AddConnectionDialog({
     ssl: true,
   });
   const [rawUrl, setRawUrl] = useState("");
+  const [showUrl, setShowUrl] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
@@ -327,7 +330,7 @@ function AddConnectionDialog({
             value="postgresql"
             onChange={() => {}}
             disabled
-            options={[{ value: "postgresql", label: "PostgreSQL — Connect using a PostgreSQL connection string" }]}
+            options={[{ value: "postgresql", label: "PostgreSQL" }]}
           />
           <p className="text-xs text-faint">More database providers will be available later.</p>
         </div>
@@ -350,15 +353,25 @@ function AddConnectionDialog({
         ) : (
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted">Connection URL</label>
-            <textarea
-              required
-              value={rawUrl}
-              onChange={(e) => { setRawUrl(e.target.value); setTestPassed(false); }}
-              placeholder="postgresql://user:password@host:5432/database"
-              rows={3}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-text placeholder:text-faint focus:border-border-2 focus:outline-none resize-none"
-              autoComplete="off"
-            />
+            <div className="relative flex items-center">
+              <input
+                required
+                type={showUrl ? "text" : "password"}
+                value={rawUrl}
+                onChange={(e) => { setRawUrl(e.target.value); setTestPassed(false); }}
+                placeholder="postgresql://user:password@host:5432/database"
+                className="w-full rounded-md border border-border bg-surface pl-3 pr-10 py-2.5 font-mono text-xs text-text placeholder:text-faint focus:border-border-2 focus:outline-none"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                aria-label={showUrl ? "Hide URL" : "Show URL"}
+                onClick={() => setShowUrl(!showUrl)}
+                className="absolute right-3 flex h-full items-center text-faint hover:text-text focus:outline-none"
+              >
+                {showUrl ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
             <p className="text-xs text-faint">Credentials are encrypted and never shown again.</p>
           </div>
         )}

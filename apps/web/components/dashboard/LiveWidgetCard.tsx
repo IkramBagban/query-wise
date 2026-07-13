@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, GripVertical, RefreshCw, Trash2 } from "lucide-react";
 
-import { V2Chart, isBoundedResultPreview } from "@/components/V2Chart";
+import { V2Chart, isBoundedResultPreview, previewToQueryResult } from "@/components/V2Chart";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { resolveView } from "@/lib/charts/views";
 import { cn } from "@/lib/utils";
-import type { BoundedResultPreview, ChartConfig, WidgetMode } from "@query-wise/shared/types";
+import type { BoundedResultPreview, ChartConfig, ViewTransform, WidgetMode } from "@query-wise/shared/types";
 import { CountUpNumber, FreshnessLabel } from "./primitives";
 
 export interface LiveWidgetView {
@@ -16,6 +17,8 @@ export interface LiveWidgetView {
   mode: WidgetMode;
   chartConfig: ChartConfig;
   preview: BoundedResultPreview;
+  /** SPEC-09 §2.3: pinned view transform, re-applied on every render (snapshot/live). */
+  viewTransform?: ViewTransform | null;
   lastRefreshedAt: string | null;
   error: string | null;
   refreshing: boolean;
@@ -39,6 +42,17 @@ export function LiveWidgetCard({
 }) {
   const rows = isBoundedResultPreview(view.preview) ? view.preview.returnedRowCount : undefined;
   const isSnapshot = view.mode === "snapshot";
+
+  // SPEC-09 §2.3: apply the pinned transform to the (snapshot or freshly refreshed)
+  // data before charting — same code path as the conversation card and public share.
+  const resolvedView =
+    view.viewTransform && isBoundedResultPreview(view.preview)
+      ? resolveView(previewToQueryResult(view.preview), {
+          id: view.id,
+          chartConfig: view.chartConfig,
+          transform: view.viewTransform,
+        })
+      : null;
 
   // §8b: replay the "intentionally not changed" border pulse on each range change
   // without remounting the card (which would re-flash the chart).
@@ -128,7 +142,11 @@ export function LiveWidgetCard({
         style={{ opacity: view.refreshing ? 0.6 : 1 }}
       >
         <div className="h-full w-full">
-          <V2Chart preview={view.preview} config={view.chartConfig} />
+          <V2Chart
+            preview={view.preview}
+            config={resolvedView?.config ?? view.chartConfig}
+            resultOverride={resolvedView?.result}
+          />
         </div>
       </div>
 

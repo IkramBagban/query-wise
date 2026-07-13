@@ -118,6 +118,14 @@ export const DashboardDateRangeSchema = z.union([
     .refine((value) => new Date(value.from) < new Date(value.to), "Custom range must have from < to."),
 ]);
 
+// SPEC-09 §1/§2.3: the pinned view's client-side transform (mirrors ViewTransform).
+export const ViewTransformSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("topN"), n: z.number().int().min(1).max(500), measureKey: z.string().min(1).max(200), othersBucket: z.boolean() }).strict(),
+  z.object({ kind: z.literal("cumulative"), measureKeys: z.array(z.string().min(1).max(200)).min(1).max(50) }).strict(),
+  z.object({ kind: z.literal("percentOfTotal"), measureKeys: z.array(z.string().min(1).max(200)).min(1).max(50) }).strict(),
+  z.object({ kind: z.literal("pivot"), seriesKey: z.string().min(1).max(200) }).strict(),
+]);
+
 export const WidgetCreateSchema = z
   .object({
     title: WidgetTitleSchema,
@@ -126,6 +134,8 @@ export const WidgetCreateSchema = z
     snapshot: BoundedSnapshotSchema,
     queryRunId: ResourceIdSchema.nullish(),
     queryDefinition: ProviderQuerySchema.nullish(),
+    // SPEC-09 §2.3: the active view's transform (or null / omitted for the raw dataset).
+    viewTransform: ViewTransformSchema.nullish(),
   })
   .strict();
 

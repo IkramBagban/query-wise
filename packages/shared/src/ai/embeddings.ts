@@ -1,7 +1,17 @@
 import { embedMany } from "ai";
 import { google } from "@ai-sdk/google";
+import { recordLlmUsage } from "../metrics";
 
-export async function embedTexts(texts: string[]): Promise<{ vector: number[]; dimensions: number; embeddingModel: string }[] | null> {
+/** Optional owner/connection context so embedding token usage is attributable. */
+export interface EmbeddingUsageContext {
+  userId: string;
+  connectionId?: string | null;
+}
+
+export async function embedTexts(
+  texts: string[],
+  usageContext?: EmbeddingUsageContext,
+): Promise<{ vector: number[]; dimensions: number; embeddingModel: string }[] | null> {
   const providerName = process.env.QUERYWISE_EMBEDDING_PROVIDER;
   const modelName = process.env.QUERYWISE_EMBEDDING_MODEL;
 
@@ -18,11 +28,25 @@ export async function embedTexts(texts: string[]): Promise<{ vector: number[]; d
   const model = google.textEmbeddingModel(modelName);
 
   try {
-    const { embeddings } = await embedMany({
+    const { embeddings, usage } = await embedMany({
       model,
       values: texts,
     });
-    
+
+    // Embedding token usage: providers report input tokens only (no output).
+    if (usageContext) {
+      void recordLlmUsage({
+        userId: usageContext.userId,
+        connectionId: usageContext.connectionId ?? null,
+        task: "embedding",
+        provider: "google",
+        model: modelName,
+        inputTokens: (usage as { tokens?: number } | undefined)?.tokens ?? 0,
+        outputTokens: 0,
+        success: true,
+      });
+    }
+
     if (embeddings.length === 0) return [];
     
     // Validate we got embeddings back and check dimensions

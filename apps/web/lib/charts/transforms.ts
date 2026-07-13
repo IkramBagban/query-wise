@@ -105,6 +105,41 @@ export function toPercentOfTotal(result: QueryResult, seriesKeys: string[]): Que
 }
 
 /**
+ * Running sum (SPEC-09 §2.2) of each numeric measure over the rows ordered by the
+ * x key — the "cumulative" view. Rows are sorted ascending by `xKey` (dates and
+ * numbers compared numerically, else lexically), then each measure is replaced by
+ * its running total. Non-numeric cells contribute 0 to the accumulator but the row
+ * still carries the current total. Pure: returns a new result, x column preserved.
+ */
+export function toCumulative(result: QueryResult, measureKeys: string[], xKey?: string): QueryResult {
+  const ordered = xKey
+    ? [...result.rows].sort((a, b) => {
+        const av = a[xKey];
+        const bv = b[xKey];
+        const at = av instanceof Date ? av.getTime() : Date.parse(String(av));
+        const bt = bv instanceof Date ? bv.getTime() : Date.parse(String(bv));
+        if (Number.isFinite(at) && Number.isFinite(bt)) return at - bt;
+        const an = Number(av);
+        const bn = Number(bv);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+        return String(av).localeCompare(String(bv));
+      })
+    : [...result.rows];
+  const totals = new Map<string, number>();
+  const rows = ordered.map((row) => {
+    const next: Record<string, unknown> = { ...row };
+    for (const key of measureKeys) {
+      const value = Number(row[key]);
+      const running = (totals.get(key) ?? 0) + (Number.isFinite(value) ? value : 0);
+      totals.set(key, running);
+      next[key] = running;
+    }
+    return next;
+  });
+  return { ...result, rows };
+}
+
+/**
  * Re-index every series to 100 at its first non-zero point, so all series start
  * together and the chart shows relative growth. Returns a new result; the x
  * column is preserved.

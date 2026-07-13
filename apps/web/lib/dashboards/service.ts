@@ -33,6 +33,8 @@ import {
 import { validationError } from "./http";
 import { claimPendingEmailGrants } from "@/lib/sharing/grants";
 import { analyzeFilterBinding, getConnectionDateColumns } from "./filter-binding";
+import { assertAccountActive, assertDashboardQuota, getPlanForUser } from "@/lib/plans";
+import { recordMetricEvent } from "@query-wise/shared/metrics";
 
 const DASHBOARD_LIST_ENDPOINT = "dashboards";
 const MAX_WIDGETS = 50;
@@ -77,6 +79,7 @@ function ownerWidget(widget: DashboardWidget): DashboardOwnerDto["widgets"][numb
     snapshot: widget.snapshot as unknown as DashboardOwnerDto["widgets"][number]["snapshot"],
     queryDefinition:
       widget.queryDefinition as unknown as DashboardOwnerDto["widgets"][number]["queryDefinition"],
+    viewTransform: widget.viewTransform as unknown as DashboardOwnerDto["widgets"][number]["viewTransform"],
     connectionId: widget.connectionId,
     lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
     lastRefreshError: widget.lastRefreshError,
@@ -94,6 +97,7 @@ function viewerWidget(widget: DashboardWidget): DashboardViewerDto["widgets"][nu
     chartConfig: widget.chartConfig as unknown as DashboardViewerDto["widgets"][number]["chartConfig"],
     layout: widget.layout as unknown as DashboardViewerDto["widgets"][number]["layout"],
     snapshot: widget.snapshot as unknown as DashboardViewerDto["widgets"][number]["snapshot"],
+    viewTransform: widget.viewTransform as unknown as DashboardViewerDto["widgets"][number]["viewTransform"],
     lastRefreshedAt: isoOrNull(widget.lastRefreshedAt),
     lastRefreshError: widget.lastRefreshError,
     filterBinding: toFilterBinding(widget.filterBinding),
@@ -217,6 +221,10 @@ export async function createDashboard(input: unknown): Promise<DashboardDto> {
   const parsed = DashboardCreateSchema.safeParse(input);
   if (!parsed.success) throw validationError(parsed.error);
   const { userId } = await requireUser();
+  // Plan gate: fail closed for disabled accounts and enforce the dashboard cap.
+  const plan = await getPlanForUser(userId);
+  assertAccountActive(plan);
+  await assertDashboardQuota(userId, plan);
   const dashboard = await getAppDb().dashboard.create({
     data: {
       id: createResourceId(),
@@ -224,6 +232,12 @@ export async function createDashboard(input: unknown): Promise<DashboardDto> {
       name: parsed.data.name,
       mode: parsed.data.mode ?? "live",
     } as any,
+  });
+  void recordMetricEvent({
+    userId,
+    eventType: "dashboard.created",
+    resourceType: "dashboard",
+    resourceId: dashboard.id,
   });
   return dashboardDto(dashboard, userId);
 }
@@ -246,10 +260,16 @@ export async function renameDashboard(dashboardId: string, input: unknown) {
 }
 
 export async function deleteDashboard(dashboardId: string): Promise<void> {
-  await requireDashboardAccess(dashboardId, "edit");
+  const dashboard = await requireDashboardAccess(dashboardId, "edit");
   await getAppDb().dashboard.update({
     where: { id: dashboardId },
     data: { deletedAt: new Date() },
+  });
+  void recordMetricEvent({
+    userId: dashboard.ownerUserId,
+    eventType: "dashboard.deleted",
+    resourceType: "dashboard",
+    resourceId: dashboardId,
   });
 }
 
@@ -309,7 +329,8 @@ export async function createWidget(dashboardId: string, input: unknown) {
         connectionId,
         filterBinding: filterBinding ? jsonInput(filterBinding) : Prisma.JsonNull,
         queryDefinition: queryDefinition ? jsonInput(queryDefinition) : Prisma.JsonNull,
-      },
+        viewTransform: parsed.data.viewTransform ? jsonInput(parsed.data.viewTransform) : Prisma.JsonNull,
+      } as Prisma.DashboardWidgetUncheckedCreateInput,
     });
     await tx.dashboard.update({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
     return ownerWidget(widget);

@@ -20,6 +20,7 @@ export const SUPPORTED_MODELS_BY_PROVIDER: Record<LlmProvider, readonly string[]
     "gemini-2.5-flash",
   ],
   anthropic: [
+    "claude-sonnet-5",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
   ],
@@ -66,6 +67,7 @@ const MODEL_INPUT_BUDGETS: Record<LlmProvider, Record<string, number>> = {
     "gemini-3-flash-preview": 100_000,
   },
   anthropic: {
+    "claude-sonnet-5": 200_000,
     "claude-opus-4-6": 100_000,
     "claude-sonnet-4-6": 100_000,
   },
