@@ -29,7 +29,7 @@ import {
 import { BrandMark } from "@/components/brand/BrandMark";
 import { ChatSearchDialog } from "@/components/ChatSearchDialog";
 import { AccountMenu } from "@/components/auth/AccountMenu";
-import { ThemeToggle } from "@/components/ThemeToggle";
+
 import { Tooltip } from "@/components/ui/tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarRowsSkeleton } from "@/components/LoadingSkeletons";
@@ -359,9 +359,8 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Theme + user at bottom */}
+        {/* User at bottom */}
         <div className="flex flex-col items-center gap-2 pb-1">
-          <ThemeToggle iconOnly />
           <AccountMenu iconOnly />
         </div>
       </aside>
@@ -432,9 +431,8 @@ function Sidebar({ onNavigate, onOpenSearch, collapsed, onToggleCollapse, dashbo
         </section>
         <SidebarChatHistory onNavigate={onNavigate} />
       </div>
-      <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm">
-        <div className="min-w-0 flex-1"><AccountMenu /></div>
-        <ThemeToggle />
+      <div className="mt-3 px-2 pb-3">
+        <AccountMenu />
       </div>
     </aside>
   );

@@ -1,58 +1,124 @@
 "use client";
 
-import Link from "next/link";
-import { ExternalLink, KeyRound, ShieldCheck, UserCircle2 } from "lucide-react";
-
-import { Card } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Moon, Sun, Laptop, RotateCcw, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 
+const STORAGE_KEY = "querywise.theme";
+type Theme = "light" | "dark" | "system";
+
 export function SettingsView() {
+  const [theme, setTheme] = useState<Theme>("system");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const saved = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
+    if (saved) setTheme(saved);
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      if (theme === "system") {
+        document.documentElement.classList.toggle("dark", e.matches);
+      }
+    };
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, [theme]);
+
+  function changeTheme(newTheme: Theme) {
+    let isDark = newTheme === "dark";
+    if (newTheme === "system") {
+      isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    document.documentElement.classList.toggle("dark", isDark);
+    window.localStorage.setItem(STORAGE_KEY, newTheme);
+    setTheme(newTheme);
+  }
+
+  // Prevent hydration mismatch on initial render for the active state
+  if (!mounted) {
+    return <div className="space-y-6 animate-pulse-accent opacity-50" />;
+  }
+
   return (
-    <div className="space-y-6">
-      <PageHeader eyebrow="Preferences" title="Settings" description="Manage account access and LLM controls." />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <Card className="p-5">
-            <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
-              <UserCircle2 className="h-5 w-5 text-accent-strong" />
-              Account center
-            </h2>
-            <p className="mt-2 text-sm text-faint">
-              Open your profile, plan, and account settings from one place.
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <Link href="/profile" className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-sm font-medium transition hover:border-accent-line hover:bg-surface-2">
-                <span>Profile</span>
-                <ExternalLink className="size-4 text-faint" />
-              </Link>
-              <Link href="/plan" className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-sm font-medium transition hover:border-accent-line hover:bg-surface-2">
-                <span>Plan &amp; usage</span>
-                <ExternalLink className="size-4 text-faint" />
-              </Link>
+    <div className="space-y-8 max-w-4xl">
+      <PageHeader 
+        eyebrow="Preferences" 
+        title="Appearance" 
+        description="Choose how QueryWise looks and feels for you." 
+        actions={
+          <button 
+            type="button" 
+            onClick={() => changeTheme("system")} 
+            className="flex items-center gap-2 text-sm font-medium text-faint hover:text-text transition-colors"
+          >
+            <RotateCcw className="size-4" />
+            Reset to default
+          </button>
+        }
+      />
+      
+      <div className="grid gap-4 sm:grid-cols-3">
+        {/* Light */}
+        <button 
+          type="button" 
+          onClick={() => changeTheme("light")} 
+          className={`group relative flex items-center justify-start gap-4 rounded-xl border p-4 text-left transition-all duration-200 hover:border-accent-line hover:bg-surface-2 ${theme === 'light' ? 'border-accent bg-accent-soft/30 ring-1 ring-accent' : 'border-border bg-surface'}`}
+        >
+          <div className="rounded-full bg-green-100/50 p-3 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+            <Sun className="h-6 w-6" />
+          </div>
+          <div className="flex flex-col">
+            <span className={`font-semibold ${theme === 'light' ? 'text-accent-strong' : 'text-text'}`}>Light</span>
+            <span className="text-xs text-muted">Clean and bright</span>
+          </div>
+          {theme === 'light' && (
+            <div className="absolute right-3 top-3 text-accent">
+              <CheckCircle2 className="size-5 fill-accent text-white dark:text-black" />
             </div>
-          </Card>
-          <Card className="p-5">
-            <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
-              <KeyRound className="h-5 w-5 text-accent-strong" />
-              LLM configuration
-            </h2>
-            <p className="mt-2 text-sm text-faint">
-              The AI model is configured server-side. No API key setup is required.
-            </p>
-          </Card>
-        </div>
-        <div className="space-y-4">
-          <Card className="p-5">
-            <h2 className="flex items-center gap-2 font-syne text-lg font-semibold">
-              <ShieldCheck className="h-5 w-5 text-accent-strong" />
-              Security and privacy
-            </h2>
-            <p className="mt-2 text-sm text-faint">Saved connection credentials are never returned to this UI. Public shares expose bounded dashboard snapshots only.</p>
-          </Card>
-          <Link href="/connections" className="flex items-center justify-between rounded-lg border border-border bg-surface p-4 text-sm font-medium">
-            Manage connections <ExternalLink className="h-4 w-4" />
-          </Link>
-        </div>
+          )}
+        </button>
+
+        {/* Dark */}
+        <button 
+          type="button" 
+          onClick={() => changeTheme("dark")} 
+          className={`group relative flex items-center justify-start gap-4 rounded-xl border p-4 text-left transition-all duration-200 hover:border-accent-line hover:bg-surface-2 ${theme === 'dark' ? 'border-accent bg-accent-soft/30 ring-1 ring-accent' : 'border-border bg-surface'}`}
+        >
+          <div className="rounded-full bg-indigo-100/50 p-3 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+            <Moon className="h-6 w-6" />
+          </div>
+          <div className="flex flex-col">
+            <span className={`font-semibold ${theme === 'dark' ? 'text-accent-strong' : 'text-text'}`}>Dark</span>
+            <span className="text-xs text-muted">Sleek and calm</span>
+          </div>
+          {theme === 'dark' && (
+            <div className="absolute right-3 top-3 text-accent">
+              <CheckCircle2 className="size-5 fill-accent text-white dark:text-black" />
+            </div>
+          )}
+        </button>
+
+        {/* System */}
+        <button 
+          type="button" 
+          onClick={() => changeTheme("system")} 
+          className={`group relative flex items-center justify-start gap-4 rounded-xl border p-4 text-left transition-all duration-200 hover:border-accent-line hover:bg-surface-2 ${theme === 'system' ? 'border-accent bg-accent-soft/30 ring-1 ring-accent' : 'border-border bg-surface'}`}
+        >
+          <div className="rounded-full bg-blue-100/50 p-3 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+            <Laptop className="h-6 w-6" />
+          </div>
+          <div className="flex flex-col">
+            <span className={`font-semibold ${theme === 'system' ? 'text-accent-strong' : 'text-text'}`}>System</span>
+            <span className="text-xs text-muted">Match your system</span>
+          </div>
+          {theme === 'system' && (
+            <div className="absolute right-3 top-3 text-accent">
+              <CheckCircle2 className="size-5 fill-accent text-white dark:text-black" />
+            </div>
+          )}
+        </button>
       </div>
     </div>
   );

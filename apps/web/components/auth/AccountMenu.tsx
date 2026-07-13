@@ -48,28 +48,34 @@ export function AccountMenu({ iconOnly = false }: { iconOnly?: boolean }) {
         aria-label="Open account menu"
         title="Open account menu"
         className={cn(
-          "group flex w-full items-center gap-2 rounded-full border border-border bg-background px-1.5 py-1.5 text-left text-sm transition hover:border-border hover:bg-accent hover:text-accent-foreground",
-          iconOnly && "h-10 w-10 justify-center p-0",
+          "group flex w-full items-center gap-2 rounded-xl p-2 text-left text-sm transition hover:bg-surface-2",
+          iconOnly && "justify-center p-0",
         )}
       >
-        <span
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-syne text-xs font-semibold text-primary",
-            iconOnly && "size-10",
+        <div className="relative flex shrink-0 items-center justify-center">
+          <span
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-full bg-text font-syne text-xs font-semibold text-bg",
+              iconOnly && "size-10",
+            )}
+          >
+            {initials}
+          </span>
+          {data?.plan.id === "pro" && (
+            <span className="absolute -right-2 -top-1.5 flex h-4 items-center justify-center rounded-full border-2 border-surface bg-green-600 px-1 text-[8px] font-bold tracking-wider text-white">
+              PRO
+            </span>
           )}
-        >
-          {initials}
-        </span>
+        </div>
 
         {!iconOnly ? (
           <>
-            <span className="flex shrink-0 items-center gap-2 pr-2 pl-1">
-              {data ? (
-                <span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-                  {data.plan.displayName} · {data.remaining.questionsThisMonth} left
-                </span>
-              ) : null}
+            <span className="flex min-w-0 flex-1 items-center px-1">
+              <span className="truncate font-medium text-foreground">
+                {isLoaded ? name : "Account"}
+              </span>
             </span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground opacity-50 transition-transform group-data-open:rotate-180" />
           </>
         ) : null}
       </DropdownMenuTrigger>
@@ -90,16 +96,7 @@ export function AccountMenu({ iconOnly = false }: { iconOnly?: boolean }) {
           </div>
         </div>
 
-        {data ? (
-          <div className="px-3 pb-3">
-            <div className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-xs">
-              <span className="font-semibold uppercase tracking-wider text-muted-foreground">
-                {data.plan.displayName}
-              </span>
-              <span className="font-medium text-foreground">{data.remaining.questionsThisMonth} left</span>
-            </div>
-          </div>
-        ) : null}
+
 
         <DropdownMenuSeparator />
 
