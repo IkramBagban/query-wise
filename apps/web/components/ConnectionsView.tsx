@@ -34,6 +34,7 @@ import { PageHeaderSkeleton, SchemaBrowserSkeleton } from "@/components/LoadingS
 import { EmptyState, ErrorState } from "@/components/ResourceState";
 import { PageHeader } from "@/components/PageHeader";
 import { SchemaBrowser } from "@/components/SchemaBrowser";
+import { ConnectionDeleteDialog } from "@/components/ConnectionDeleteDialog";
 import { useApiResource } from "@/hooks";
 import { formatRelativeTime } from "@/lib/utils";
 import { connectionsApi, getIngestionStatusView } from "@/lib/api-client";
@@ -577,6 +578,7 @@ export function ConnectionsListView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ConnectionListItem | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const refreshConnections = resource.refresh;
@@ -607,14 +609,15 @@ export function ConnectionsListView() {
     }
   }
 
-  async function deleteConnection(connection: ConnectionListItem) {
-    const confirmed = window.confirm(`Delete "${connection.name}"? This removes saved credentials and hides the connection from new chats.`);
-    if (!confirmed) return;
+  async function confirmDeleteConnection() {
+    const connection = deleteTarget;
+    if (!connection) return;
     setDeletingId(connection.id);
     setNotice(null);
     try {
       await connectionsApi.remove(connection.id);
       setExpandedId((current) => (current === connection.id ? null : current));
+      setDeleteTarget(null);
       setNotice("Connection deleted.");
       await resource.refresh();
     } catch (reason) {
@@ -676,7 +679,7 @@ export function ConnectionsListView() {
                   expanded={expandedId === connection.id}
                   onToggle={() => setExpandedId((current) => (current === connection.id ? null : connection.id))}
                   onRefresh={() => void refreshSchema(connection.id)}
-                  onDelete={() => void deleteConnection(connection)}
+                  onDelete={() => setDeleteTarget(connection)}
                   refreshing={refreshingId === connection.id}
                   deleting={deletingId === connection.id}
                 />
@@ -694,6 +697,14 @@ export function ConnectionsListView() {
           void resource.refresh();
         }}
       />
+      <ConnectionDeleteDialog
+        open={Boolean(deleteTarget)}
+        connectionId={deleteTarget?.id ?? null}
+        connectionName={deleteTarget?.name ?? ""}
+        deleting={Boolean(deletingId)}
+        onConfirm={() => void confirmDeleteConnection()}
+        onOpenChange={(nextOpen) => { if (!nextOpen && !deletingId) setDeleteTarget(null); }}
+      />
     </div>
   );
 }
@@ -709,9 +720,10 @@ export function ConnectionDetailView({ connectionId }: { connectionId: string })
   const schema = useApiResource((signal) => connectionsApi.schema(connectionId, signal), connectionId);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   if (connection.loading) return <ConnectionDetailSkeleton />;
   if (connection.error || !connection.data) return <ErrorState error={connection.error ?? new Error("Connection not found")} onRetry={() => void connection.refresh()} />;
   const item = connection.data;
   const act = async (key: string, action: () => Promise<unknown>, message: string) => { setBusy(key); setNotice(null); try { await action(); setNotice(message); await connection.refresh(); await schema.refresh(); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Action failed"); } finally { setBusy(null); } };
-  return <div className="space-y-6"><PageHeader eyebrow="Connection" title={item.name} description={`${item.hostDisplay}${item.port ? `:${item.port}` : ""} / ${item.databaseName}`} actions={<><Button variant="ghost" loading={busy === "test"} onClick={() => void act("test", () => connectionsApi.test(connectionId), "Connection test completed.")}><TestTube2 className="h-4 w-4" />Test</Button><Button variant="ghost" loading={busy === "refresh"} onClick={() => void act("refresh", () => connectionsApi.refreshSchema(connectionId), "Schema refresh queued.")}><RefreshCw className="h-4 w-4" />Refresh schema</Button><Button variant="danger" loading={busy === "delete"} onClick={() => void act("delete", async () => { await connectionsApi.remove(connectionId); router.push("/connections"); }, "Connection deleted.")}><Trash2 className="h-4 w-4" />Delete</Button></>} />{notice ? <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><Card className="p-5"><h2 className="font-syne text-lg font-semibold">Safe connection metadata</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2">{[["Provider", item.providerId], ["Status", item.status], ["Schema sync", item.schemaSyncStatus], ["Last tested", item.lastTestedAt ? new Date(item.lastTestedAt).toLocaleString() : "Never"], ["Last schema sync", item.lastSchemaSyncAt ? new Date(item.lastSchemaSyncAt).toLocaleString() : "Never"], ["Capabilities", item.capabilities.join(", ") || "None reported"]].map(([label, value]) => <div key={label}><dt className="text-xs uppercase tracking-wide text-faint">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>)}</dl></Card><Card className="p-4"><h2 className="mb-3 font-syne text-lg font-semibold">Schema</h2>{schema.loading && !schema.data ? <SchemaBrowserSkeleton rows={5} /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />}</Card></div></div>;
+  return <div className="space-y-6"><PageHeader eyebrow="Connection" title={item.name} description={`${item.hostDisplay}${item.port ? `:${item.port}` : ""} / ${item.databaseName}`} actions={<><Button variant="ghost" loading={busy === "test"} onClick={() => void act("test", () => connectionsApi.test(connectionId), "Connection test completed.")}><TestTube2 className="h-4 w-4" />Test</Button><Button variant="ghost" loading={busy === "refresh"} onClick={() => void act("refresh", () => connectionsApi.refreshSchema(connectionId), "Schema refresh queued.")}><RefreshCw className="h-4 w-4" />Refresh schema</Button><Button variant="danger" loading={busy === "delete"} onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4" />Delete</Button></>} />{notice ? <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{notice}</p> : null}<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><Card className="p-5"><h2 className="font-syne text-lg font-semibold">Safe connection metadata</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2">{[["Provider", item.providerId], ["Status", item.status], ["Schema sync", item.schemaSyncStatus], ["Last tested", item.lastTestedAt ? new Date(item.lastTestedAt).toLocaleString() : "Never"], ["Last schema sync", item.lastSchemaSyncAt ? new Date(item.lastSchemaSyncAt).toLocaleString() : "Never"], ["Capabilities", item.capabilities.join(", ") || "None reported"]].map(([label, value]) => <div key={label}><dt className="text-xs uppercase tracking-wide text-faint">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>)}</dl></Card><Card className="p-4"><h2 className="mb-3 font-syne text-lg font-semibold">Schema</h2>{schema.loading && !schema.data ? <SchemaBrowserSkeleton rows={5} /> : schema.error ? <ErrorState error={schema.error} onRetry={() => void schema.refresh()} /> : <SchemaBrowser metadata={schema.data?.metadata ?? null} />}</Card></div><ConnectionDeleteDialog open={deleteOpen} connectionId={connectionId} connectionName={item.name} deleting={busy === "delete"} onConfirm={() => void act("delete", async () => { await connectionsApi.remove(connectionId); router.push("/connections"); }, "Connection deleted.")} onOpenChange={(nextOpen) => { if (!nextOpen && busy !== "delete") setDeleteOpen(false); }} /></div>;
 }

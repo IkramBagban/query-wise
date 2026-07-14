@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
   Check,
@@ -648,6 +649,12 @@ export function DashboardDetailView({
             <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
               <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
               <ModeBadge mode={dashboard.mode} />
+              {owner && dashboard.connectionDeleted ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-warning">
+                  <AlertTriangle className="size-2.5" strokeWidth={2} />
+                  Data source removed
+                </span>
+              ) : null}
               {refreshing ? <Spinner size="sm" /> : null}
             </div>
 
@@ -690,6 +697,7 @@ export function DashboardDetailView({
           canRefresh={owner}
           mode={dashboard.mode}
           refreshIntervalSeconds={dashboard.refreshIntervalSeconds}
+          connectionDeleted={dashboard.access === "owner" ? dashboard.connectionDeleted : false}
           onRemoveWidget={(widgetId) =>
             void mutateWidget(widgetId, () =>
               dashboardsApi.removeWidget(dashboardId, widgetId),
@@ -704,6 +712,7 @@ export function DashboardDetailView({
 
       <ShareDashboardModal
         dashboardId={dashboardId}
+        dashboardMode={dashboard.mode}
         open={shareOpen}
         onOpenChange={setShareOpen}
         onActiveLinksChange={setHasActiveLinks}

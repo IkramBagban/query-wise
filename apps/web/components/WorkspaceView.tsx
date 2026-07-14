@@ -425,7 +425,15 @@ export function WorkspaceHomeView() {
             <Link key={conversation.id} href={`/chats/${conversation.id}`} className="block">
               <Card hoverable className="flex items-center justify-between gap-4 p-4">
                 <div className="min-w-0">
-                  <h2 className="truncate font-medium">{conversation.title}</h2>
+                  <h2 className="flex items-center gap-2 truncate font-medium">
+                    <span className="truncate">{conversation.title}</span>
+                    {conversation.connectionDeleted ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-warning">
+                        <AlertTriangle className="size-2.5" strokeWidth={2} />
+                        Read-only
+                      </span>
+                    ) : null}
+                  </h2>
                   <p className="text-xs text-faint">Updated {formatRelativeTime(conversation.lastActivityAt, "just now")}</p>
                 </div>
                 <span className="text-xs capitalize text-faint">{conversation.status}</span>
@@ -1284,7 +1292,15 @@ export function ConversationView({ conversationId }: { conversationId: string })
   );
   const ingestion = getIngestionStatusView(connection.data?.schemaSyncStatus);
   const refreshConnection = connection.refresh;
-  const composerDisabledReason = conversation.data && connection.data && !ingestion.ready ? ingestion.description : null;
+  // SPEC-13 §4: a deleted data source makes the chat read-only history. This takes
+  // priority over the ingestion-readiness gate and drives the banner + composer.
+  const connectionDeleted = Boolean(conversation.data?.connectionDeleted);
+  const deletedConnectionName = conversation.data?.connection.name ?? "this database";
+  const readOnlyReason = connectionDeleted
+    ? `The database "${deletedConnectionName}" was deleted. You can view this conversation but can't ask new questions.`
+    : null;
+  const composerDisabledReason =
+    readOnlyReason ?? (conversation.data && connection.data && !ingestion.ready ? ingestion.description : null);
 
   // Silent refresh: never flips the list back to a skeleton once messages
   // are on screen (that caused a full-screen flicker after each response).
@@ -1491,8 +1507,13 @@ export function ConversationView({ conversationId }: { conversationId: string })
         {/* Conversation header */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
           <div className="pointer-events-auto absolute left-0 flex h-14 min-w-0 max-w-[calc(100%-11rem)] items-center gap-2.5 rounded-br-xl border border-l-0 border-t-0 border-border/70 bg-surface/65 px-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-            <Database className="size-4 shrink-0 text-accent-strong" />
-            <span className="truncate text-sm font-medium text-text">{connection.data?.name ?? conversation.data?.title ?? ""}</span>
+            <Database className={`size-4 shrink-0 ${connectionDeleted ? "text-warning" : "text-accent-strong"}`} />
+            <span className="truncate text-sm font-medium text-text">{connection.data?.name ?? conversation.data?.connection.name ?? conversation.data?.title ?? ""}</span>
+            {connectionDeleted ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-warning">
+                Read-only
+              </span>
+            ) : null}
           </div>
           <div className="pointer-events-auto absolute right-0 flex h-14 shrink-0 items-center gap-1.5 rounded-bl-xl border border-r-0 border-t-0 border-border/70 bg-surface/65 px-3 shadow-[0_14px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
             <button type="button" aria-label="Favorite chat" title="Favorite chat" className="inline-flex size-8 items-center justify-center rounded-md text-faint transition hover:bg-surface-2 hover:text-text"><Star className="size-4" /></button>
@@ -1510,6 +1531,12 @@ export function ConversationView({ conversationId }: { conversationId: string })
           </div>
         </div>
         <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-24 sm:px-6">
+          {readOnlyReason ? (
+            <div className="mx-auto mb-5 flex max-w-6xl items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+              <p className="min-w-0">{readOnlyReason}</p>
+            </div>
+          ) : null}
           {(conversation.loading || messagesLoading) && !ordered.length && !pendingQuestion && !submitting ? (
             <MessageListSkeleton messages={4} />
           ) : messagesError && !ordered.length ? (

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Link2, Lock, Plus, X } from "lucide-react";
+import { Check, Copy, Link2, Lock, Plus, Snowflake, X, Zap } from "lucide-react";
+import type { WidgetMode } from "@query-wise/shared/types";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -68,8 +69,18 @@ function ShareLinkCard({ link, onCopy, onRevoke, onRemove, busy, copiedId }: Sha
               {link.passwordProtected ? "🔒" : "🔗"}
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-medium">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
                 {link.passwordProtected ? "Password protected" : "Public link"}
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] ${
+                    link.mode === "snapshot"
+                      ? "border-border bg-surface-2 text-faint"
+                      : "border-accent-line bg-accent-soft text-accent-strong"
+                  }`}
+                >
+                  {link.mode === "snapshot" ? <Snowflake className="size-2.5" /> : <Zap className="size-2.5" />}
+                  {link.mode === "snapshot" ? "Snapshot" : "Live"}
+                </span>
               </p>
               {link.urlAvailable && link.url ? (
                 <p
@@ -166,13 +177,70 @@ interface CreateShareFormProps {
   onCancel: () => void;
   onCreated: (link: ShareLinkListItem) => void;
   dashboardId: string;
+  dashboardMode: WidgetMode;
 }
 
-function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormProps) {
+const SHARE_MODE_OPTIONS: Array<{ key: WidgetMode; icon: typeof Zap; title: string; blurb: string }> = [
+  {
+    key: "live",
+    icon: Zap,
+    title: "Live",
+    blurb: "Viewers always see current data — requires the database connection to stay active.",
+  },
+  {
+    key: "snapshot",
+    icon: Snowflake,
+    title: "Snapshot",
+    blurb: "Viewers see the data as pinned now — keeps working even if the database is later removed.",
+  },
+];
+
+/**
+ * SPEC-13 §1: per-share Live/Snapshot choice. Mirrors the dashboard mode picker's
+ * segmented card style; defaults to the dashboard's current mode.
+ */
+function ShareModePicker({ value, onChange }: { value: WidgetMode; onChange: (mode: WidgetMode) => void }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium text-muted">Data mode</p>
+      <div className="grid grid-cols-2 gap-2.5">
+        {SHARE_MODE_OPTIONS.map((option) => {
+          const active = value === option.key;
+          const Icon = option.icon;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(option.key)}
+              className={`group/opt relative overflow-hidden rounded-xl border p-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                active
+                  ? "border-accent-line bg-accent-soft shadow-[0_0_0_3px_var(--accent-soft)]"
+                  : "border-border hover:border-border-2 hover:bg-surface-2/60"
+              }`}
+            >
+              <span className="flex items-center justify-between">
+                <span className={`flex size-8 items-center justify-center rounded-lg transition-colors ${active ? "bg-accent text-accent-ink" : "bg-surface-2 text-faint"}`}>
+                  <Icon className="size-4" strokeWidth={2} />
+                </span>
+                {active ? <Check className="size-4 text-accent-strong" strokeWidth={2.5} /> : null}
+              </span>
+              <span className="mt-2.5 block font-syne text-sm font-semibold text-text">{option.title}</span>
+              <span className="mt-0.5 block text-[11.5px] leading-snug text-faint">{option.blurb}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CreateShareForm({ onCancel, onCreated, dashboardId, dashboardMode }: CreateShareFormProps) {
   const { pushToast } = useToast();
   const { data: planUsage } = usePlanUsage();
   // Password-protected shares are a Pro feature; the server enforces this too.
   const allowPasswordShares = planUsage?.limits.allowPasswordShares ?? false;
+  const [mode, setMode] = useState<WidgetMode>(dashboardMode);
   const [passwordOption, setPasswordOption] = useState<"none" | "required">("none");
   const [password, setPassword] = useState("");
   const [expiry, setExpiry] = useState("none");
@@ -193,6 +261,7 @@ function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormPr
       const expiresAt = expiryIso(expiry, customExpiry);
       const result = await dashboardsApi.createShare(dashboardId, {
         type: "link",
+        mode,
         ...(passwordOption === "required" ? { password } : {}),
         ...(expiresAt ? { expiresAt } : {}),
       });
@@ -211,6 +280,8 @@ function CreateShareForm({ onCancel, onCreated, dashboardId }: CreateShareFormPr
     <Card className="p-4">
       <h3 className="mb-4 text-sm font-semibold">Create share link</h3>
       <div className="space-y-4">
+        <ShareModePicker value={mode} onChange={setMode} />
+
         <div>
           <p className="mb-2 text-xs font-medium text-muted">Password protection</p>
           <div className="flex gap-4">
@@ -309,11 +380,13 @@ function cn(...classes: (string | boolean | undefined | null)[]): string {
 
 export function ShareDashboardModal({
   dashboardId,
+  dashboardMode = "live",
   open,
   onOpenChange,
   onActiveLinksChange,
 }: {
   dashboardId: string;
+  dashboardMode?: WidgetMode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onActiveLinksChange?: (hasActive: boolean) => void;
@@ -399,6 +472,7 @@ export function ShareDashboardModal({
         {showCreateForm && (
           <CreateShareForm
             dashboardId={dashboardId}
+            dashboardMode={dashboardMode}
             onCancel={() => setShowCreateForm(false)}
             onCreated={handleCreated}
           />

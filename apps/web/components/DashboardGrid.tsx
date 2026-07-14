@@ -35,6 +35,8 @@ export interface DashboardGridProps {
   canRefresh?: boolean;
   mode?: WidgetMode;
   refreshIntervalSeconds?: number | null;
+  // SPEC-13 §5: a widget's connection was deleted — freeze refresh, show last values.
+  connectionDeleted?: boolean;
 }
 
 export function WidgetCardSkeleton() {
@@ -115,6 +117,7 @@ export function DashboardGrid({
   canRefresh = false,
   mode: modeProp = "live",
   refreshIntervalSeconds = null,
+  connectionDeleted = false,
 }: DashboardGridProps) {
   const { containerRef, width, mounted } = useContainerWidth({ initialWidth: 1280 });
   const [layout, setLayout] = useState<Layout>(() => widgetsToLayout(widgets));
@@ -148,7 +151,7 @@ export function DashboardGrid({
   const refreshOne = useCallback(
     async (widgetId: string) => {
       const widget = widgetMap.get(widgetId);
-      if (!widget) return;
+      if (!widget || connectionDeleted) return;
       setWidgetState(widgetId, { refreshing: true });
       try {
         const result = await dashboardsApi.refreshWidget(dashboardId, widgetId, {
@@ -173,7 +176,7 @@ export function DashboardGrid({
         });
       }
     },
-    [dashboardId, setWidgetState, widgetMap],
+    [dashboardId, setWidgetState, widgetMap, connectionDeleted],
   );
 
   // §8b: staggered wave in reading order (top-left first).
@@ -203,27 +206,28 @@ export function DashboardGrid({
   );
 
   const refreshAll = useCallback(async () => {
-    if (!canRefresh || refreshingAll) return;
+    // SPEC-13 §5: a deleted data source can never refresh — freeze at last values.
+    if (!canRefresh || refreshingAll || connectionDeleted) return;
     setRefreshingAll(true);
     try {
       await refreshWave(liveWidgets.map((w) => w.id));
     } finally {
       setRefreshingAll(false);
     }
-  }, [canRefresh, liveWidgets, refreshWave, refreshingAll]);
+  }, [canRefresh, liveWidgets, refreshWave, refreshingAll, connectionDeleted]);
 
   // §4.2: on load, refresh a live dashboard's widgets that are stale beyond the
   // window. (Snapshot dashboards never auto-refresh.)
   const didLoadRefresh = useRef(false);
   useEffect(() => {
-    if (didLoadRefresh.current || !canRefresh || !isLive) return;
+    if (didLoadRefresh.current || !canRefresh || !isLive || connectionDeleted) return;
     didLoadRefresh.current = true;
     const windowMs = refreshIntervalSeconds ? refreshIntervalSeconds * 1000 : STALENESS_MS;
     const stale = liveWidgets
       .filter((w) => isStale(statesRef.current[w.id]?.lastRefreshedAt ?? null, windowMs))
       .map((w) => w.id);
     if (stale.length) void refreshWave(stale);
-  }, [canRefresh, isLive, liveWidgets, refreshIntervalSeconds, refreshWave]);
+  }, [canRefresh, isLive, liveWidgets, refreshIntervalSeconds, refreshWave, connectionDeleted]);
 
   // §2: whole-dashboard mode toggle. Switching to live refreshes every widget in a
   // wave; switching to snapshot simply freezes (no execution).
@@ -243,7 +247,7 @@ export function DashboardGrid({
 
   // §4.2: optional auto-refresh, paused when the tab is hidden (live dashboards only).
   useEffect(() => {
-    if (!canRefresh || !refreshIntervalSeconds || !isLive) return;
+    if (!canRefresh || !refreshIntervalSeconds || !isLive || connectionDeleted) return;
     let timer: ReturnType<typeof setInterval> | null = null;
     const start = () => {
       if (timer) return;
@@ -262,7 +266,7 @@ export function DashboardGrid({
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [canRefresh, isLive, refreshIntervalSeconds, refreshAll]);
+  }, [canRefresh, isLive, refreshIntervalSeconds, refreshAll, connectionDeleted]);
 
   /* --------------------------- layout persistence ------------------------ */
 
@@ -359,7 +363,13 @@ export function DashboardGrid({
       {canRefresh ? (
         <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
           <div className="flex flex-wrap items-center gap-2">
-            <ModeToggle value={mode} onChange={changeMode} disabled={anyRefreshing} />
+            <ModeToggle value={mode} onChange={changeMode} disabled={anyRefreshing || connectionDeleted} />
+            {connectionDeleted ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-warning">
+                <AlertCircle className="size-3" strokeWidth={2} />
+                Data source removed — showing last known values
+              </span>
+            ) : null}
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -378,7 +388,8 @@ export function DashboardGrid({
               <button
                 type="button"
                 onClick={() => void refreshAll()}
-                disabled={anyRefreshing}
+                disabled={anyRefreshing || connectionDeleted}
+                title={connectionDeleted ? "The data source was removed — widgets show their last known values." : undefined}
                 className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
