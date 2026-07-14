@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 const NAV = [
   { href: "/", label: "Overview", icon: "svg-overview" },
   { href: "/users", label: "Users", icon: "svg-users" },
+  { href: "/coupons", label: "Coupons", icon: "svg-coupons" },
   { href: "/cost", label: "Cost", icon: "svg-cost" },
   { href: "/events", label: "Events", icon: "svg-events" },
   { href: "/system", label: "System", icon: "svg-system" },

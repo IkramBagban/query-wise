@@ -12,9 +12,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { dashboardsApi } from "@/lib/api-client";
 import type { DashboardDto } from "@/lib/api-client";
-import type { BoundedResultPreview, DashboardDateRange, WidgetMode } from "@query-wise/shared/types";
+import type { BoundedResultPreview, WidgetMode } from "@query-wise/shared/types";
 import { isBoundedResultPreview } from "@/components/V2Chart";
-import { DateRangePicker, ModeToggle } from "@/components/dashboard/primitives";
+import { ModeToggle } from "@/components/dashboard/primitives";
 import { LiveWidgetCard, type LiveWidgetView } from "@/components/dashboard/LiveWidgetCard";
 // Click-to-drill / "Ask about this" (SPEC-06 §7) removed per product decision.
 // import { DrillDrawer, type DrillTarget } from "@/components/dashboard/DrillDrawer";
@@ -34,18 +34,34 @@ export interface DashboardGridProps {
   onRenameWidget?: (widgetId: string, title: string) => Promise<void> | void;
   canRefresh?: boolean;
   mode?: WidgetMode;
-  defaultDateRange?: DashboardDateRange | null;
   refreshIntervalSeconds?: number | null;
 }
 
 export function WidgetCardSkeleton() {
+  const barHeights = ["h-[38%]", "h-[56%]", "h-[44%]", "h-[74%]", "h-[62%]", "h-[88%]", "h-[51%]", "h-[68%]"];
+
   return (
-    <Card className="flex flex-col overflow-hidden">
-      <div className="border-b border-border px-4 py-3">
-        <Skeleton className="h-4 w-2/5" />
+    <Card className="flex min-h-72 flex-col overflow-hidden rounded-2xl border-border/70">
+      <div className="flex items-center justify-between px-4 pb-2 pt-3">
+        <div className="flex items-center gap-2"><Skeleton className="h-4 w-36" /><Skeleton className="size-3.5 rounded-full" /></div>
+        <Skeleton className="size-6 rounded-md" />
       </div>
-      <div className="min-h-24 flex-1 p-3">
-        <Skeleton className="h-full w-full rounded-md" />
+
+      <div className="relative mx-4 mb-4 min-h-52 flex-1 overflow-hidden rounded-lg" aria-hidden="true">
+        <div className="absolute inset-x-0 top-3 space-y-8 opacity-75">
+          {["grid-1", "grid-2", "grid-3", "grid-4"].map((key) => <div key={key} className="h-px bg-border" />)}
+        </div>
+        <div className="absolute inset-x-4 bottom-6 top-5 flex items-end justify-between gap-2">
+          {barHeights.map((height, index) => (
+            <Skeleton
+              key={index}
+              className={`w-full max-w-9 rounded-t-sm rounded-b-none ${height}`}
+            />
+          ))}
+        </div>
+        <div className="absolute inset-x-0 bottom-0 flex justify-between">
+          {["axis-1", "axis-2", "axis-3", "axis-4"].map((key) => <Skeleton key={key} className="h-2 w-7" />)}
+        </div>
       </div>
     </Card>
   );
@@ -68,7 +84,6 @@ interface WidgetState {
   lastRefreshedAt: string | null;
   error: string | null;
   refreshing: boolean;
-  pulseKey: number;
 }
 
 function initialStates(widgets: DashboardWidget[]): Record<string, WidgetState> {
@@ -79,7 +94,6 @@ function initialStates(widgets: DashboardWidget[]): Record<string, WidgetState> 
       lastRefreshedAt: widget.lastRefreshedAt ?? null,
       error: widget.lastRefreshError ?? null,
       refreshing: false,
-      pulseKey: 0,
     };
   }
   return map;
@@ -100,7 +114,6 @@ export function DashboardGrid({
   onRenameWidget,
   canRefresh = false,
   mode: modeProp = "live",
-  defaultDateRange = null,
   refreshIntervalSeconds = null,
 }: DashboardGridProps) {
   const { containerRef, width, mounted } = useContainerWidth({ initialWidth: 1280 });
@@ -118,7 +131,6 @@ export function DashboardGrid({
   /* ---------------------------- live state ------------------------------- */
 
   const [states, setStates] = useState<Record<string, WidgetState>>(() => initialStates(widgets));
-  const [range, setRange] = useState<DashboardDateRange | null>(defaultDateRange);
   const [mode, setMode] = useState<WidgetMode>(modeProp);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const statesRef = useRef(states);
@@ -128,20 +140,18 @@ export function DashboardGrid({
   const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
   // Whole-dashboard mode: every widget is live iff the dashboard is live.
   const liveWidgets = useMemo(() => (isLive ? widgets : []), [isLive, widgets]);
-  const hasFilterBound = useMemo(() => widgets.some((w) => Boolean(w.filterBinding)), [widgets]);
 
   const setWidgetState = useCallback((id: string, patch: Partial<WidgetState>) => {
     setStates((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], ...patch } } : prev));
   }, []);
 
   const refreshOne = useCallback(
-    async (widgetId: string, nextRange: DashboardDateRange | null) => {
+    async (widgetId: string) => {
       const widget = widgetMap.get(widgetId);
       if (!widget) return;
       setWidgetState(widgetId, { refreshing: true });
       try {
         const result = await dashboardsApi.refreshWidget(dashboardId, widgetId, {
-          range: nextRange ?? null,
           force: true,
         });
         if (result.status === "ok" && result.result) {
@@ -176,14 +186,14 @@ export function DashboardGrid({
   );
 
   const refreshWave = useCallback(
-    async (widgetIds: string[], nextRange: DashboardDateRange | null) => {
+    async (widgetIds: string[]) => {
       const ordered = readingOrder(widgetIds);
       await Promise.all(
         ordered.map(
           (id, index) =>
             new Promise<void>((resolve) => {
               window.setTimeout(() => {
-                void refreshOne(id, nextRange).finally(resolve);
+                void refreshOne(id).finally(resolve);
               }, index * WAVE_STAGGER_MS);
             }),
         ),
@@ -196,11 +206,11 @@ export function DashboardGrid({
     if (!canRefresh || refreshingAll) return;
     setRefreshingAll(true);
     try {
-      await refreshWave(liveWidgets.map((w) => w.id), range);
+      await refreshWave(liveWidgets.map((w) => w.id));
     } finally {
       setRefreshingAll(false);
     }
-  }, [canRefresh, liveWidgets, range, refreshWave, refreshingAll]);
+  }, [canRefresh, liveWidgets, refreshWave, refreshingAll]);
 
   // §4.2: on load, refresh a live dashboard's widgets that are stale beyond the
   // window. (Snapshot dashboards never auto-refresh.)
@@ -212,8 +222,8 @@ export function DashboardGrid({
     const stale = liveWidgets
       .filter((w) => isStale(statesRef.current[w.id]?.lastRefreshedAt ?? null, windowMs))
       .map((w) => w.id);
-    if (stale.length) void refreshWave(stale, range);
-  }, [canRefresh, isLive, liveWidgets, range, refreshIntervalSeconds, refreshWave]);
+    if (stale.length) void refreshWave(stale);
+  }, [canRefresh, isLive, liveWidgets, refreshIntervalSeconds, refreshWave]);
 
   // §2: whole-dashboard mode toggle. Switching to live refreshes every widget in a
   // wave; switching to snapshot simply freezes (no execution).
@@ -225,28 +235,10 @@ export function DashboardGrid({
       if (next === "live") {
         didLoadRefresh.current = true; // this handler owns the refresh
         setRefreshingAll(true);
-        void refreshWave(widgets.map((w) => w.id), range).finally(() => setRefreshingAll(false));
+        void refreshWave(widgets.map((w) => w.id)).finally(() => setRefreshingAll(false));
       }
     },
-    [mode, dashboardId, refreshWave, widgets, range],
-  );
-
-  // §5: changing the global range refreshes bound widgets in a wave, and pulses
-  // unbound widgets' borders to signal "intentionally unchanged."
-  const changeRange = useCallback(
-    (nextRange: DashboardDateRange | null) => {
-      setRange(nextRange);
-      void dashboardsApi.updateSettings(dashboardId, { defaultDateRange: nextRange }).catch(() => undefined);
-      const bound = widgets.filter((w) => Boolean(w.filterBinding)).map((w) => w.id);
-      const unaffected = widgets.filter((w) => !w.filterBinding).map((w) => w.id);
-      setStates((prev) => {
-        const next = { ...prev };
-        for (const id of unaffected) if (next[id]) next[id] = { ...next[id], pulseKey: next[id].pulseKey + 1 };
-        return next;
-      });
-      if (bound.length) void refreshWave(bound, nextRange);
-    },
-    [dashboardId, refreshWave, widgets],
+    [mode, dashboardId, refreshWave, widgets],
   );
 
   // §4.2: optional auto-refresh, paused when the tab is hidden (live dashboards only).
@@ -364,24 +356,20 @@ export function DashboardGrid({
 
   return (
     <div className="space-y-3">
-      {/* One clean toolbar: mode + range on the left, an ambient autosave chip and
-          Refresh on the right. No edit mode — the board is always live-editable and
-          every drag/resize autosaves. */}
       {canRefresh ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <ModeToggle value={mode} onChange={changeMode} disabled={anyRefreshing} />
-          {isLive && hasFilterBound ? (
-            <DateRangePicker value={range} onChange={changeRange} disabled={anyRefreshing} />
-          ) : null}
+        <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <ModeToggle value={mode} onChange={changeMode} disabled={anyRefreshing} />
+          </div>
 
           <div className="ml-auto flex items-center gap-2">
             {canEdit ? (
-              <span aria-live="polite" aria-atomic="true" className="font-mono text-[11px] text-faint">
+              <span aria-live="polite" aria-atomic="true" className="text-xs font-medium text-muted">
                 {saveState === "saving" ? (
-                  <span className="flex items-center gap-1.5"><Spinner size="sm" /> saving…</span>
+                  <span className="flex items-center gap-1.5"><Spinner size="sm" />Saving layout</span>
                 ) : saveState === "saved" ? (
                   <span className="flex items-center gap-1.5 text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
-                    <Check className="h-3 w-3" /> saved
+                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} />Saved
                   </span>
                 ) : null}
               </span>
@@ -391,10 +379,10 @@ export function DashboardGrid({
                 type="button"
                 onClick={() => void refreshAll()}
                 disabled={anyRefreshing}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted shadow-sm transition-colors hover:border-border-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw className={cn("h-3.5 w-3.5", anyRefreshing && "qw-spin-once")} />
-                {anyRefreshing ? "Refreshing…" : "Refresh"}
+                {anyRefreshing ? "Refreshing" : "Refresh data"}
               </button>
             ) : null}
           </div>
@@ -456,11 +444,8 @@ export function DashboardGrid({
                 preview: isBoundedResultPreview(state.preview)
                   ? state.preview
                   : (widget.snapshot as BoundedResultPreview),
-                lastRefreshedAt: state.lastRefreshedAt,
                 error: state.error,
                 refreshing: state.refreshing,
-                filterBound: Boolean(widget.filterBinding),
-                pulseKey: state.pulseKey,
               };
               return (
                 <div key={widget.id}>
@@ -468,7 +453,7 @@ export function DashboardGrid({
                     view={view}
                     canEdit={canEdit}
                     removing={busyWidget === widget.id}
-                    onRefresh={() => void refreshOne(widget.id, range)}
+                    onRefresh={() => void refreshOne(widget.id)}
                     onRemove={onRemoveWidget ? () => onRemoveWidget(widget.id) : undefined}
                     onRename={onRenameWidget ? (title) => onRenameWidget(widget.id, title) : undefined}
                   />

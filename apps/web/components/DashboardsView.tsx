@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Check,
-  Clock,
   LayoutDashboard,
   LayoutGrid,
   MoreHorizontal,
@@ -218,19 +217,20 @@ function DashboardListSkeleton() {
 
 function DashboardPageSkeleton() {
   return (
-    <div className="space-y-6">
-      <div>
-        <Skeleton className="h-3 w-24" />
-        <div className="mt-3 flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-56" />
-            <Skeleton className="h-3 w-40" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-8 w-28 rounded-md" />
-            <Skeleton className="h-8 w-20 rounded-md" />
-          </div>
+    <div className="space-y-4" aria-label="Loading dashboard" aria-busy="true">
+      <header className="border-b border-border pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Skeleton className="h-3 w-28" />
+          <div className="flex gap-2"><Skeleton className="h-8 w-20" /><Skeleton className="size-8" /></div>
         </div>
+        <div className="mt-5">
+          <div className="flex items-center gap-3"><Skeleton className="h-8 w-56" /><Skeleton className="h-5 w-14" /></div>
+          <Skeleton className="mt-3 h-3 w-28" />
+        </div>
+      </header>
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex gap-4"><Skeleton className="h-5 w-12" /><Skeleton className="h-5 w-20" /></div>
+        <Skeleton className="h-5 w-24" />
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <WidgetCardSkeleton />
@@ -285,7 +285,6 @@ export function DashboardsListView() {
       {/* header */}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Collections</p>
           <h1 className="mt-1.5 font-syne text-3xl font-semibold tracking-tight text-text">Dashboards</h1>
           <p className="mt-1.5 text-sm text-faint">
             {resource.data
@@ -602,49 +601,18 @@ export function DashboardDetailView({
   }
 
   return (
-    <div className="space-y-6">
-      <header className="relative">
-        {/* ambient accent glow anchoring the masthead */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-6 -top-8 h-28 w-72 opacity-60"
-          style={{ background: "var(--glow)" }}
-        />
-
-        <div className="relative">
+    <div className="space-y-4">
+      <header className="border-b border-border pb-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/dashboards"
             className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-faint no-underline transition-colors duration-150 hover:text-accent-strong"
           >
             <ArrowLeft className="size-3" strokeWidth={2} />
-            Dashboards
+            All dashboards
           </Link>
 
-          <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
-                <ModeBadge mode={dashboard.mode} />
-                {refreshing ? <Spinner size="sm" /> : null}
-              </div>
-
-              {/* stat rail — hairline-separated mono micro-labels, not a gray sentence */}
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-faint">
-                <span className="inline-flex items-center gap-1.5 text-muted">
-                  <LayoutGrid className="size-3 text-faint" strokeWidth={2} />
-                  {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"}
-                </span>
-                <span aria-hidden className="h-3 w-px bg-border" />
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="size-3" strokeWidth={2} />
-                  {timeAgo(dashboard.updatedAt)}
-                </span>
-                <span aria-hidden className="h-3 w-px bg-border" />
-                <span>{dashboard.access}</span>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               {owner ? (
                 <div className="relative inline-flex">
                   <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)}>
@@ -672,6 +640,24 @@ export function DashboardDetailView({
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pt-1">
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+              <EditableTitle name={dashboard.name} canEdit={owner} onSave={renameDashboard} />
+              <ModeBadge mode={dashboard.mode} />
+              {refreshing ? <Spinner size="sm" /> : null}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-faint">
+              <span className="inline-flex items-center gap-1.5 text-muted">
+                <LayoutGrid className="size-3 text-faint" strokeWidth={2} />
+                {dashboard.widgets.length} {dashboard.widgets.length === 1 ? "widget" : "widgets"}
+              </span>
+              <span aria-hidden className="h-3 w-px bg-border" />
+              <span>{dashboard.access}</span>
             </div>
           </div>
         </div>
@@ -703,7 +689,6 @@ export function DashboardDetailView({
           busyWidget={busyWidget}
           canRefresh={owner}
           mode={dashboard.mode}
-          defaultDateRange={dashboard.defaultDateRange}
           refreshIntervalSeconds={dashboard.refreshIntervalSeconds}
           onRemoveWidget={(widgetId) =>
             void mutateWidget(widgetId, () =>

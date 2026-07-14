@@ -23,11 +23,6 @@ function jsonInput(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
-function toDateRange(value: Prisma.JsonValue | null): DashboardDateRange | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as unknown as DashboardDateRange;
-}
-
 function toFilterBinding(value: Prisma.JsonValue | null): WidgetFilterBinding | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
@@ -146,7 +141,7 @@ export async function refreshWidget(
   if ((dashboard as any).mode !== "live") {
     return { widgetId: widget.id, status: "skipped", result: null, lastRefreshedAt: null, error: null };
   }
-  const range = opts.range ?? toDateRange(dashboard.defaultDateRange ?? null);
+  const range = null;
   return refreshWidgetRecord(widget, dashboard.ownerUserId, range, opts.force ?? true);
 }
 
@@ -158,7 +153,7 @@ export async function refreshDashboard(
   const dashboard = await requireDashboardAccess(dashboardId, "edit");
   // SPEC-06 §2 (whole-dashboard mode): a snapshot dashboard refreshes nothing.
   if ((dashboard as any).mode !== "live") return [];
-  const range = opts.range ?? toDateRange(dashboard.defaultDateRange ?? null);
+  const range = null;
   const widgets = await getAppDb().dashboardWidget.findMany({
     where: { dashboardId },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],

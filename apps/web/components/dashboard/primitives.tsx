@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Snowflake } from "lucide-react";
+import { Snowflake, Zap } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -138,8 +138,7 @@ export function ModeBadge({ mode, className }: { mode: WidgetMode; className?: s
 /* ------------------------------ Mode toggle ------------------------------- */
 
 /**
- * SPEC-06 §2 (whole-dashboard mode): a Live / Snapshot segmented toggle with the
- * SPEC-04 sliding pill. Live re-runs every widget; Snapshot freezes the board.
+ * Whole-dashboard execution mode. Live re-runs widgets; Snapshot freezes them.
  */
 export function ModeToggle({
   value,
@@ -151,18 +150,19 @@ export function ModeToggle({
   disabled?: boolean;
 }) {
   const reduce = useReducedMotion();
-  const options: Array<{ key: WidgetMode; label: string }> = [
-    { key: "live", label: "Live" },
-    { key: "snapshot", label: "Snapshot" },
+  const options: Array<{ key: WidgetMode; label: string; icon: typeof Zap }> = [
+    { key: "live", label: "Live", icon: Zap },
+    { key: "snapshot", label: "Snapshot", icon: Snowflake },
   ];
   return (
     <div
       role="tablist"
       aria-label="Dashboard mode"
-      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-surface-2/60 p-0.5"
+      className="inline-flex items-center gap-1"
     >
       {options.map((option) => {
         const isActive = option.key === value;
+        const Icon = option.icon;
         return (
           <button
             key={option.key}
@@ -172,19 +172,13 @@ export function ModeToggle({
             disabled={disabled}
             onClick={() => onChange(option.key)}
             className={cn(
-              "relative rounded-md px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.04em] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
+              "relative inline-flex items-center gap-1.5 px-1 py-1.5 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60",
               isActive ? "text-accent-strong" : "text-muted hover:text-text",
             )}
           >
-            {isActive ? (
-              <motion.span
-                layoutId="dashboard-mode-pill"
-                aria-hidden
-                className="absolute inset-0 -z-10 rounded-md bg-accent-soft border border-accent-line/20 shadow-sm"
-                transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 32 }}
-              />
-            ) : null}
+            <Icon className="size-3.5" strokeWidth={isActive ? 2.25 : 1.8} />
             {option.label}
+            {isActive ? <motion.span layoutId="dashboard-mode-indicator" aria-hidden className="absolute inset-x-1 bottom-0 h-px bg-accent" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 32 }} /> : null}
           </button>
         );
       })}

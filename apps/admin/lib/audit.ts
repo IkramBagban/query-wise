@@ -14,12 +14,15 @@ export type AdminAuditAction =
   | "admin.quota.counters_reset"
   | "admin.account.suspended"
   | "admin.account.reactivated"
-  | "admin.debug_view.opened";
+  | "admin.debug_view.opened"
+  | "admin.coupon.created"
+  | "admin.coupon.disabled"
+  | "admin.coupon.enabled";
 
 export interface AdminAuditEvent {
   actorUserId: string;
   action: AdminAuditAction;
-  resourceType: "user" | "query_run";
+  resourceType: "user" | "query_run" | "coupon";
   resourceId: string;
   outcome?: "success" | "failed" | "denied";
   metadata?: Record<string, unknown>;
@@ -27,13 +30,13 @@ export interface AdminAuditEvent {
 
 function safeMetadata(
   metadata: Record<string, unknown> | undefined,
-): Prisma.JsonObject {
+): any {
   if (!metadata) return {};
   try {
     const serialized = JSON.stringify(metadata, (_k, v) =>
       typeof v === "bigint" ? v.toString() : v,
     );
-    return JSON.parse(serialized) as Prisma.JsonObject;
+    return JSON.parse(serialized);
   } catch {
     return { truncated: true };
   }

@@ -30,7 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { ConnectionRowsSkeleton, PageHeaderSkeleton, SchemaBrowserSkeleton } from "@/components/LoadingSkeletons";
+import { PageHeaderSkeleton, SchemaBrowserSkeleton } from "@/components/LoadingSkeletons";
 import { EmptyState, ErrorState } from "@/components/ResourceState";
 import { PageHeader } from "@/components/PageHeader";
 import { SchemaBrowser } from "@/components/SchemaBrowser";
@@ -521,26 +521,30 @@ function ConnectionCard({
 
 function ConnectionsPageSkeleton() {
   return (
-    <div className="min-h-screen">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
-        <PageHeaderSkeleton actions={1} announce={false} />
-        <div className="grid gap-3 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="flex h-[94px] items-center gap-3 p-4">
-              <Skeleton className="size-11 shrink-0 rounded-xl" />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <Skeleton className="h-3 w-4/5" />
-                <Skeleton className="h-6 w-12" />
-                <Skeleton className="h-3 w-24" />
+    <div className="min-h-screen" aria-label="Loading connections" aria-busy="true">
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-10 w-36" />
+        </header>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Skeleton className="h-8 w-24 rounded-full" />
+          <Skeleton className="h-8 w-28 rounded-full" />
+          <Skeleton className="h-8 w-24 rounded-full" />
+        </div>
+        <div className="mt-5 flex flex-col gap-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="flex min-h-[76px] items-center gap-3.5 rounded-2xl border border-border bg-surface p-4">
+              <Skeleton className="size-10 shrink-0 rounded-xl" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><Skeleton className="h-4 w-36" /><Skeleton className="h-4 w-14" /></div>
+                <div className="mt-2 flex gap-3"><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-28" /><Skeleton className="hidden h-3 w-24 sm:block" /></div>
               </div>
-            </Card>
+              <div className="hidden gap-2 sm:flex"><Skeleton className="h-8 w-20" /><Skeleton className="size-8" /><Skeleton className="size-8" /></div>
+              <Skeleton className="size-8 shrink-0" />
+            </div>
           ))}
         </div>
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-3 w-20" />
-        </div>
-        <ConnectionRowsSkeleton />
       </div>
     </div>
   );
@@ -552,7 +556,7 @@ function ConnectionDetailSkeleton() {
       <PageHeaderSkeleton actions={3} announce={false} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="flex flex-col gap-5 p-5">
-          <Skeleton className="h-5 w-48" />
+          <Skeleton className="h-5 w-44" />
           <div className="grid gap-5 sm:grid-cols-2">
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="flex flex-col gap-2">
@@ -562,7 +566,7 @@ function ConnectionDetailSkeleton() {
             ))}
           </div>
         </Card>
-        <Card className="p-4"><SchemaBrowserSkeleton rows={5} /></Card>
+        <Card className="p-4"><Skeleton className="mb-3 h-5 w-20" /><SchemaBrowserSkeleton rows={5} /></Card>
       </div>
     </div>
   );
@@ -628,9 +632,7 @@ export function ConnectionsListView() {
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Data sources</p>
             <h1 className="mt-1.5 font-syne text-3xl font-semibold tracking-tight text-text">Connections</h1>
-            <p className="mt-1.5 text-sm text-faint">Read-only PostgreSQL sources — schema analyzed and synced automatically.</p>
           </div>
           <Button type="button" onClick={() => setDialogOpen(true)}><Plus className="size-4" />Add connection</Button>
         </header>
@@ -679,31 +681,8 @@ export function ConnectionsListView() {
                   deleting={deletingId === connection.id}
                 />
               ))}
-
-              <button
-                type="button"
-                onClick={() => setDialogOpen(true)}
-                className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border-2 px-4 py-4 text-sm font-medium text-faint transition-all duration-200 hover:border-accent-line hover:bg-accent-soft/40 hover:text-accent-strong"
-              >
-                <Plus className="size-4" />
-                Add another source — paste a read-only string
-              </button>
             </div>
 
-            <div className="mt-10 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">Supported</span>
-                <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 font-mono text-[10.5px] text-muted">
-                  <Database className="size-3 text-accent-strong" />
-                  PostgreSQL
-                </span>
-                <span className="rounded-full border border-dashed border-border-2 px-2.5 py-1 font-mono text-[10.5px] text-faint">more engines soon</span>
-              </div>
-              <span className="inline-flex items-start gap-2 font-mono text-[10.5px] text-faint">
-                <ExternalLink className="mt-0.5 size-3 shrink-0 text-accent-strong" />
-                tables · columns · relationships · sample values — analyzed on every sync
-              </span>
-            </div>
           </>
         )}
       </div>

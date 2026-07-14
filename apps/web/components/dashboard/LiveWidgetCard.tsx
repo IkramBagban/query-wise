@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Check, GripVertical, Pencil, RefreshCw, Snowflake, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, GripVertical, Pencil, RefreshCw, Trash2, X } from "lucide-react";
 
 import { V2Chart, isBoundedResultPreview, previewToQueryResult } from "@/components/V2Chart";
 import { resolveView } from "@/lib/charts/views";
 import { cn } from "@/lib/utils";
 import type { BoundedResultPreview, ChartConfig, ViewTransform, WidgetMode } from "@query-wise/shared/types";
-import { FreshnessLabel } from "./primitives";
 
 export interface LiveWidgetView {
   id: string;
@@ -17,12 +16,8 @@ export interface LiveWidgetView {
   preview: BoundedResultPreview;
   /** SPEC-09 §2.3: pinned view transform, re-applied on every render (snapshot/live). */
   viewTransform?: ViewTransform | null;
-  lastRefreshedAt: string | null;
   error: string | null;
   refreshing: boolean;
-  filterBound: boolean;
-  /** Increments to trigger the "intentionally not changed" border pulse. */
-  pulseKey: number;
 }
 
 /** Inline widget-title editor: pencil / double-click to edit, Enter or blur saves, Esc cancels. */
@@ -144,23 +139,10 @@ export function LiveWidgetCard({
         })
       : null;
 
-  // §8b: replay the "intentionally not changed" border pulse on each range change.
-  const [pulsing, setPulsing] = useState(false);
-  const lastPulse = useRef(view.pulseKey);
-  useEffect(() => {
-    if (view.pulseKey === lastPulse.current) return;
-    lastPulse.current = view.pulseKey;
-    if (view.pulseKey <= 0) return;
-    setPulsing(true);
-    const timer = window.setTimeout(() => setPulsing(false), 620);
-    return () => window.clearTimeout(timer);
-  }, [view.pulseKey]);
-
   return (
     <div
       className={cn(
         "group/widget relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-[0_1px_2px_rgba(15,25,16,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-line/60 hover:shadow-[0_18px_40px_-24px_var(--accent-line)]",
-        pulsing && "qw-border-pulse",
       )}
     >
       {/* editorial top hairline — lights up on hover, replaces the hard divider */}
@@ -258,24 +240,6 @@ export function LiveWidgetCard({
             resultOverride={resolvedView?.result}
           />
         </div>
-      </div>
-
-      {/* footer — ambient freshness, no hard divider */}
-      <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2.5 pt-0.5 text-[10.5px]">
-        {isSnapshot ? (
-          <span className="inline-flex items-center gap-1.5 font-mono text-faint">
-            <Snowflake className="size-2.5" strokeWidth={2.25} />
-            frozen at pin time
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 font-mono">
-            <span aria-hidden className="size-1 rounded-full bg-accent/70" />
-            <FreshnessLabel lastRefreshedAt={view.lastRefreshedAt} />
-          </span>
-        )}
-        {!isSnapshot && !view.filterBound ? (
-          <span className="font-mono text-faint/70">not time-filtered</span>
-        ) : null}
       </div>
     </div>
   );

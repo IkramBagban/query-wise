@@ -664,11 +664,7 @@ export async function getPublicDashboard(
     cacheKey,
     Math.min(PUBLIC_DASHBOARD_CACHE_TTL_SECONDS, secondsUntilExpiry),
     async () => {
-      const publicDefaultRange =
-        dashboard.defaultDateRange && typeof dashboard.defaultDateRange === "object" && !Array.isArray(dashboard.defaultDateRange)
-          ? (dashboard.defaultDateRange as unknown as DashboardDateRange)
-          : null;
-      const publicWidgets = await executePublicWidgets(widgets, dashboard.ownerUserId, publicDefaultRange);
+      const publicWidgets = await executePublicWidgets(widgets, dashboard.ownerUserId, null);
       const generated: PublicDashboardDto = {
         contractVersion: "querywise.v2",
         dashboard: {
