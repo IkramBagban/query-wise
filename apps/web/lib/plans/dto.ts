@@ -49,6 +49,19 @@ export interface PlanUsageDto {
     proCheckoutStatus: "coming_soon";
     paymentProvider: "razorpay";
   };
+  /** SPEC-12: currently-active coupon grants (already folded into `limits`). */
+  activeGrants: ActiveGrantDto[];
+}
+
+/** One active coupon boost, serialized for the client (dates as ISO strings). */
+export interface ActiveGrantDto {
+  couponCode: string;
+  grantExpiresAt: string;
+  questionsPerDayDelta: number;
+  questionsPerMonthDelta: number;
+  maxConnectionsDelta: number;
+  maxDashboardsDelta: number;
+  grantsPro: boolean;
 }
 
 /** remaining never goes negative even if a grandfathered account is over a cap. */
@@ -112,5 +125,14 @@ export async function buildPlanUsageDto(plan: ResolvedUserPlan): Promise<PlanUsa
       proCheckoutStatus: "coming_soon",
       paymentProvider: "razorpay",
     },
+    activeGrants: plan.activeGrants.map((g) => ({
+      couponCode: g.couponCode,
+      grantExpiresAt: g.grantExpiresAt.toISOString(),
+      questionsPerDayDelta: g.questionsPerDayDelta,
+      questionsPerMonthDelta: g.questionsPerMonthDelta,
+      maxConnectionsDelta: g.maxConnectionsDelta,
+      maxDashboardsDelta: g.maxDashboardsDelta,
+      grantsPro: g.grantsPro,
+    })),
   };
 }

@@ -35,7 +35,9 @@ export type MetricEventType =
   | "share.viewed"
   | "share.password_rejected_by_plan"
   | "export.requested"
-  | "settings.model_changed";
+  | "settings.model_changed"
+  | "coupon.redeemed"
+  | "coupon.redemption_blocked";
 
 export interface MetricEventInput {
   userId?: string | null;

@@ -425,6 +425,68 @@ model UserPlan {
   @@map("v2_user_plans")
 }
 
+// SPEC-12: Admin-authored coupon template. A redeemable code that grants users a
+// bundle of time-boxed, additive entitlement boosts. Additive to the schema —
+// nothing existing changes. Disable (not delete) is the kill switch; existing
+// grants keep running to their own expiry because benefits are snapshotted onto
+// the redemption row, never read back from the coupon at resolve time.
+model Coupon {
+  id            String  @id @db.Uuid
+  code          String  @unique // canonical (uppercased, trimmed)
+  label         String? // admin-facing description, e.g. "Launch week"
+  createdByAdmin String @map("created_by_admin") // admin Clerk id
+
+  // Benefit bundle (all optional; a coupon must carry at least one — validated at create).
+  questionsPerDayDelta   Int     @default(0) @map("questions_per_day_delta")
+  questionsPerMonthDelta Int     @default(0) @map("questions_per_month_delta")
+  maxConnectionsDelta    Int     @default(0) @map("max_connections_delta")
+  maxDashboardsDelta     Int     @default(0) @map("max_dashboards_delta")
+  grantsPro              Boolean @default(false) @map("grants_pro")
+
+  // How long the benefit lasts for a user, from the moment they redeem.
+  grantDurationDays Int @map("grant_duration_days") // required, 1..3650
+
+  // Redemption window (independent optional constraints; both null = unlimited).
+  redeemableUntil DateTime? @map("redeemable_until") @db.Timestamptz(6)
+  maxRedemptions  Int?      @map("max_redemptions") // null = unlimited count
+  redemptionCount Int       @default(0) @map("redemption_count") // denormalized for atomic cap checks
+
+  disabledAt DateTime? @map("disabled_at") @db.Timestamptz(6) // admin kill switch
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  redemptions CouponRedemption[]
+
+  @@index([disabledAt, redeemableUntil], map: "v2_coupons_active_idx")
+  @@map("v2_coupons")
+}
+
+// SPEC-12: One row per (user, coupon) redemption — the grant ledger. Snapshots
+// the benefits at redemption time so later coupon edits/disables never mutate a
+// live grant. The resolver reads these rows (grantExpiresAt > now()), never the
+// coupon, for live entitlement math.
+model CouponRedemption {
+  id             String   @id @db.Uuid
+  couponId       String   @map("coupon_id") @db.Uuid
+  userId         String   @map("user_id") // Clerk id, same convention as UserPlan
+  redeemedAt     DateTime @default(now()) @map("redeemed_at") @db.Timestamptz(6)
+  grantExpiresAt DateTime @map("grant_expires_at") @db.Timestamptz(6) // redeemedAt + grantDurationDays
+
+  // Snapshot of the benefits at redemption time (source of truth for the resolver).
+  questionsPerDayDelta   Int     @default(0) @map("questions_per_day_delta")
+  questionsPerMonthDelta Int     @default(0) @map("questions_per_month_delta")
+  maxConnectionsDelta    Int     @default(0) @map("max_connections_delta")
+  maxDashboardsDelta     Int     @default(0) @map("max_dashboards_delta")
+  grantsPro              Boolean @default(false) @map("grants_pro")
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, userId], map: "v2_coupon_redemptions_coupon_user_key") // one per user per coupon
+  @@index([userId, grantExpiresAt], map: "v2_coupon_redemptions_user_active_idx") // resolver hot path
+  @@map("v2_coupon_redemptions")
+}
+
 // Per-user rolling counters for fast quota checks. One row per (user, periodType,
 // periodKey). Incremented atomically alongside question accept.
 model UserUsagePeriod {

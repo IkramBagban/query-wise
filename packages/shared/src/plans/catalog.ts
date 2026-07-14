@@ -91,6 +91,41 @@ function pick(override: number | null | undefined, fallback: number): number {
 }
 
 /**
+ * SPEC-12: the additive deltas one active coupon grant contributes. Summed on
+ * top of the resolved base limits by {@link applyCouponGrants}. Pro is handled
+ * separately (a boolean OR on the plan id), never as a delta.
+ */
+export interface ActiveGrantDeltas {
+  questionsPerDayDelta: number;
+  questionsPerMonthDelta: number;
+  maxConnectionsDelta: number;
+  maxDashboardsDelta: number;
+}
+
+/**
+ * Sum the active grant deltas on top of the resolved base limits. Pure and
+ * unit-testable: `base` already accounts for plan id + per-user overrides; this
+ * only adds the coupon contributions. Empty grants → base unchanged. Feature
+ * gates (password shares, share-link cap, agent budget) are untouched — a Pro
+ * grant unlocks those via the base plan id, not here.
+ */
+export function applyCouponGrants(
+  base: EffectiveLimits,
+  grants: ActiveGrantDeltas[],
+): EffectiveLimits {
+  if (grants.length === 0) return base;
+  const sum = (pickDelta: (g: ActiveGrantDeltas) => number) =>
+    grants.reduce((total, g) => total + pickDelta(g), 0);
+  return {
+    ...base,
+    questionsPerDay: base.questionsPerDay + sum((g) => g.questionsPerDayDelta),
+    questionsPerMonth: base.questionsPerMonth + sum((g) => g.questionsPerMonthDelta),
+    maxConnectionsNonDemo: base.maxConnectionsNonDemo + sum((g) => g.maxConnectionsDelta),
+    maxDashboards: base.maxDashboards + sum((g) => g.maxDashboardsDelta),
+  };
+}
+
+/**
  * Resolve enforced limits from the catalog plus any per-user overrides. The
  * share-link cap and password-share gate have no override column, so they
  * always come from the catalog.

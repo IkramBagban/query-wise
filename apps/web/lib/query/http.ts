@@ -37,6 +37,11 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   PLAN_FEATURE_PASSWORD_SHARES: 403,
   PLAN_FEATURE_MODEL: 403,
   ACCOUNT_DISABLED: 403,
+  COUPON_NOT_FOUND: 404,
+  COUPON_INACTIVE: 403,
+  COUPON_EXPIRED: 410,
+  COUPON_FULLY_REDEEMED: 409,
+  COUPON_ALREADY_REDEEMED: 409,
 };
 
 export const privateNoStoreHeaders = { "Cache-Control": "private, no-store" };
