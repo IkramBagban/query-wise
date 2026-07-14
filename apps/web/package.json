@@ -6,7 +6,8 @@
     "dev": "next dev -p 4100",
     "build": "next build",
     "start": "next start",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "test": "tsx lib/coupons/redeem-tx.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",
