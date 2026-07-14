@@ -319,6 +319,11 @@ model DashboardShareLink {
   tokenHash      String    @unique(map: "v2_share_links_token_hash_key") @map("token_hash")
   encryptedToken Json?     @map("encrypted_token")
   passwordHash   String?   @map("password_hash")
+  // SPEC-13: per-share serving mode. "live" re-executes each widget for viewers
+  // (today's behavior; the migration backfills existing rows to "live"). "snapshot"
+  // serves the widgets' persisted snapshots with no credential fetch / SQL, so the
+  // link keeps working forever and is untouched when the connection is deleted.
+  mode           String    @default("live")
   version        Int       @default(1)
   viewCount      Int       @default(0) @map("view_count")
   lastViewedAt   DateTime? @map("last_viewed_at") @db.Timestamptz(6)
