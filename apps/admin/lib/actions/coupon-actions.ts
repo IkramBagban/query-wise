@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { createResourceId } from "@query-wise/shared/domain";
 import { requireAdmin } from "@/lib/admin-auth";
 import { writeAdminAudit } from "@/lib/audit";
@@ -118,7 +119,7 @@ export async function createCouponAction(input: CreateCouponInput): Promise<Acti
         );
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      if (error instanceof PrismaClientKnownRequestError && error.code === "P2002") {
         return { ok: false, error: "Code already exists. Choose another." };
       }
       throw error;
