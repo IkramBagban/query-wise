@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "seed": "tsx scripts/seed.ts",
-    "test": "tsx lib/coupons/redeem-tx.test.ts"
+    "test": "tsx lib/coupons/redeem-tx.test.ts && tsx lib/connections/deleted-guard.test.ts && tsx lib/connections/revoke-shares.test.ts && tsx lib/sharing/public-snapshot.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",
