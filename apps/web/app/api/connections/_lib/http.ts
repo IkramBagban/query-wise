@@ -15,6 +15,7 @@ const statusByCode: Record<string, number> = {
   QUOTA_EXCEEDED_SCHEMA_REFRESH: 429,
   COUPON_NOT_FOUND: 404, COUPON_INACTIVE: 403, COUPON_EXPIRED: 410,
   COUPON_FULLY_REDEEMED: 409, COUPON_ALREADY_REDEEMED: 409,
+  CONNECTION_DELETED: 410,
 };
 
 export function json(data: unknown, status = 200): Response {

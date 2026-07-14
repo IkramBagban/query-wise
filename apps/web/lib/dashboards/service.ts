@@ -106,6 +106,25 @@ function viewerWidget(widget: DashboardWidget): DashboardViewerDto["widgets"][nu
   };
 }
 
+/**
+ * SPEC-13 §5: true when any widget references a soft-deleted connection owned by
+ * the user. One bounded query over the distinct connection ids (no N+1).
+ */
+async function hasDeletedWidgetConnection(
+  widgets: DashboardWidget[],
+  userId: string,
+): Promise<boolean> {
+  const connectionIds = [
+    ...new Set(widgets.map((widget) => widget.connectionId).filter((id): id is string => Boolean(id))),
+  ];
+  if (connectionIds.length === 0) return false;
+  const deleted = await getAppDb().databaseConnection.findFirst({
+    where: { id: { in: connectionIds }, ownerUserId: userId, deletedAt: { not: null } },
+    select: { id: true },
+  });
+  return deleted !== null;
+}
+
 async function dashboardDto(dashboard: Dashboard, userId: string): Promise<DashboardDto> {
   const widgets = await getAppDb().dashboardWidget.findMany({
     where: { dashboardId: dashboard.id },
@@ -118,6 +137,9 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
 
   const defaultDateRange = toDateRange(dashboard.defaultDateRange ?? null);
   if (dashboard.ownerUserId === userId) {
+    // SPEC-13 §5: derived at read time — does any widget reference a soft-deleted
+    // connection? Drives the "Data source removed" badge + disabled refresh.
+    const connectionDeleted = await hasDeletedWidgetConnection(widgets, userId);
     return {
       contractVersion: "querywise.v2",
       id: dashboard.id,
@@ -126,6 +148,7 @@ async function dashboardDto(dashboard: Dashboard, userId: string): Promise<Dashb
       mode: toWidgetMode((dashboard as any).mode),
       defaultDateRange,
       refreshIntervalSeconds: dashboard.refreshIntervalSeconds ?? null,
+      connectionDeleted,
       widgets: widgets.map(ownerWidget),
       createdAt: iso(dashboard.createdAt),
       updatedAt: iso(dashboard.updatedAt),

@@ -2,6 +2,8 @@ import type { ConversationDto, MessageDto, QueryResultBlock } from "@query-wise/
 
 export interface ConversationListItem extends ConversationDto {
   messageCount: number;
+  // SPEC-13 §4: the bound connection was soft-deleted; the chat is read-only.
+  connectionDeleted: boolean;
 }
 
 export interface CursorPage<T> {
@@ -12,6 +14,8 @@ export interface CursorPage<T> {
 
 export interface ConversationDetail extends ConversationDto {
   connection: { id: string; name: string; providerId: string; dialectId: string };
+  // SPEC-13 §4: the bound connection was soft-deleted; render read-only history.
+  connectionDeleted: boolean;
 }
 
 export type ConversationMessageDto = MessageDto & {

@@ -42,6 +42,7 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   COUPON_EXPIRED: 410,
   COUPON_FULLY_REDEEMED: 409,
   COUPON_ALREADY_REDEEMED: 409,
+  CONNECTION_DELETED: 410,
 };
 
 export const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };

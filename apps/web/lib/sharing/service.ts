@@ -12,7 +12,7 @@ import { getDataSourceAdapter, requireCapability } from "@query-wise/shared/data
 import { createResourceId } from "@query-wise/shared/domain";
 import { createResultPreview } from "@/lib/query";
 import { devLogError } from "@query-wise/shared/observability";
-import type { EncryptedPayload, ProviderQuery, PublicDashboardDto } from "@query-wise/shared/types";
+import type { EncryptedPayload, ProviderQuery, PublicDashboardDto, WidgetMode } from "@query-wise/shared/types";
 import {
   ChartConfigSchema,
   ProviderQuerySchema,
@@ -36,6 +36,7 @@ import {
   getOrCreatePublicDashboard,
   publicDashboardCacheKey,
 } from "./public-dashboard-cache";
+import { snapshotPublicWidgets } from "./public-snapshot";
 import { writeAuditLog } from "@/lib/audit";
 import {
   assertAccountActive,
@@ -55,6 +56,9 @@ const CreateShareSchema = z.discriminatedUnion("type", [
       type: z.literal("link"),
       password: z.string().min(10).max(200).optional(),
       expiresAt: z.iso.datetime().optional(),
+      // SPEC-13: per-share serving mode. Omitted → defaults to the dashboard's
+      // current mode server-side (keeps the common case coherent).
+      mode: z.enum(["live", "snapshot"]).optional(),
     })
     .strict(),
   z
@@ -79,6 +83,11 @@ const UpdateLinkSchema = z
 
 function iso(value: Date): string {
   return value.toISOString();
+}
+
+/** SPEC-13: narrow the persisted share `mode` string to the WidgetMode union. */
+function shareLinkMode(link: DashboardShareLink): WidgetMode {
+  return (link as { mode?: string }).mode === "snapshot" ? "snapshot" : "live";
 }
 
 function publicShareUrl(baseUrl: string, token: string): string {
@@ -115,6 +124,7 @@ async function linkDto(link: DashboardShareLink, baseUrl: string) {
   return {
     id: link.id,
     passwordProtected: Boolean(link.passwordHash),
+    mode: shareLinkMode(link),
     version: link.version,
     urlAvailable: Boolean(token),
     url: token ? publicShareUrl(baseUrl, token) : null,
@@ -253,6 +263,10 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
   const passwordHash = parsed.data.password
     ? await hashSharePassword(parsed.data.password)
     : null;
+  // SPEC-13: default the share's serving mode to the dashboard's current mode when
+  // the owner didn't pick one explicitly.
+  const mode: WidgetMode =
+    parsed.data.mode ?? ((dashboard as { mode?: string }).mode === "snapshot" ? "snapshot" : "live");
   const link = await withAppDbTransaction(async (tx) => {
     const created = await tx.dashboardShareLink.create({
       data: {
@@ -261,6 +275,7 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
         tokenHash: hashShareToken(token),
         encryptedToken: encryptedToken as unknown as Prisma.InputJsonValue,
         passwordHash,
+        mode,
         expiresAt,
       },
     });
@@ -275,6 +290,7 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
         shareType: "link",
         passwordProtected: Boolean(passwordHash),
         expires: Boolean(expiresAt),
+        mode,
       },
     }, tx);
     return created;
@@ -284,7 +300,7 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
     eventType: "share.created",
     resourceType: "dashboard-share-link",
     resourceId: link.id,
-    payload: { dashboardId, passwordProtected: Boolean(link.passwordHash), expires: Boolean(expiresAt) },
+    payload: { dashboardId, passwordProtected: Boolean(link.passwordHash), expires: Boolean(expiresAt), mode },
   });
   return {
     type: "link" as const,
@@ -293,6 +309,7 @@ export async function createShare(dashboardId: string, input: unknown, baseUrl: 
       url: publicShareUrl(baseUrl, token),
       urlAvailable: true,
       passwordProtected: Boolean(link.passwordHash),
+      mode,
       version: link.version,
       viewCount: link.viewCount,
       lastViewedAt: link.lastViewedAt?.toISOString() ?? null,
@@ -664,7 +681,12 @@ export async function getPublicDashboard(
     cacheKey,
     Math.min(PUBLIC_DASHBOARD_CACHE_TTL_SECONDS, secondsUntilExpiry),
     async () => {
-      const publicWidgets = await executePublicWidgets(widgets, dashboard.ownerUserId, null);
+      // SPEC-13: snapshot-mode shares serve persisted widget snapshots with no
+      // SQL/credential access; live-mode shares keep the existing execute path.
+      const publicWidgets =
+        shareLinkMode(share) === "snapshot"
+          ? snapshotPublicWidgets(widgets)
+          : await executePublicWidgets(widgets, dashboard.ownerUserId, null);
       const generated: PublicDashboardDto = {
         contractVersion: "querywise.v2",
         dashboard: {

@@ -14,6 +14,7 @@ import { parsePostgresUrl } from "@/lib/data-sources/postgresql/url";
 import { enqueueSchemaIngestion } from "@query-wise/shared/ingestion";
 import { executeIdempotently, idempotencyFingerprint } from "@/lib/idempotency";
 import { getConnectionSecret } from "./credentials";
+import { revokeLiveSharesForDeletedConnection } from "./revoke-shares";
 import { devLog, devLogError } from "@query-wise/shared/observability";
 import { writeAuditLog } from "@/lib/audit";
 import { assertAccountActive, assertConnectionQuota, getPlanForUser } from "@/lib/plans";
@@ -250,12 +251,16 @@ export async function deleteConnection(connectionId: ResourceId): Promise<void> 
       data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.DbNull },
     });
     if (deleted.count !== 1) throw new AppError("CONFLICT", "The connection changed while it was being deleted.");
+    // SPEC-13 §3: revoke live share links on dashboards that surface this
+    // connection. Snapshot links are untouched (they never touch the database).
+    const revokedLiveShareLinks = await revokeLiveSharesForDeletedConnection(tx, connectionId);
     await writeAuditLog({
       actorUserId: record.ownerUserId,
       action: "connection.delete",
       resourceType: "connection",
       resourceId: connectionId,
       outcome: "succeeded",
+      metadata: { revokedLiveShareLinks },
     }, tx);
   });
   void recordMetricEvent({

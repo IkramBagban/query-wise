@@ -18,6 +18,7 @@ import type {
   ConversationMessageDto,
   CursorPage,
 } from "./types";
+import { isConnectionDeleted } from "@/lib/connections/deleted-guard";
 
 const CONVERSATION_CURSOR = "conversations";
 const MESSAGE_CURSOR = "conversation-messages";
@@ -102,16 +103,32 @@ export async function listConversations(input: {
   });
   const hasMore = records.length > limit;
   const page = records.slice(0, limit);
-  const counts = await getAppDb().message.groupBy({
-    by: ["conversationId"],
-    where: { conversationId: { in: page.map((item) => item.id) } },
-    _count: { _all: true },
-  });
+  // SPEC-13 §4: badge chats whose connection was deleted. One bounded query over
+  // the page's distinct connection ids (no per-row join / N+1).
+  const connectionIds = [...new Set(page.map((item) => item.connectionId))];
+  const [counts, deletedConnections] = await Promise.all([
+    getAppDb().message.groupBy({
+      by: ["conversationId"],
+      where: { conversationId: { in: page.map((item) => item.id) } },
+      _count: { _all: true },
+    }),
+    connectionIds.length
+      ? getAppDb().databaseConnection.findMany({
+          where: { id: { in: connectionIds }, ownerUserId: userId, deletedAt: { not: null } },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+  ]);
   const countById = new Map(counts.map((item) => [item.conversationId, item._count._all]));
+  const deletedConnectionIds = new Set(deletedConnections.map((row) => row.id));
   const last = page.at(-1);
   return {
     contractVersion: "querywise.v2",
-    items: page.map((item) => ({ ...conversationDto(item), messageCount: countById.get(item.id) ?? 0 })),
+    items: page.map((item) => ({
+      ...conversationDto(item),
+      messageCount: countById.get(item.id) ?? 0,
+      connectionDeleted: deletedConnectionIds.has(item.connectionId),
+    })),
     pageInfo: {
       nextCursor: hasMore && last
         ? encodeCursor(CONVERSATION_CURSOR, userId, [last.lastActivityAt.toISOString(), last.id])
@@ -128,11 +145,23 @@ export async function getConversation(conversationId: string): Promise<Conversat
     where: { id: conversationId, ownerUserId: userId, deletedAt: null },
   });
   const conversation = requireFound(record);
+  // SPEC-13 §4: load the connection INCLUDING soft-deleted rows. A deleted
+  // connection no longer 404s the chat — it returns the transcript with a
+  // connectionDeleted flag so the UI can render read-only history + a banner.
   const connection = requireFound(await getAppDb().databaseConnection.findFirst({
-    where: { id: conversation.connectionId, ownerUserId: userId, deletedAt: null },
-    select: { id: true, name: true, providerId: true, dialectId: true },
+    where: { id: conversation.connectionId, ownerUserId: userId },
+    select: { id: true, name: true, providerId: true, dialectId: true, deletedAt: true },
   }));
-  return { ...conversationDto(conversation), connection };
+  return {
+    ...conversationDto(conversation),
+    connection: {
+      id: connection.id,
+      name: connection.name,
+      providerId: connection.providerId,
+      dialectId: connection.dialectId,
+    },
+    connectionDeleted: isConnectionDeleted(connection),
+  };
 }
 
 export async function updateConversation(

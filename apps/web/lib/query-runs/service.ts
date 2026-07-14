@@ -5,6 +5,7 @@ import { Prisma, type QueryRun } from "@prisma/client";
 import { getAppDb, withAppDbTransaction } from "@query-wise/shared/app-db";
 import { requireUser } from "@/lib/auth";
 import { appendMessage, DEFAULT_CONVERSATION_TITLE } from "@/lib/conversations";
+import { assertConnectionNotDeleted } from "@/lib/connections/deleted-guard";
 import { AppError, requireFound, resourceNotFound } from "@query-wise/shared/dal/core";
 import { ChartConfigSchema } from "@/lib/dashboards/schemas";
 import type { QueryResultBlock, QueryRunDto, QueryRunStatus } from "@query-wise/shared/types";
@@ -105,6 +106,13 @@ export async function acceptQuerySubmission(input: QuerySubmission): Promise<{
     const conversation = requireFound(await tx.conversation.findFirst({
       where: { id: input.conversationId, ownerUserId: userId, deletedAt: null },
     }));
+    // SPEC-13 §4: defense in depth. Reads degrade to read-only history, but every
+    // write/execute path hard-rejects a conversation whose data source was deleted.
+    const connection = requireFound(await tx.databaseConnection.findFirst({
+      where: { id: conversation.connectionId, ownerUserId: userId },
+      select: { deletedAt: true },
+    }));
+    assertConnectionNotDeleted(connection);
     // Entitlement gate: resolve the plan (lazily creating a Free row) and reserve
     // one question against the daily+monthly caps BEFORE any expensive work. This
     // runs after the idempotency short-circuit so retries of an existing run never

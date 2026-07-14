@@ -1,9 +1,11 @@
 import { apiRequest, createIdempotencyKey } from "./client";
 import type {
   ConnectionDto,
+  ConnectionDeletionImpact,
   ConnectionListItem,
   ConversationMessageDto,
   ConversationDto,
+  ConversationDetail,
   ConversationListItem,
   CreateConnectionInput,
   CursorPage,
@@ -35,6 +37,9 @@ export const connectionsApi = {
   update: (id: string, input: { name?: string; connectionString?: string }) =>
     apiRequest<ConnectionDto>(`/api/connections/${id}`, { method: "PATCH", body: input }),
   remove: (id: string) => apiRequest<void>(`/api/connections/${id}`, { method: "DELETE" }),
+  // SPEC-13: dependent counts for the delete-impact dialog.
+  impact: (id: string, signal?: AbortSignal) =>
+    apiRequest<ConnectionDeletionImpact>(`/api/connections/${id}/impact`, { signal }),
   test: (id: string) =>
     apiRequest<{ success: boolean; latencyMs?: number; errorCode?: string | null }>(
       `/api/connections/${id}/test`,
@@ -51,7 +56,7 @@ export const connectionsApi = {
 export const conversationsApi = {
   list: (limit = 25, cursor?: string, signal?: AbortSignal) =>
     apiRequest<CursorPage<ConversationListItem>>("/api/conversations", { query: pageQuery(limit, cursor), signal }),
-  get: (id: string, signal?: AbortSignal) => apiRequest<ConversationDto>(`/api/conversations/${id}`, { signal }),
+  get: (id: string, signal?: AbortSignal) => apiRequest<ConversationDetail>(`/api/conversations/${id}`, { signal }),
   create: (connectionId: string) =>
     apiRequest<ConversationDto>("/api/conversations", { method: "POST", body: { connectionId } }),
   update: (id: string, input: { title?: string; status?: "active" | "archived" }) =>

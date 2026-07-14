@@ -23,7 +23,23 @@ export interface ConnectionListItem extends ConnectionDto {
   updatedAt?: IsoDateTime;
 }
 
-export type ConversationListItem = ConversationDto;
+export interface ConnectionDeletionImpact {
+  contractVersion: "querywise.v2";
+  conversations: number;
+  dashboards: number;
+  liveShareLinks: number;
+  snapshotShareLinks: number;
+}
+
+export interface ConversationListItem extends ConversationDto {
+  messageCount: number;
+  connectionDeleted: boolean;
+}
+
+export interface ConversationDetail extends ConversationDto {
+  connection: { id: string; name: string; providerId: string; dialectId: string };
+  connectionDeleted: boolean;
+}
 
 export type ConversationMessageDto = MessageDto & {
   queryRun: {
@@ -60,6 +76,7 @@ export interface SchemaDto {
 export interface ShareLinkListItem {
   id: ResourceId;
   passwordProtected: boolean;
+  mode: WidgetMode;
   version: number;
   urlAvailable: boolean;
   url: string | null;
@@ -91,6 +108,7 @@ export type CreateShareResult =
         url: string;
         urlAvailable: true;
         passwordProtected: boolean;
+        mode: WidgetMode;
         version: number;
         viewCount: number;
         lastViewedAt: IsoDateTime | null;
@@ -105,7 +123,7 @@ export type CreateShareResult =
     };
 
 export type CreateShareInput =
-  | { type: "link"; password?: string; expiresAt?: string }
+  | { type: "link"; password?: string; expiresAt?: string; mode?: WidgetMode }
   | { type: "grant"; recipientEmail: string };
 
 export interface ShareUnlockResult {
