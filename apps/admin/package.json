@@ -6,7 +6,7 @@
     "dev": "next dev -p 4200",
     "build": "next build",
     "start": "next start",
-    "test": "tsx test/admin-auth.test.ts && tsx test/effective-limits.test.ts && tsx test/run-debug-redaction.test.ts",
+    "test": "tsx test/admin-auth.test.ts && tsx test/effective-limits.test.ts && tsx test/run-debug-redaction.test.ts && tsx test/coupon-code.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
