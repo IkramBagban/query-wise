@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { AppError } from "@query-wise/shared/dal/core";
 import { createResourceId } from "@query-wise/shared/domain";
 
@@ -43,7 +44,7 @@ export interface RedeemTx {
 
 function isUniqueViolation(error: unknown): boolean {
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+    error instanceof PrismaClientKnownRequestError && error.code === "P2002"
   );
 }
 

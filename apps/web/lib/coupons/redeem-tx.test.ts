@@ -5,11 +5,12 @@
  */
 import assert from "node:assert";
 import { Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { AppError } from "@query-wise/shared/dal/core";
 import { applyRedemption, type RedeemableCoupon } from "./redeem-tx";
 
-function uniqueViolation(): Prisma.PrismaClientKnownRequestError {
-  return new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+function uniqueViolation(): PrismaClientKnownRequestError {
+  return new PrismaClientKnownRequestError("Unique constraint failed", {
     code: "P2002",
     clientVersion: "test",
   });
