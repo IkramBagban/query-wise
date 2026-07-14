@@ -33,7 +33,7 @@ export async function getPostgresPool(connectionId: ResourceId, credentialVersio
 export async function disposePostgresPools(connectionId: ResourceId): Promise<void> {
   const matches = [...pools.entries()].filter(([, entry]) => entry.connectionId === connectionId);
   await Promise.all(matches.map(async ([poolKey, entry]) => {
-    pools.delete(poolKey);
+    if (!pools.delete(poolKey)) return;
     await entry.pool.end();
   }));
 }

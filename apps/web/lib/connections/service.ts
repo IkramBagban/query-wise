@@ -247,7 +247,7 @@ export async function deleteConnection(connectionId: ResourceId): Promise<void> 
     await tx.schemaSnapshot.updateMany({ where: { connectionId, status: { in: ["queued", "syncing"] } }, data: { status: "superseded" } });
     const deleted = await tx.databaseConnection.updateMany({
       where: { id: connectionId, ownerUserId: record.ownerUserId, deletedAt: null },
-      data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.JsonNull },
+      data: { status: "deleted", deletedAt: new Date(), encryptedSecret: Prisma.DbNull },
     });
     if (deleted.count !== 1) throw new AppError("CONFLICT", "The connection changed while it was being deleted.");
     await writeAuditLog({
@@ -264,5 +264,9 @@ export async function deleteConnection(connectionId: ResourceId): Promise<void> 
     resourceType: "connection",
     resourceId: connectionId,
   });
-  await getDataSourceAdapter(record.providerId).dispose(connectionId);
+  try {
+    await getDataSourceAdapter(record.providerId).dispose(connectionId);
+  } catch (error) {
+    devLogError("connections.delete.disposeFailed", "Connection pool disposal failed after delete.", error, { connectionId });
+  }
 }
