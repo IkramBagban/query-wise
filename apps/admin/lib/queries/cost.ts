@@ -129,7 +129,7 @@ export async function getCostExplorer(
     }),
   ]);
 
-  const failMap = new Map(
+  const failMap = new Map<string, number>(
     failGrouped.map((f) => [
       `${f.provider}\0${f.model}\0${f.task}`,
       f._count._all,

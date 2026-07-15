@@ -193,7 +193,7 @@ async function listUsersSortedByUsage(params: {
       periodKey: params.monthKey,
     },
   });
-  const monthByUser = new Map(monthRows.map((r) => [r.userId, r]));
+  const monthByUser = new Map<string, (typeof monthRows)[number]>(monthRows.map((r) => [r.userId, r]));
 
   const scored = plans.map((p) => {
     const m = monthByUser.get(p.userId);
@@ -240,7 +240,7 @@ async function listUsersSortedByActivity(params: {
     where: { ownerUserId: { in: userIds }, deletedAt: null },
     _max: { lastActivityAt: true },
   });
-  const activity = new Map(
+  const activity = new Map<string, Date | null>(
     convs.map((c) => [c.ownerUserId, c._max.lastActivityAt]),
   );
 
@@ -336,7 +336,7 @@ async function hydrateUserRows(
       }),
     ]);
 
-  const dashIdToOwner = new Map(userDashRows.map((d) => [d.id, d.ownerUserId]));
+  const dashIdToOwner = new Map<string, string>(userDashRows.map((d) => [d.id, d.ownerUserId]));
   const dashIds = userDashRows.map((d) => d.id);
   const now = new Date();
   const activeShareLinks =
@@ -357,10 +357,10 @@ async function hydrateUserRows(
     shareByUser.set(owner, (shareByUser.get(owner) ?? 0) + 1);
   }
 
-  const dayByUser = new Map(dayRows.map((r) => [r.userId, r]));
+  const dayByUser = new Map<string, (typeof dayRows)[number]>(dayRows.map((r) => [r.userId, r]));
   const monthMap =
     monthByUser ??
-    new Map(
+    new Map<string, { llmInputTokens: bigint; llmOutputTokens: bigint; questionsAccepted: number }>(
       (monthRows as Array<{
         userId: string;
         llmInputTokens: bigint;
@@ -368,13 +368,13 @@ async function hydrateUserRows(
         questionsAccepted: number;
       }>).map((r) => [r.userId, r]),
     );
-  const connByUser = new Map(
+  const connByUser = new Map<string, number>(
     connections.map((c) => [c.ownerUserId, c._count._all]),
   );
-  const dashByUser = new Map(
+  const dashByUser = new Map<string, number>(
     dashboards.map((d) => [d.ownerUserId, d._count._all]),
   );
-  const activityByUser = new Map(
+  const activityByUser = new Map<string, Date | null>(
     convs.map((c) => [c.ownerUserId, c._max.lastActivityAt]),
   );
 

@@ -322,18 +322,18 @@ export async function getUserDetail(
       }),
     ]);
 
-  const nameByConn = new Map(connNames.map((c) => [c.id, c.name]));
-  const widgetsByDash = new Map(
+  const nameByConn = new Map<string, string>(connNames.map((c) => [c.id, c.name]));
+  const widgetsByDash = new Map<string, number>(
     widgetCounts.map((w) => [w.dashboardId, w._count._all]),
   );
-  const usageByRun = new Map(runUsage.map((u) => [u.queryRunId, u]));
-  const dashName = new Map(dashboards.map((d) => [d.id, d.name]));
-  const failTask = new Map(llmFailuresTask.map((f) => [f.task, f._count._all]));
-  const failPm = new Map(
+  const usageByRun = new Map<string, (typeof runUsage)[number]>(runUsage.map((u) => [u.queryRunId, u]));
+  const dashName = new Map<string, string>(dashboards.map((d) => [d.id, d.name]));
+  const failTask = new Map<string, number>(llmFailuresTask.map((f) => [f.task, f._count._all]));
+  const failPm = new Map<string, number>(
     llmFailuresPm.map((f) => [`${f.provider}\0${f.model}`, f._count._all]),
   );
 
-  const trendMap = new Map(
+  const trendMap = new Map<string, { questionsAccepted: number; inputTokens: number; outputTokens: number }>(
     trendRows.map((r) => [
       r.periodKey,
       {
