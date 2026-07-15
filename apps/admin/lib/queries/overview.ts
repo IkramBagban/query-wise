@@ -200,8 +200,8 @@ export async function getOverviewData(): Promise<OverviewData> {
     where: { periodType: "day", periodKey: { in: last30 } },
     _sum: { questionsAccepted: true },
   });
-  const dayMap = new Map(
-    dayRows.map((r) => [r.periodKey, r._sum.questionsAccepted ?? 0]),
+  const dayMap = new Map<string, number>(
+    dayRows.map((r) => [r.periodKey, Number(r._sum.questionsAccepted ?? 0)]),
   );
 
   const accepted7d = weekAgg._sum.questionsAccepted ?? 0;
