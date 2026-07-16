@@ -2,6 +2,16 @@
 
 This document captures the important backend/data-logic decisions so you can explain them in interviews and quickly reason about future changes.
 
+## Dashboard date filtering retired (2026-07-14)
+
+**What changed:** Dashboard refreshes and public shared-dashboard rendering now execute widgets without a dashboard-level date range. The date-range picker was removed from the dashboard UI; stored `defaultDateRange` values remain in the database for backward compatibility but are ignored.
+
+**Why:** The product no longer offers a global dashboard time filter. Removing it prevents a saved, invisible date range from changing a widget result after the control is gone.
+
+**Tradeoff / risk:** Existing dashboards that previously relied on date-bound widget queries now refresh against their unfiltered saved query. The underlying persisted field and API shape remain temporarily to avoid a migration and to preserve compatibility with existing records.
+
+**How to test:** Open a dashboard with a previously configured date range, refresh a widget and the full dashboard, and confirm the query runs without range markers. Open a public share for the same dashboard and confirm it returns the unfiltered result.
+
 ## Admin panel Phases 1–5 (`apps/admin`, SPEC-08, 2026-07-10)
 
 **What changed:** Full operator panel in a separate Next.js app. Phase 1 auth gate; Phases 2–5 read surfaces, four audited actions, cost/events/system, content-gated run debug.
@@ -2264,3 +2274,73 @@ receives the full concatenated answer (all narration segments) as before.
   questions and confirm the response SHAPE varies across them (e.g. one interleaved
   walkthrough, one batch-then-explain) and that each narration segment renders at its
   true position both live and after reload.
+
+## Coupons & time-boxed grants (SPEC-12, 2026-07-14)
+
+**What changed:** Admins author redeemable coupon codes that grant users time-boxed, *additive* entitlement boosts (extra questions/day & /month, higher connection/dashboard caps, or temporary Pro). Users redeem self-serve on `/plan`. Active grants are folded into the existing entitlement resolver at read time and auto-expire — no cron, no plan mutation.
+
+### Data model (additive; two tables, `v2_` prefix)
+- `Coupon` (`v2_coupons`) — the admin template: benefit-delta bundle + `grantsPro`, `grantDurationDays` (1–3650), an optional redemption window (`redeemableUntil` and/or `maxRedemptions`, both null = unlimited), a denormalized `redemptionCount` for atomic cap checks, and a `disabledAt` kill switch.
+- `CouponRedemption` (`v2_coupon_redemptions`) — one row per (user, coupon) redemption. **Snapshots** the benefits + `grantExpiresAt` so editing/disabling a coupon never rewrites live grants. `@@unique([couponId,userId])` = one-per-user guard; `@@index([userId, grantExpiresAt])` = resolver hot path. `onDelete: Cascade` for SQL hygiene only (delete is out of scope; disable instead).
+- Migration `20260714120000_coupons_and_grants` (hand-written SQL, applied via `prisma migrate deploy`). Nothing existing changes.
+
+### Resolver change (the heart)
+- `packages/shared/src/plans/get-user-plan.ts`: `getUserPlan` runs one extra indexed query for grants where `grantExpiresAt > now()`, then `foldUserPlan` computes `effectivePlanId = (planId==='pro' || anyProGrant) ? 'pro' : 'free'` (Pro is a boolean OR — a coupon Pro never downgrades a real Pro), `base = resolveEffectiveLimits(effectivePlanId, overrides)`, and `applyCouponGrants(base, deltas)` (new pure helper in `catalog.ts`) sums the active numeric deltas on top. `ResolvedUserPlan` gains `activeGrants` (display only; already folded into `limits`).
+- **No enforcement call site changed** — every `assert*` still reads `plan.limits`. Overrides compose cleanly (override sets base, grants add on top). A Pro grant also unlocks password shares + the 20-link cap (they come from the catalog for `effectivePlanId`).
+- **Expiry is read-time only:** a lapsed grant simply stops matching the `> now()` filter. No background job.
+
+### Redemption (web)
+- `POST /api/coupons/redeem` → gate order: authenticate → rate limit (`apps/web/lib/coupons/rate-limit.ts`, per-user 10/min + coarse per-IP 30/min, reusing the generic `v2_share_password_attempts` counter table with namespaced keys) → `redeemCoupon` service.
+- `redeemCoupon` (`apps/web/lib/coupons/service.ts`) runs one transaction: `getUserPlan`+`assertAccountActive` (→ `ACCOUNT_DISABLED`), normalize code (`trim().toUpperCase()`), lookup/validity (`COUPON_NOT_FOUND` / `COUPON_INACTIVE` / `COUPON_EXPIRED`), then the race-proof core `applyRedemption` (`redeem-tx.ts`): **create the redemption first** (`@@unique` → `COUPON_ALREADY_REDEEMED`), then a conditional `updateMany` increment gated on `maxRedemptions`; 0 rows updated ⇒ `COUPON_FULLY_REDEEMED` throws and rolls the redemption row back too (no orphan grant, no over-issue). Metric `coupon.redeemed` after commit; `coupon.redemption_blocked` on terminal blocks.
+
+### Admin authoring (`apps/admin`)
+- `coupon-actions.ts` (`createCouponAction`, `setCouponDisabledAction`) follow the SPEC-08 `requireAdmin` + `adminTransaction` + `writeAdminAudit` pattern. Create validates ≥1 benefit or `grantsPro`, clamps deltas 0–10000 / duration 1–3650, `maxRedemptions` null or ≥1, `redeemableUntil` null or future; blank code ⇒ auto 8-char Crockford base32 (`lib/coupon-code.ts`, ambiguity-free alphabet, ~40 bits); duplicate code → friendly error. Audit vocab `admin.coupon.created|disabled|enabled`. Pages: `/coupons`, `/coupons/new`, `/coupons/[couponId]` (redemptions list with Clerk identity, metadata only).
+
+### New error codes
+`COUPON_NOT_FOUND` 404 · `COUPON_INACTIVE` 403 · `COUPON_EXPIRED` 410 · `COUPON_FULLY_REDEEMED` 409 · `COUPON_ALREADY_REDEEMED` 409 · reuse `ACCOUNT_DISABLED` 403. Added to `ApiErrorCode` union and all three HTTP status maps; documented in `docs/v2/contracts/ERRORS.md`.
+
+### Tradeoffs / risks
+- One extra indexed query per plan resolution (already `cache()`-wrapped per web request). Acceptable; revisit only if hot.
+- The redemption rate limiter reuses the share-password attempts table rather than adding a new one or a Redis dependency (repo has no HTTP Redis limiter). Namespaced keys avoid collisions.
+- Grants only ever raise entitlements; a lapsed grant reverts to base with no mutation, so a real Pro / an admin override is never touched by coupon churn.
+
+### How to test
+- Unit (`tsx`): `packages/shared/src/plans/coupons.test.ts` (stacking sum, Pro OR, Pro-doesn't-downgrade-real-Pro, override+delta compose, feature-gate invariance), `apps/web/lib/coupons/redeem-tx.test.ts` (create-first, `COUPON_ALREADY_REDEEMED`, atomic cap with no over-issue), `apps/admin/test/coupon-code.test.ts` (alphabet/entropy/normalization). `pnpm --filter @query-wise/admin test`, `pnpm --filter @query-wise/web test`.
+- Build: `pnpm --filter @query-wise/{web,admin} build` clean; shared `tsc --noEmit` clean.
+- Live: create a coupon in admin `/coupons/new`, redeem it on `/plan` — the meter jumps and an "Active boosts" entry appears; verified end-to-end against the DB that a Free user's `questionsPerDay` went 5→55 and `maxDashboards` 1→8, a capped second redemption returned `COUPON_FULLY_REDEEMED` with `redemptionCount` staying 1, and setting `grantExpiresAt` to the past reverted the user to base with zero active grants (no cron).
+
+## Connection delete failed with INTERNAL_ERROR (CHECK constraint violation) (2026-07-14)
+
+**What changed:** `deleteConnection()` (`apps/web/lib/connections/service.ts`) now clears the credential with `Prisma.DbNull` instead of `Prisma.JsonNull` when soft-deleting a connection. Two secondary defensive fixes shipped alongside: the post-commit `getDataSourceAdapter(...).dispose(connectionId)` call is now wrapped in try/catch (logs via `devLogError`), and `disposePostgresPools` (`packages/shared/src/data-sources/postgresql/pool.ts`) checks the return of `pools.delete(poolKey)` before `entry.pool.end()` so a pool can't be closed twice.
+
+**Why (primary root cause):** The `v2_database_connections` table has `CHECK (status <> 'deleted' OR encrypted_secret IS NULL)` (from `20260611000000_v2_foundation`), requiring an actual SQL `NULL` in `encrypted_secret` for a deleted row. The soft-delete wrote `encryptedSecret: Prisma.JsonNull`, which Prisma stores as the JSON literal `'null'::jsonb` — **not** SQL `NULL` — so `encrypted_secret IS NULL` was false and Postgres rejected the row with error `23514` (`PrismaClientUnknownRequestError`). The transaction rolled back (connection never deleted), and the generic API handler (`apps/web/app/api/connections/_lib/http.ts`) surfaced it as `INTERNAL_ERROR`. For a nullable `Json?` column, `Prisma.DbNull` is the correct way to write SQL `NULL`; `Prisma.JsonNull` writes JSON null. This was confirmed from the server-side stack trace once `QUERYWISE_LOG_ENABLED=1` exposed the underlying Prisma error.
+
+**Why (secondary):** Even once the delete commits, `dispose()` ran unguarded after commit; a failure there (e.g. `disposePostgresPools` calling `pg.Pool.end()` twice on the same pool when a delete raced the 60s idle-eviction timer or a concurrent `getPostgresPool`) would still surface as a spurious `INTERNAL_ERROR` despite the row already being gone.
+
+**Tradeoffs / risks:** `DbNull` vs `JsonNull` is a one-token change but semantically load-bearing here — any future write clearing this column must use `DbNull` to satisfy the constraint. Disposal failures are now logged rather than surfaced, acceptable because the resource is already deleted by that point and orphaned pools are bounded by `IDLE_DISPOSE_MS` eviction and process exit.
+
+**How to test:** Delete a connection and confirm it disappears from `/connections` with a 2xx (previously `INTERNAL_ERROR` / `23514`). Verify in the DB the row has `status = 'deleted'` and `encrypted_secret IS NULL` (a true SQL NULL, `jsonb_typeof(encrypted_secret) IS NULL`). Regression: delete a connection while a schema sync or test is in flight and confirm no spurious error from pool disposal.
+
+## SPEC-13 — Connection deletion lifecycle & share modes (2026-07-14)
+
+**What changed:**
+- **Per-share mode.** New `DashboardShareLink.mode` column (`text NOT NULL DEFAULT 'live'`, CHECK `mode IN ('live','snapshot')`; migration `20260714130000_share_link_mode`, backfill = `'live'` = today's behavior). `CreateShareSchema` (`type:"link"`) gains an optional `mode`, defaulting server-side to the dashboard's current mode. `getPublicDashboard` now branches: `snapshot` shares serve each widget's persisted `snapshot` column verbatim via `apps/web/lib/sharing/public-snapshot.ts` (no SQL, no credential fetch, no result-cache execution); `live` shares keep the existing execute path. Share DTOs / list / create responses carry `mode`; the Share modal has a Live/Snapshot segmented picker (`ShareDashboardModal.tsx`).
+- **Live-share revocation on delete.** `deleteConnection()` calls `revokeLiveSharesForDeletedConnection(tx, connectionId)` (`apps/web/lib/connections/revoke-shares.ts`) inside the existing soft-delete transaction: sets `revokedAt = now()` on all `revokedAt IS NULL`, `mode = 'live'` links whose dashboard has ≥1 widget denormalized to this connection. Snapshot links are untouched. Count is written to the delete audit log.
+- **Read-only chats (fixes the hard 404).** `getConversation` now loads the connection **including** soft-deleted rows and returns `connectionDeleted` (+ connection name) instead of throwing `resourceNotFound`. `listConversations` badges affected chats via one bounded query over the page's distinct connection ids (no N+1). UI: read-only banner + disabled composer + "Read-only" list/header badges (`WorkspaceView.tsx`).
+- **Defense in depth.** `acceptQuerySubmission` (write/execute path) hard-rejects a deleted-connection conversation with new error code `CONNECTION_DELETED` (410) via the shared `assertConnectionNotDeleted` guard (`apps/web/lib/connections/deleted-guard.ts`), before any quota reservation. Read paths use only the `isConnectionDeleted` flag.
+- **Owner dashboards.** `DashboardOwnerDto` gains a derived `connectionDeleted` (read-time check of widget connectionIds against deleted connections, no schema change). UI: "Data source removed — showing last known values" badge + Refresh control disabled with tooltip; `DashboardGrid` skips all auto/manual refresh when `connectionDeleted`.
+- **Delete impact preview.** New `GET /api/connections/[connectionId]/impact` (`apps/web/lib/connections/impact.ts`) returns counts of active conversations, dashboards with a widget on the connection, active live links (to be revoked), and active snapshot links (unaffected). Both delete entry points (list `window.confirm` and the previously confirm-less detail page) now use `ConnectionDeleteDialog.tsx`: a structured per-resource consequence list with real counts, a loading state, and a Delete button disabled until counts load.
+
+### New error code
+`CONNECTION_DELETED` 410 (not retryable). Added to the `ApiErrorCode` union and all three HTTP status maps (`apps/web/app/api/connections/_lib/http.ts`, `lib/dashboards/http.ts`, `lib/query/http.ts`); documented in `docs/v2/contracts/ERRORS.md`. Write/execute paths only; read paths degrade to the `connectionDeleted` flag.
+
+### Tradeoffs / risks
+- Snapshot shares serve owner-pinned data indefinitely — acceptable because it is an explicit owner choice, and revoke/expiry/password controls still apply. Share `mode` is immutable after creation (no update path), so the public-dashboard cache key (shareId + shareVersion) stays correct without adding mode to it.
+- Revoking live links inside the delete transaction adds one `findMany` + one `updateMany`, bounded by plan share caps.
+- Read-only chats relax a read guard; mitigated by the hard `CONNECTION_DELETED` rejection on every write/execute path.
+- `Dashboard.mode` and share `mode` are now independent knobs; the modal defaulting share mode to dashboard mode keeps the common case coherent.
+
+### How to test
+- Unit (`tsx`, no DB): `apps/web/lib/connections/deleted-guard.test.ts` (read flag vs. write `CONNECTION_DELETED`), `apps/web/lib/connections/revoke-shares.test.ts` (only live, only non-revoked, only affected dashboards), `apps/web/lib/sharing/public-snapshot.test.ts` (snapshot served verbatim, no execution, no leak). Wired into `pnpm --filter @query-wise/web test`.
+- Build: `pnpm --filter @query-wise/web build` clean; `npx tsc --noEmit -p packages/shared/tsconfig.json` clean. Migration applied to the dev DB via `pnpm --filter @query-wise/shared db:migrate:deploy`.
+- Live E2E (not run here): create connection → chat with charts → dashboard with widgets → one live + one snapshot share → delete via the new dialog (verify counts) → chat opens read-only with banner; dashboard badged, refresh disabled; live link shows "no longer available"; snapshot link still renders pinned data.

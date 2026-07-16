@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+
 import { getAppDb } from "../app-db";
 import { createResourceId } from "../domain";
 import { devLogError } from "../observability";
@@ -63,7 +63,7 @@ export async function recordMetricEvent(input: MetricEventInput): Promise<void> 
         resourceType: input.resourceType ?? null,
         resourceId: input.resourceId ?? null,
         queryRunId: input.queryRunId ?? null,
-        payload: (input.payload ?? {}) as Prisma.InputJsonObject,
+        payload: (input.payload ?? {}) as any,
       },
     });
   } catch (error) {

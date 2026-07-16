@@ -55,6 +55,12 @@ hostnames MUST NOT cross the wire.
 | `PLAN_FEATURE_PASSWORD_SHARES` | 403 | no | password-protected shares require Pro |
 | `PLAN_FEATURE_MODEL` | 403 | no | model tier not allowed on the plan (reserved) |
 | `ACCOUNT_DISABLED` | 403 | no | account disabled by an operator; plan-enforced mutations blocked, reads allowed |
+| `COUPON_NOT_FOUND` | 404 | no | no coupon matches the normalized code (SPEC-12) |
+| `COUPON_INACTIVE` | 403 | no | coupon disabled by an admin (SPEC-12) |
+| `COUPON_EXPIRED` | 410 | no | past the coupon's `redeemableUntil` window (SPEC-12) |
+| `COUPON_FULLY_REDEEMED` | 409 | no | `maxRedemptions` reached (atomic cap) (SPEC-12) |
+| `COUPON_ALREADY_REDEEMED` | 409 | no | this user already redeemed this coupon, ever (SPEC-12) |
+| `CONNECTION_DELETED` | 410 | no | the conversation's data source was deleted; write/execute paths reject (SPEC-13) |
 | `INTERNAL_ERROR` | 500 | yes | unexpected server failure |
 
 `ACCOUNT_DISABLED` is set when `UserPlan.status = disabled` (SPEC-08 §6.4). The
@@ -68,6 +74,18 @@ window resets in UTC) when computable. Plan-limit and feature codes are not
 retryable — the caller must free a slot, upgrade, or contact support. Windows are
 UTC: day resets at `00:00Z`, month on the 1st at `00:00Z`.
 
+Coupon codes (`COUPON_*`, SPEC-12) are returned by `POST /api/coupons/redeem`.
+Messages are safe/actionable and do not leak beyond the not-found case (codes are
+bearer secrets, not usernames). Suspended users are refused with the reused
+`ACCOUNT_DISABLED`. Redemption is rate-limited per user and per IP; exhaustion
+returns the existing `RATE_LIMITED` 429 path.
+
+
+`CONNECTION_DELETED` (SPEC-13) is raised only on write/execute paths for a
+conversation whose bound connection was soft-deleted: question accept
+(`POST /api/query`) rejects with it. Read paths (conversation detail, message
+history) never use it — they degrade to read-only history with a
+`connectionDeleted` flag on the DTO instead of erroring.
 
 Cross-owner private access MUST map to `RESOURCE_NOT_FOUND`, never `403`.
 Public share password-required responses include `requiresPassword: true`.

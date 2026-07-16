@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
+
 import { getAppDb, type AppDbTransaction } from "@query-wise/shared/app-db";
 import { createResourceId } from "@query-wise/shared/domain";
 import { devLogError } from "@query-wise/shared/observability";
@@ -17,7 +17,7 @@ export interface AuditEvent {
   metadata?: Record<string, unknown>;
 }
 
-function safeMetadata(metadata: Record<string, unknown> | undefined): Prisma.InputJsonObject {
+function safeMetadata(metadata: Record<string, unknown> | undefined): any {
   if (!metadata) return {};
   const redacted = redactSensitive(metadata);
   const serialized = JSON.stringify(
@@ -25,7 +25,7 @@ function safeMetadata(metadata: Record<string, unknown> | undefined): Prisma.Inp
     (_key, value) => typeof value === "bigint" ? value.toString() : value,
   );
   if (Buffer.byteLength(serialized, "utf8") <= MAX_AUDIT_METADATA_BYTES) {
-    return JSON.parse(serialized) as Prisma.InputJsonObject;
+    return JSON.parse(serialized) as any;
   }
   return { truncated: true, originalBytes: Buffer.byteLength(serialized, "utf8") };
 }
