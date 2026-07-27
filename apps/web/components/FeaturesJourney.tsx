@@ -77,7 +77,7 @@ export default function FeaturesJourney() {
   const current = FEATURES[active];
 
   return (
-    <section id="features" ref={sectionRef} className="border-t border-border bg-bg px-7 py-28">
+    <section id="features" ref={sectionRef} className="border-t border-border bg-bg px-5 py-20 sm:px-7 sm:py-28">
       <div className="mx-auto max-w-[1180px]">
         <div data-reveal className="max-w-2xl">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Features</p>
@@ -93,7 +93,7 @@ export default function FeaturesJourney() {
           onMouseLeave={() => setPaused(false)}
         >
           {/* Feature list */}
-          <div className="flex snap-x gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0" role="tablist" aria-label="Features">
+          <div className="flex snap-x gap-2 overflow-x-auto pb-2 [-webkit-mask-image:linear-gradient(to_right,black_92%,transparent)] [mask-image:linear-gradient(to_right,black_92%,transparent)] lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:[-webkit-mask-image:none] lg:[mask-image:none]" role="tablist" aria-label="Features">
             {FEATURES.map((feature, i) => {
               const on = i === active;
               const Icon = feature.icon;
@@ -140,7 +140,7 @@ export default function FeaturesJourney() {
           </div>
 
           {/* App frame */}
-          <div className="relative flex min-h-[440px] overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow)] lg:min-h-[540px] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow)]">
+          <div className="relative flex min-h-[500px] overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow)] sm:min-h-[460px] lg:min-h-[540px] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow)]">
             {/* app sidebar */}
             <div className="hidden w-[52px] shrink-0 flex-col items-center gap-1.5 border-r border-border bg-surface-2 py-3.5 sm:flex" aria-hidden>
               <span className="mb-2 flex size-7 items-center justify-center rounded-[9px] bg-accent font-syne text-[13px] font-bold text-accent-ink">Q</span>
@@ -204,7 +204,7 @@ export default function FeaturesJourney() {
                     <b className="font-semibold text-text">{current.headline}</b> {current.line}
                   </motion.p>
                 </AnimatePresence>
-                <div className="relative min-h-0 flex-1">
+                <div className="relative min-h-0 flex-1 overflow-hidden">
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={active}
@@ -353,29 +353,29 @@ function SqlScene() {
   return (
     <div className="mx-auto flex h-full w-full max-w-2xl flex-col justify-center gap-4">
       <div className="overflow-hidden rounded-[14px] border border-border bg-code-bg">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2">
-          <span className="flex items-center gap-2 font-mono text-[10.5px] text-faint">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
+          <span className="flex min-w-0 items-center gap-2 font-mono text-[10.5px] text-faint">
             <span
-              className={`size-1.5 rounded-full transition-colors duration-300 ${done ? "bg-accent" : "bg-warning"}`}
+              className={`size-1.5 shrink-0 rounded-full transition-colors duration-300 ${done ? "bg-accent" : "bg-warning"}`}
               style={!done ? { animation: "qw-pulse 1s ease-in-out infinite" } : undefined}
             />
-            query.sql
+            <span className="truncate">query.sql</span>
           </span>
           {done ? (
-            <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 font-mono text-[10.5px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+            <span className="shrink-0 whitespace-nowrap rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 font-mono text-[10.5px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
               ✓ read-only
             </span>
           ) : (
-            <span className="font-mono text-[10.5px] text-faint">validating…</span>
+            <span className="shrink-0 font-mono text-[10.5px] text-faint">validating…</span>
           )}
         </div>
-        <div className="flex overflow-x-auto px-4 py-3.5">
-          <div className="mr-4 select-none text-right font-mono text-[12.5px] leading-[1.85] text-faint" aria-hidden>
+        <div className="flex overflow-x-auto px-3 py-3.5 [-webkit-mask-image:linear-gradient(to_right,black_88%,transparent)] [mask-image:linear-gradient(to_right,black_88%,transparent)] sm:px-4 sm:[-webkit-mask-image:none] sm:[mask-image:none]">
+          <div className="mr-3 select-none text-right font-mono text-[10.5px] leading-[1.85] text-faint sm:mr-4 sm:text-[12.5px]" aria-hidden>
             {Array.from({ length: SQL_TOTAL_LINES }, (_, i) => (
               <div key={i} className={`transition-opacity duration-300 ${i < lines.length ? "opacity-60" : "opacity-20"}`}>{i + 1}</div>
             ))}
           </div>
-          <pre className="m-0 min-w-0 flex-1 whitespace-pre font-mono text-[12.5px] leading-[1.85]">
+          <pre className="m-0 min-w-0 flex-1 whitespace-pre font-mono text-[10.5px] leading-[1.85] sm:text-[12.5px]">
             {lines.map((line, li) => (
               <div key={li}>
                 {line.map(([text, kind], ti) => (
@@ -607,7 +607,7 @@ function ShareScene() {
 
       <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2.5">
         <Link2 className="size-3.5 shrink-0 text-accent-strong" strokeWidth={1.75} />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">querywise.app/shared/x7f2-kq91</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">querywise.tech/shared/x7f2-kq91</span>
         <span className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${copied ? "bg-accent-soft text-accent-strong" : "bg-accent text-accent-ink shadow-[0_4px_12px_-4px_var(--accent-line)]"}`}>
           {copied ? "✓ Copied" : "Copy link"}
         </span>

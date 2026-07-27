@@ -224,7 +224,7 @@ export default function QueryWiseLanding() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg font-sans text-text">
+    <div className="min-h-screen bg-bg font-sans text-text" style={{ zoom: 0.9 }}>
       <Nav />
       <Hero demo={demo} />
       <PrinciplesStrip />
@@ -253,7 +253,7 @@ function Nav() {
 
   return (
     <nav className="fixed inset-x-0 top-0 z-50 border-b border-border bg-nav-bg backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[1180px] items-center gap-7 px-7">
+      <div className="mx-auto flex h-16 max-w-[1180px] items-center gap-7 px-5 sm:px-7">
         <a href="#top" className="flex items-center gap-2.5 text-text no-underline">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="assets/logo.png" alt="QueryWise" className="size-8 object-contain" />
@@ -294,7 +294,7 @@ function Nav() {
 
 function Hero({ demo }: { demo: HeroDemoState }) {
   return (
-    <header id="top" className="relative overflow-hidden px-7 pb-24 pt-36" style={{ background: "var(--glow), var(--bg)" }}>
+    <header id="top" className="relative overflow-hidden px-5 sm:px-7 pb-20 pt-28 sm:pb-24 sm:pt-36" style={{ background: "var(--glow), var(--bg)" }}>
       {/* blueprint grid, masked to the top */}
       <div
         aria-hidden
@@ -313,12 +313,7 @@ function Hero({ demo }: { demo: HeroDemoState }) {
       />
 
       <div className="relative mx-auto flex max-w-[1180px] flex-col items-center text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-accent-line bg-accent-soft px-3.5 py-1.5 font-mono text-xs tracking-[0.06em] text-accent-strong">
-          <span className="size-[7px] rounded-full bg-accent" style={{ animation: "qw-pulse 2.2s ease-in-out infinite" }} />
-          NOW IN BETA · WORKS WITH POSTGRESQL
-        </div>
-
-        <h1 className="mt-7 max-w-[920px] font-syne text-[clamp(40px,5.5vw,76px)] font-bold leading-[1.04] tracking-[-0.02em] [text-wrap:balance]">
+        <h1 className="max-w-[920px] font-syne text-[clamp(40px,5.5vw,76px)] font-bold leading-[1.04] tracking-[-0.02em] [text-wrap:balance]">
           {"Your database speaks SQL. You don't have to.".split(" ").map((word, i) => (
             <span key={i} className="inline-block" style={{ animation: `qw-word-in 0.6s cubic-bezier(0.16,1,0.3,1) ${i * 0.045}s both` }}>
               {word}&nbsp;
@@ -333,14 +328,14 @@ function Hero({ demo }: { demo: HeroDemoState }) {
         <div className="mt-8 flex flex-wrap justify-center gap-3.5" style={{ animation: "qw-rise 0.6s cubic-bezier(0.16,1,0.3,1) 0.45s both" }}>
           <Link
             href="/sign-up"
-            className="group flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 text-base font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-10px_var(--accent-line)] active:translate-y-0 active:scale-[0.98]"
+            className="group flex items-center gap-2 rounded-xl bg-accent px-5 sm:px-7 py-3.5 text-base font-semibold text-accent-ink no-underline transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-10px_var(--accent-line)] active:translate-y-0 active:scale-[0.98]"
           >
             Start free
             <ArrowRight className="size-4 transition-transform duration-150 group-hover:translate-x-0.5" strokeWidth={2} />
           </Link>
           <a
             href="#how"
-            className="rounded-xl border border-border-2 bg-surface px-7 py-3.5 text-base font-medium text-text no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line"
+            className="rounded-xl border border-border-2 bg-surface px-5 sm:px-7 py-3.5 text-base font-medium text-text no-underline transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-line"
           >
             See how it works
           </a>
@@ -366,10 +361,10 @@ function HeroDemo({ demo }: { demo: HeroDemoState }) {
   const composerActive = demo.isTyping && demo.typed.length > 0;
 
   return (
-    <div className="mt-16 w-full max-w-[880px] text-left" style={{ animation: "qw-rise 0.7s cubic-bezier(0.16,1,0.3,1) 0.65s both" }}>
-      {/* example switcher — segmented, compact */}
-      <div className="mb-5 flex justify-center">
-        <div className="flex items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+    <div className="mt-12 w-full max-w-[880px] text-left sm:mt-16" style={{ animation: "qw-rise 0.7s cubic-bezier(0.16,1,0.3,1) 0.65s both" }}>
+      {/* example switcher — segmented, compact; scrolls horizontally on mobile */}
+      <div className="mb-5 flex justify-start overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:justify-center sm:overflow-visible sm:px-0">
+        <div className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
           {EXAMPLES.map((example, i) => {
             const on = i === demo.exIdx;
             return (
@@ -401,7 +396,7 @@ function HeroDemo({ demo }: { demo: HeroDemoState }) {
           </div>
           <span className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1 font-mono text-[11px] text-faint">
             <Lock className="size-3 text-accent-strong" strokeWidth={1.75} />
-            querywise.app/chats
+            querywise.tech/chats
           </span>
           <span className="ml-auto hidden items-center gap-1.5 rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 font-mono text-[10px] text-accent-strong sm:flex">
             <Database className="size-3" strokeWidth={1.75} />
@@ -458,30 +453,31 @@ function HeroDemo({ demo }: { demo: HeroDemoState }) {
 
             {/* SQL — editor card with gutter, streams token by token */}
             {demo.sqlShown > 0 ? (
-              <div className="overflow-hidden rounded-xl border border-border bg-code-bg" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
-                <div className="flex items-center justify-between border-b border-border px-4 py-2">
-                  <span className="flex items-center gap-2 font-mono text-[11px] text-faint">
+              <div className="shrink-0 overflow-hidden rounded-xl border border-border bg-code-bg" style={{ animation: "qw-pop 0.45s cubic-bezier(0.2,0.7,0.3,1) both" }}>
+                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4">
+                  <span className="flex min-w-0 items-center gap-2 font-mono text-[11px] text-faint">
                     <span
-                      className={`size-1.5 rounded-full transition-colors duration-300 ${sqlDone ? "bg-accent" : "bg-warning"}`}
+                      className={`size-1.5 shrink-0 rounded-full transition-colors duration-300 ${sqlDone ? "bg-accent" : "bg-warning"}`}
                       style={!sqlDone ? { animation: "qw-pulse 1s ease-in-out infinite" } : undefined}
                     />
-                    generated_query.sql
+                    <span className="truncate">generated_query.sql</span>
                   </span>
                   {sqlDone ? (
-                    <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 font-mono text-[10.5px] text-accent-strong" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
-                      ✓ read-only · passed
+                    <span className="shrink-0 whitespace-nowrap rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-[10px] text-accent-strong sm:px-2.5 sm:text-[10.5px]" style={{ animation: "qw-stamp 0.26s cubic-bezier(0.16,1,0.3,1) both" }}>
+                      <span className="sm:hidden">✓ read-only</span>
+                      <span className="hidden sm:inline">✓ read-only · passed</span>
                     </span>
                   ) : (
-                    <span className="font-mono text-[10.5px] text-faint">writing…</span>
+                    <span className="shrink-0 font-mono text-[10.5px] text-faint">writing…</span>
                   )}
                 </div>
-                <div className="flex overflow-x-auto px-4 py-3">
-                  <div className="mr-4 select-none text-right font-mono text-[12.5px] leading-[1.8] text-faint" aria-hidden>
+                <div className="flex overflow-x-auto px-3 py-3 [-webkit-mask-image:linear-gradient(to_right,black_88%,transparent)] [mask-image:linear-gradient(to_right,black_88%,transparent)] sm:px-4 sm:[-webkit-mask-image:none] sm:[mask-image:none]">
+                  <div className="mr-3 select-none text-right font-mono text-[10.5px] leading-[1.8] text-faint sm:mr-4 sm:text-[12.5px]" aria-hidden>
                     {Array.from({ length: totalLines }, (_, i) => (
                       <div key={i} className={`transition-opacity duration-300 ${i < sqlLines.length ? "opacity-60" : "opacity-20"}`}>{i + 1}</div>
                     ))}
                   </div>
-                  <pre className="m-0 min-w-0 flex-1 whitespace-pre font-mono text-[12.5px] leading-[1.8]">
+                  <pre className="m-0 min-w-0 flex-1 whitespace-pre font-mono text-[10.5px] leading-[1.8] sm:text-[12.5px]">
                     {sqlLines.map((line, li) => (
                       <div key={li}>
                         {line.map((token, ti) => (
@@ -520,7 +516,7 @@ function HeroDemo({ demo }: { demo: HeroDemoState }) {
                     <span className="h-px w-full bg-border/50" />
                     <span className="h-px w-full bg-border-2/70" />
                   </div>
-                  <div className="relative flex h-full items-end justify-center gap-2 px-1 sm:gap-3">
+                  <div className="relative flex h-full items-end justify-center gap-1 px-1 sm:gap-3">
                     {ex.labels.map((label, i) => {
                       const isPeak = i === maxIdx;
                       return (
@@ -543,9 +539,9 @@ function HeroDemo({ demo }: { demo: HeroDemoState }) {
                     })}
                   </div>
                 </div>
-                <div className="mt-1.5 flex justify-center gap-2 px-1 sm:gap-3">
+                <div className="mt-1.5 flex justify-center gap-1 px-1 sm:gap-3">
                   {ex.labels.map((label) => (
-                    <div key={label} className="min-w-0 max-w-[56px] flex-1 truncate text-center font-mono text-[9.5px] text-faint">{label}</div>
+                    <div key={label} className="min-w-0 max-w-[56px] flex-1 truncate text-center font-mono text-[8px] text-faint sm:text-[9.5px]">{label}</div>
                   ))}
                 </div>
               </div>
@@ -610,7 +606,7 @@ function PrinciplesStrip() {
     { icon: Database, label: "Live data, never stale exports" },
   ];
   return (
-    <section className="border-y border-border bg-bg-2 px-7 py-8">
+    <section className="border-y border-border bg-bg-2 px-5 sm:px-7 py-8">
       <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-center gap-x-10 gap-y-3">
         {principles.map(({ icon: Icon, label }) => (
           <span key={label} className="flex items-center gap-2 font-mono text-[11.5px] tracking-[0.08em] text-muted">
@@ -636,7 +632,7 @@ const HOW_STEPS = [
 
 function HowItWorks() {
   return (
-    <section id="how" className="border-y border-border bg-bg-2 px-7 py-28">
+    <section id="how" className="border-y border-border bg-bg-2 px-5 sm:px-7 py-20 sm:py-28">
       <div className="mx-auto max-w-[1180px]">
         <div data-reveal className="max-w-2xl">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">How it works</p>
@@ -675,7 +671,7 @@ function HowItWorks() {
 
 function DashboardShowcase() {
   return (
-    <section className="bg-bg px-7 py-28">
+    <section className="bg-bg px-5 sm:px-7 py-20 sm:py-28">
       <div className="mx-auto max-w-[1180px]">
         <div data-reveal className="mx-auto max-w-2xl text-center">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Product demo</p>
@@ -754,7 +750,7 @@ function Comparison() {
     "Anyone on the team can self-serve, safely",
   ];
   return (
-    <section className="border-y border-border bg-bg-2 px-7 py-28">
+    <section className="border-y border-border bg-bg-2 px-5 sm:px-7 py-20 sm:py-28">
       <div className="mx-auto max-w-[1180px]">
         <div data-reveal className="max-w-2xl">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Why QueryWise</p>
@@ -849,8 +845,8 @@ function UseCases() {
   const rowA = QUESTION_WALL.filter((_, i) => i % 2 === 0);
   const rowB = QUESTION_WALL.filter((_, i) => i % 2 === 1);
   return (
-    <section className="overflow-hidden bg-bg py-28">
-      <div className="mx-auto max-w-[1180px] px-7">
+    <section className="overflow-hidden bg-bg py-20 sm:py-28">
+      <div className="mx-auto max-w-[1180px] px-5 sm:px-7">
         <div data-reveal className="mx-auto max-w-2xl text-center">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Use cases</p>
           <h2 className="font-syne text-[clamp(32px,3.8vw,52px)] font-bold leading-[1.06] tracking-[-0.015em]">
@@ -918,7 +914,7 @@ function PlanFeatureRow({ text, included }: PlanFeature) {
 
 function Pricing() {
   return (
-    <section id="pricing" className="border-y border-border bg-bg-2 px-7 py-28">
+    <section id="pricing" className="border-y border-border bg-bg-2 px-5 sm:px-7 py-20 sm:py-28">
       <div className="mx-auto max-w-[1180px]">
         <div data-reveal className="mx-auto max-w-2xl text-center">
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Pricing</p>
@@ -1019,7 +1015,7 @@ const FAQS = [
 
 function Faq() {
   return (
-    <section id="faq" className="bg-bg px-7 py-28">
+    <section id="faq" className="bg-bg px-5 sm:px-7 py-20 sm:py-28">
       <div className="mx-auto max-w-[760px]">
         <div data-reveal>
           <p className="mb-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">FAQ</p>
@@ -1047,7 +1043,7 @@ function Faq() {
 
 function FinalCta() {
   return (
-    <section className="relative overflow-hidden border-t border-border bg-bg-2 px-7 py-32 text-center">
+    <section className="relative overflow-hidden border-t border-border bg-bg-2 px-5 sm:px-7 py-24 sm:py-32 text-center">
       <div
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-0 h-[300px] w-[600px] -translate-x-1/2 blur-[48px]"
@@ -1079,7 +1075,7 @@ function FinalCta() {
 
 function Footer() {
   return (
-    <footer className="border-t border-border bg-bg px-7 pb-10 pt-14">
+    <footer className="border-t border-border bg-bg px-5 sm:px-7 pb-10 pt-14">
       <div className="mx-auto flex max-w-[1180px] flex-col items-center justify-between gap-6 sm:flex-row">
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
