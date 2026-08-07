@@ -55,7 +55,7 @@
           <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#F26D6D"}}></span>
           <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#F2C36D"}}></span>
           <span style={{"width": "11px", "height": "11px", "borderRadius": "50%", "background": "#5FCB7E"}}></span>
-          <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)", "marginLeft": "10px"}}>querywise.app — acme_analytics (read-only)</span>
+          <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12px", "color": "var(--faint)", "marginLeft": "10px"}}>querywise.tech — acme_analytics (read-only)</span>
         </div>
         <div style={{"padding": "26px 26px 30px", "display": "flex", "flexDirection": "column", "gap": "18px", "height": "690px", "boxSizing": "border-box", "justifyContent": "flex-start"}}>
           
@@ -302,7 +302,7 @@
             <div style={{"width": "100%", "maxWidth": "440px", "animation": "qw-fadeup 0.45s ease both"}}>
               <div style={{"display": "flex", "alignItems": "center", "gap": "10px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "11px", "padding": "11px 16px", "marginBottom": "14px"}}>
                 <span style={{"fontSize": "14px"}}>🔒</span>
-                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "color": "var(--muted)", "overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"}}>querywise.app/shared/x7f2-kq91</span>
+                <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "color": "var(--muted)", "overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"}}>querywise.tech/shared/x7f2-kq91</span>
                 <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "10.5px", "color": "var(--accent)", "flexShrink": "0"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)", "animation": "qw-pulse 1.8s ease-in-out infinite"}}></span>LIVE</span>
               </div>
               <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}}>
@@ -720,7 +720,7 @@
           <div style={{"maxWidth": "720px", "margin": "0 auto", "animation": "qw-fadeup 0.4s ease both"}}>
             <div style={{"display": "flex", "alignItems": "center", "gap": "10px", "background": "var(--surface2)", "border": "1px solid var(--border)", "borderRadius": "10px", "padding": "9px 16px", "marginBottom": "16px"}}>
               <span style={{"fontSize": "13px"}}>🔒</span>
-              <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "color": "var(--muted)"}}>querywise.app/shared/x7f2-kq91-mv30</span>
+              <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "12.5px", "color": "var(--muted)"}}>querywise.tech/shared/x7f2-kq91-mv30</span>
               <span style={{"marginLeft": "auto", "display": "inline-flex", "alignItems": "center", "gap": "6px", "fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "color": "var(--accent)"}}><span style={{"width": "6px", "height": "6px", "borderRadius": "50%", "background": "var(--accent)", "animation": "qw-pulse 1.8s ease-in-out infinite"}}></span>LIVE DATA</span>
             </div>
             <div style={{"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "12px"}}>
@@ -827,7 +827,7 @@
           <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; Audit log exports &amp; retention</span>
           <span style={{"fontSize": "14.5px", "color": "var(--muted)"}}><span style={{"color": "var(--faint)"}}>＋</span>&nbsp; SLAs &amp; dedicated support</span>
         </div>
-        <a href="mailto:hello@querywise.app" style={{"marginTop": "auto", "textAlign": "center", "border": "1px solid var(--border2)", "color": "var(--muted)", "textDecoration": "none", "fontSize": "15px", "fontWeight": "500", "padding": "13px 0", "borderRadius": "11px"}} className="hover-style-22">Contact sales</a>
+        <a href="mailto:hello@querywise.tech" style={{"marginTop": "auto", "textAlign": "center", "border": "1px solid var(--border2)", "color": "var(--muted)", "textDecoration": "none", "fontSize": "15px", "fontWeight": "500", "padding": "13px 0", "borderRadius": "11px"}} className="hover-style-22">Contact sales</a>
       </div>
     </div>
   </div>
@@ -908,7 +908,7 @@
       </div>
       <div style={{"display": "flex", "flexDirection": "column", "gap": "10px"}}>
         <span style={{"fontFamily": "'JetBrains Mono',monospace", "fontSize": "11px", "letterSpacing": "0.14em", "color": "var(--faint)", "marginBottom": "4px"}}>COMPANY</span>
-        <a href="mailto:hello@querywise.app" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-31">Contact</a>
+        <a href="mailto:hello@querywise.tech" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-31">Contact</a>
         <a href="/privacy" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-32">Privacy</a>
         <a href="/terms" style={{"color": "var(--muted)", "textDecoration": "none", "fontSize": "14px"}} className="hover-style-33">Terms</a>
       </div>

@@ -5,7 +5,7 @@ import {
   AreaChart,
   BarChart3,
   Code2,
-  Gauge,
+  // Gauge, // Overview/KPI tab hidden for now
   LineChart,
   PieChart,
   ScatterChart,
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import type { BarStackMode } from "@/components/charts/BarChartView";
-import { StatCard } from "@/components/charts/StatCard";
+// import { StatCard } from "@/components/charts/StatCard"; // Overview/KPI tab hidden for now
 import { TableView } from "@/components/charts/TableView";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -39,11 +39,13 @@ const CHART_TYPE_META: Record<ChartType, { label: string; icon: typeof BarChart3
   table: { label: "Table", icon: Table2 },
 };
 
+// "kpi" (Overview) kept in the union for type compatibility but never exposed in the tab bar.
 type CardTab = "chart" | "kpi" | "table" | "sql";
 
 const TAB_META: Record<CardTab, { label: string; icon: typeof BarChart3 }> = {
   chart: { label: "Chart", icon: BarChart3 },
-  kpi: { label: "Overview", icon: Gauge },
+  // Overview/KPI tab hidden — re-enable with Gauge icon + StatCard body when product wants it back.
+  kpi: { label: "Overview", icon: BarChart3 },
   table: { label: "Table", icon: Table2 },
   sql: { label: "SQL", icon: Code2 },
 };
@@ -180,25 +182,25 @@ export function ResultBlockCard({
   // Which chart types this specific data supports (never all six). The agent's
   // chosen type is honored only if it's valid for the data.
   const chartTypes = options?.chartTypes ?? [];
-  const useKpi = Boolean(options?.isSingleRow && options?.hasNumericColumn);
-  const canChart = !useKpi && chartTypes.length > 0;
+  // Overview/KPI tab disabled in the frontend — keep single-row numeric on Chart/Table.
+  // const useKpi = Boolean(options?.isSingleRow && options?.hasNumericColumn);
+  const canChart = chartTypes.length > 0;
 
   const initialChartType: ChartType =
     chartConfig?.type && chartTypes.includes(chartConfig.type)
       ? chartConfig.type
       : options?.defaultChartType ?? chartTypes[0] ?? "bar";
 
-  // A single-measure time series also gets a KPI/Overview (latest + delta +
-  // sparkline) — as a secondary tab, since the chart is the primary view.
-  const kpiTabAvailable = useKpi || Boolean(options?.singleMeasureSeries);
+  // Overview/KPI tab hidden (was: single-row aggregate or single-measure series → StatCard).
+  // const kpiTabAvailable = useKpi || Boolean(options?.singleMeasureSeries);
+  // const tabs with kpi: ...(kpiTabAvailable && primaryTab !== "kpi" ? (["kpi"] as CardTab[]) : []),
 
-  // Primary data tab depends on the shape: KPI for single values, Chart when a
-  // valid chart exists, else Table. Before data arrives we stay on "chart" so
-  // the loading skeleton (a chart silhouette) shows instead of empty text.
-  const primaryTab: CardTab = !result ? "chart" : useKpi ? "kpi" : canChart ? "chart" : "table";
+  // Primary data tab: Chart when a valid chart exists, else Table.
+  // Before data arrives we stay on "chart" so the loading skeleton shows.
+  // (Previously single-row numeric defaulted to Overview/KPI — that tab is off.)
+  const primaryTab: CardTab = !result ? "chart" : canChart ? "chart" : "table";
   const tabs: CardTab[] = [
     primaryTab,
-    ...(kpiTabAvailable && primaryTab !== "kpi" ? (["kpi"] as CardTab[]) : []),
     ...(primaryTab === "table" ? [] : (["table"] as CardTab[])),
     "sql",
   ];
@@ -409,6 +411,7 @@ export function ResultBlockCard({
             </div>
           )
         ) : null}
+        {/* Overview/KPI tab body hidden — re-enable with StatCard import when product wants it back.
         {tab === "kpi" ? (
           result ? (
             <StatCard result={result} />
@@ -418,6 +421,7 @@ export function ResultBlockCard({
             </div>
           )
         ) : null}
+        */}
         {tab === "table" ? (
           hasData && result ? (
             <div className="max-h-72 overflow-auto rounded-xl border border-border/70">
