@@ -26,4 +26,7 @@ services:
   worker:
     image: ikrambagban/query-wise-worker:latest
     env_file: .env
+    # depends_on:s
+    #   redis:
+    #     condition: service_healthy
     restart: unless-stopped

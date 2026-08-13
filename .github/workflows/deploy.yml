@@ -3,7 +3,8 @@ name: Deploy Worker to Production VM
 # - Web & Admin → Vercel (auto-deployed on push to prod)
 # - Redis       → Redis Cloud (hosted, no VM service needed)
 
-on:
+on: 
+  workflow_dispatch: 
   push:
     branches:
       - prod
