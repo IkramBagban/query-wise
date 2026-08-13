@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["pg"],
+  serverExternalPackages: ["@prisma/client", "pg"],
   transpilePackages: ["@query-wise/shared"],
 };
 
