@@ -25,18 +25,19 @@ services:
       timeout: 5s
       retries: 5
 
-  web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.web
-    env_file: .env
-    ports:
-      - "4100:4100"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  # Web is run locally via `pnpm dev` or deployed to Vercel — not needed here
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.web
+  #   env_file: .env
+  #   ports:
+  #     - "4100:4100"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
 
   worker:
     build:

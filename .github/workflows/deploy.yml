@@ -1,4 +1,7 @@
-name: Deploy to Production VM
+name: Deploy Worker to Production VM
+# NOTE: Only the worker is deployed to the VM.
+# - Web & Admin → Vercel (auto-deployed on push to prod)
+# - Redis       → Redis Cloud (hosted, no VM service needed)
 
 on:
   push:
@@ -7,7 +10,7 @@ on:
 
 jobs:
   build-and-push:
-    name: Build and Push Docker Images
+    name: Build and Push Worker Docker Image
     runs-on: ubuntu-latest
 
     steps:
@@ -23,18 +26,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Web Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/Dockerfile.web
-          push: true
-          tags: ikrambagban/query-wise-web:latest
-          build-args: |
-            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-            NEXT_PUBLIC_CLERK_SIGN_IN_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
-            NEXT_PUBLIC_CLERK_SIGN_UP_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_UP_URL }}
+      # Web is deployed to Vercel — no need to build/push web image
+      # - name: Build and push Web Image
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: .
+      #     file: docker/Dockerfile.web
+      #     push: true
+      #     tags: ikrambagban/query-wise-web:latest
+      #     build-args: |
+      #       NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+      #       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      #       NEXT_PUBLIC_CLERK_SIGN_IN_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
+      #       NEXT_PUBLIC_CLERK_SIGN_UP_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_UP_URL }}
 
       - name: Build and push Worker Image
         uses: docker/build-push-action@v5
@@ -45,7 +49,7 @@ jobs:
           tags: ikrambagban/query-wise-worker:latest
 
   deploy:
-    name: Deploy to VM
+    name: Deploy Worker to VM
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
@@ -70,34 +74,24 @@ jobs:
           script: |
             cd ~/query-wise || exit 1
             echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ikrambagban --password-stdin
-            
+
             # Generate the .env file dynamically from GitHub Secrets
+            # Only worker-relevant env vars are needed here.
+            # Web/Admin env vars are managed in Vercel project settings.
             cat << 'EOF' > .env
-            NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
-            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
-            GOOGLE_GENERATIVE_AI_API_KEY=${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
             QUERYWISE_APP_DATABASE_URL=${{ secrets.QUERYWISE_APP_DATABASE_URL }}
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-            NEXT_PUBLIC_CLERK_SIGN_IN_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
-            NEXT_PUBLIC_CLERK_SIGN_UP_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_UP_URL }}
-            QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1=${{ secrets.QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1 }}
-            QUERYWISE_CURSOR_SIGNING_KEY=${{ secrets.QUERYWISE_CURSOR_SIGNING_KEY }}
-            QUERYWISE_SHARE_UNLOCK_SIGNING_KEY=${{ secrets.QUERYWISE_SHARE_UNLOCK_SIGNING_KEY }}
             QUERYWISE_REDIS_URL=${{ secrets.QUERYWISE_REDIS_URL }}
             QUERYWISE_INGESTION_LLM_PROVIDER=${{ secrets.QUERYWISE_INGESTION_LLM_PROVIDER }}
             QUERYWISE_INGESTION_LLM_MODEL=${{ secrets.QUERYWISE_INGESTION_LLM_MODEL }}
             QUERYWISE_INGESTION_LLM_API_KEY=${{ secrets.QUERYWISE_INGESTION_LLM_API_KEY }}
             QUERYWISE_LLM_INCLUDE_SAMPLE_ROWS=${{ secrets.QUERYWISE_LLM_INCLUDE_SAMPLE_ROWS }}
-            NODE_ENV=${{ secrets.NODE_ENV }}
-            QUERYWISE_LLM_PROVIDER=${{ secrets.QUERYWISE_LLM_PROVIDER }}
-            QUERYWISE_LLM_MODEL=${{ secrets.QUERYWISE_LLM_MODEL }}
+            GOOGLE_GENERATIVE_AI_API_KEY=${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
             GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+            NODE_ENV=production
             EOF
-            
+
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
-            
+
             # Clean up old unused images to save disk space
             docker system prune -f
