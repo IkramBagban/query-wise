@@ -2344,3 +2344,13 @@ receives the full concatenated answer (all narration segments) as before.
 - Unit (`tsx`, no DB): `apps/web/lib/connections/deleted-guard.test.ts` (read flag vs. write `CONNECTION_DELETED`), `apps/web/lib/connections/revoke-shares.test.ts` (only live, only non-revoked, only affected dashboards), `apps/web/lib/sharing/public-snapshot.test.ts` (snapshot served verbatim, no execution, no leak). Wired into `pnpm --filter @query-wise/web test`.
 - Build: `pnpm --filter @query-wise/web build` clean; `npx tsc --noEmit -p packages/shared/tsconfig.json` clean. Migration applied to the dev DB via `pnpm --filter @query-wise/shared db:migrate:deploy`.
 - Live E2E (not run here): create connection → chat with charts → dashboard with widgets → one live + one snapshot share → delete via the new dialog (verify counts) → chat opens read-only with banner; dashboard badged, refresh disabled; live link shows "no longer available"; snapshot link still renders pinned data.
+
+## Worker missing credential encryption key in production .env (2026-08-24)
+
+**What changed:** `.github/workflows/deploy.yml` now writes `QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1` (from GitHub Actions secrets) into the VM worker `.env`, and `docker compose up` uses `--force-recreate` so the new env is actually injected. Production Redis (BullMQ) was flushed of leftover `schema-ingestion` jobs after the app-DB reset.
+
+**Why:** Schema ingestion failed with `Credential decryption failed` / `DATA_SOURCE_UNAVAILABLE`. Vercel encrypts `encrypted_secret` with `QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1`. The worker deploy script overwrote `~/query-wise/.env` from secrets but omitted that key, so the VM worker could not decrypt credentials the web app had just stored. Stale BullMQ jobs also survived the Neon reset because they live in Redis, not Postgres.
+
+**Tradeoffs / risks:** The GitHub secret and the Vercel Production env var must stay byte-identical. Rotating one without the other will fail every new connection's ingestion. `--force-recreate` restarts the worker on every deploy (brief ingestion downtime).
+
+**How to test:** After deploy, create a connection and confirm worker logs show `schema-ingestion.introspection.started` rather than `Credential decryption failed`. Confirm the worker container has `QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1` set (presence only) and that Redis `DBSIZE` is not full of ghost `bull:schema-ingestion:*` keys from deleted connections.

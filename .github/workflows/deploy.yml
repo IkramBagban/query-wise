@@ -82,6 +82,7 @@ jobs:
             cat << 'EOF' > .env
             QUERYWISE_APP_DATABASE_URL=${{ secrets.QUERYWISE_APP_DATABASE_URL }}
             QUERYWISE_REDIS_URL=${{ secrets.QUERYWISE_REDIS_URL }}
+            QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1=${{ secrets.QUERYWISE_CREDENTIAL_ENCRYPTION_KEY_V1 }}
             QUERYWISE_INGESTION_LLM_PROVIDER=${{ secrets.QUERYWISE_INGESTION_LLM_PROVIDER }}
             QUERYWISE_INGESTION_LLM_MODEL=${{ secrets.QUERYWISE_INGESTION_LLM_MODEL }}
             QUERYWISE_INGESTION_LLM_API_KEY=${{ secrets.QUERYWISE_INGESTION_LLM_API_KEY }}
@@ -89,10 +90,12 @@ jobs:
             GOOGLE_GENERATIVE_AI_API_KEY=${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
             GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
             NODE_ENV=production
+            QUERYWISE_LOG_ENABLED=1
             EOF
 
             docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+
 
             # Clean up old unused images to save disk space
             docker system prune -f
