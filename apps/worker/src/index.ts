@@ -57,6 +57,33 @@ function redisConnectionOptions(): unknown {
   }
 }
 
+function outboxRelayIntervalMs(): number {
+  // Neon-friendly default: the relay is failure-recovery-only (the enqueue
+  // path closes its own outbox row on immediate publish), so poll rarely and
+  // let a scale-to-zero DB suspend between polls (Neon suspends after ~5 min
+  // idle and lingers ~5 min awake after each query, so the interval must be
+  // well above 10 min to stay inside the free tier). 0 disables the interval
+  // entirely (drain once on boot).
+  const raw = process.env.QUERYWISE_OUTBOX_RELAY_MS;
+  if (raw === undefined || raw.trim() === "") return 3_600_000;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 3_600_000;
+  return parsed;
+}
+
+async function runOutboxRelayOnce(): Promise<void> {
+  try {
+    const published = await publishQueuedSchemaIngestionOutbox();
+    devLog("debug", "schema-ingestion.worker.outbox-relay", "Schema ingestion worker relayed queued outbox jobs.", { published });
+    if (published === 0) {
+      // Release pooled connections so the app DB can suspend when idle.
+      await getAppDb().$disconnect().catch(() => undefined);
+    }
+  } catch (error) {
+    devLogError("schema-ingestion.worker.outbox-relay-failed", "Schema ingestion worker outbox relay failed.", error);
+  }
+}
+
 async function main(): Promise<void> {
   devLog("info", "schema-ingestion.worker.boot", "Schema ingestion worker booting.", {
     queueName: SCHEMA_INGESTION_QUEUE_NAME,
@@ -69,20 +96,26 @@ async function main(): Promise<void> {
   const concurrency = Number.parseInt(process.env.QUERYWISE_SCHEMA_INGESTION_CONCURRENCY ?? "2", 10);
   const normalizedConcurrency = Math.max(1, Math.min(concurrency, 10));
   const initiallyPublished = await publishQueuedSchemaIngestionOutbox();
+  if (initiallyPublished === 0) {
+    // No backlog: release pooled connections immediately so the app DB can
+    // suspend instead of holding idle connections open until the first tick.
+    await getAppDb().$disconnect().catch(() => undefined);
+  }
   devLog("info", "schema-ingestion.worker.started", "Schema ingestion worker started.", {
     queueName: SCHEMA_INGESTION_QUEUE_NAME,
     concurrency: normalizedConcurrency,
     initiallyPublished,
   });
-  const relay = setInterval(() => {
-    void publishQueuedSchemaIngestionOutbox()
-      .then((published) => {
-        devLog("debug", "schema-ingestion.worker.outbox-relay", "Schema ingestion worker relayed queued outbox jobs.", { published });
-      })
-      .catch((error) => {
-        devLogError("schema-ingestion.worker.outbox-relay-failed", "Schema ingestion worker outbox relay failed.", error);
-      });
-  }, 15_000);
+  const relayIntervalMs = outboxRelayIntervalMs();
+  let relay: ReturnType<typeof setInterval> | null = null;
+  if (relayIntervalMs > 0) {
+    relay = setInterval(() => void runOutboxRelayOnce(), relayIntervalMs);
+    relay.unref?.();
+  }
+  devLog("info", "schema-ingestion.worker.relay-config", "Schema ingestion outbox relay configured.", {
+    relayIntervalMs,
+    relayEnabled: relay !== null,
+  });
 
   const worker = new bullmq.Worker(
     SCHEMA_INGESTION_QUEUE_NAME,
@@ -129,7 +162,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     devLog("info", "schema-ingestion.worker.shutdown-started", "Schema ingestion worker shutdown started.");
-    clearInterval(relay);
+    if (relay) clearInterval(relay);
     await worker.close();
     await refreshWorker?.close();
     await getAppDb().$disconnect();

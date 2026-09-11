@@ -151,6 +151,23 @@ export async function enqueueSchemaIngestion(input: {
   });
 
   const publishResult = await publishSchemaIngestionJob(data);
+  if (publishResult === "published") {
+    // Happy path: close the outbox row immediately so the worker relay stays
+    // failure-recovery-only. Without this every enqueue leaves a `queued` row
+    // behind and the relay must poll constantly to clean up — which keeps a
+    // scale-to-zero DB (Neon) awake forever.
+    try {
+      await getAppDb().durableJob.updateMany({
+        where: { id: deterministicJobRowId(schemaIngestionIdempotencyKey(data)), status: "queued" },
+        data: { status: "succeeded", completedAt: new Date() },
+      });
+    } catch (error) {
+      devLogError("schema-ingestion.enqueue.outbox-close-failed", "Immediate publish succeeded but the outbox row could not be closed; the relay will clean it up.", error, {
+        connectionId: data.connectionId,
+        intent: data.intent,
+      });
+    }
+  }
   devLog(publishResult === "published" ? "info" : "warn", "schema-ingestion.enqueue.completed", "Schema ingestion enqueue completed.", {
     connectionId: data.connectionId,
     intent: data.intent,

@@ -2,8 +2,6 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as { queryWisePrisma?: PrismaClient };
 
-console.log("cwd:", process.cwd());
-console.log("DB:", process.env.QUERYWISE_APP_DATABASE_URL);
 function createAppDb(): PrismaClient {
   if (!process.env.QUERYWISE_APP_DATABASE_URL) throw new Error("QUERYWISE_APP_DATABASE_URL is not configured.");
   return new PrismaClient();
